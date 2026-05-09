@@ -629,6 +629,53 @@ class ImportPopulationCommandTests(TestCase):
                 with self.assertRaises(CommandError):
                     call_command("import_population", "population.csv", stdout=StringIO())
 
+    def test_command_rejects_negative_population_values(self) -> None:
+        """Command rejects negative population values using the configured column."""
+        with mock.patch(
+            "geo.management.commands.import_population.resolve_csv_path",
+            return_value=Path("population.csv"),
+        ):
+            with mock.patch(
+                "geo.management.commands.import_population.read_csv_rows",
+                return_value=(
+                    ["bfs_number", "pop"],
+                    [{"bfs_number": "261", "pop": "-1"}],
+                ),
+            ):
+                with self.assertRaisesMessage(
+                    CommandError,
+                    "Row 2: pop must not be negative.",
+                ):
+                    call_command(
+                        "import_population",
+                        "population.csv",
+                        "--population-column",
+                        "pop",
+                        stdout=StringIO(),
+                    )
+
+    def test_command_rejects_duplicate_bfs_rows(self) -> None:
+        """Command rejects duplicate BFS numbers in one CSV import."""
+        with mock.patch(
+            "geo.management.commands.import_population.resolve_csv_path",
+            return_value=Path("population.csv"),
+        ):
+            with mock.patch(
+                "geo.management.commands.import_population.read_csv_rows",
+                return_value=(
+                    ["bfs_number", "population"],
+                    [
+                        {"bfs_number": "261", "population": "443000"},
+                        {"bfs_number": "261", "population": "443001"},
+                    ],
+                ),
+            ):
+                with self.assertRaisesMessage(
+                    CommandError,
+                    "Row 3: duplicate BFS number 261.",
+                ):
+                    call_command("import_population", "population.csv", stdout=StringIO())
+
     def test_command_rejects_missing_columns(self) -> None:
         """Command rejects CSV files without required columns."""
         with mock.patch(

@@ -218,7 +218,9 @@ def import_population_rows(
             allow_empty=True,
         )
         if population is not None and population < 0:
-            raise CommandError(f"Row {index}: population must not be negative.")
+            raise CommandError(
+                f"Row {index}: {population_column} must not be negative."
+            )
         if bfs_number in seen_bfs_numbers:
             raise CommandError(f"Row {index}: duplicate BFS number {bfs_number}.")
         seen_bfs_numbers.add(bfs_number)
