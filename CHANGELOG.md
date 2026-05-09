@@ -1,7 +1,7 @@
 # Changelog
 
-Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
+All notable changes to this project are documented here.
 
 ## Unreleased
 
-- Initiale Repository-Struktur vorbereitet.
+- Prepared the initial repository structure.
