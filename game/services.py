@@ -48,9 +48,7 @@ def start_game(user) -> Game:
                 return existing_game
 
             municipality_ids = list(
-                get_current_municipalities()
-                .select_for_update()
-                .values_list("id", flat=True)
+                get_current_municipalities().values_list("id", flat=True)
             )
             if len(municipality_ids) < TURN_COUNT:
                 existing_game = get_active_game(user)
