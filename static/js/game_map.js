@@ -136,20 +136,19 @@
     addBoundaryLayer(map, mapElement.dataset.municipalityBoundariesUrl, {
       fitBounds: true,
       style: {
-        color: "#7f98a8",
-        fillColor: "#dce8ee",
-        fillOpacity: 0.08,
-        opacity: 0.9,
-        weight: 1,
+        color: "#ffffff",
+        fillOpacity: 0,
+        opacity: 0.95,
+        weight: 1.4,
       },
     }).then(function () {
       return addBoundaryLayer(map, mapElement.dataset.cantonBoundariesUrl, {
         fitBounds: false,
         style: {
-          color: "#214e63",
+          color: "#ffcf4a",
           fillOpacity: 0,
-          opacity: 0.95,
-          weight: 2.5,
+          opacity: 1,
+          weight: 3,
         },
       });
     });
