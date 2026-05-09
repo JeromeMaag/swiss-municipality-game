@@ -186,6 +186,11 @@ body {
   width: 100%;
 }
 
+.game-map--boundary-error {
+  outline: 2px solid #d68b8b;
+  outline-offset: -2px;
+}
+
 .map-placeholder {
   min-height: 520px;
 }

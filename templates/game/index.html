@@ -60,6 +60,8 @@
               data-center-lat="46.8182"
               data-center-lng="8.2275"
               data-zoom="8"
+              data-canton-boundaries-url="{% url 'geo:cantons_geojson' %}"
+              data-municipality-boundaries-url="{% url 'geo:municipality_boundaries_geojson' %}"
             ></div>
           {% else %}
             <div class="map-placeholder"></div>

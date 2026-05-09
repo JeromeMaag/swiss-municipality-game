@@ -376,6 +376,17 @@ class GameStartTests(TestCase):
         self.assertContains(response, "leaflet@1.9.4")
         self.assertContains(response, "/static/js/game_map.js")
         self.assertContains(response, 'data-center-lat="46.8182"')
+        self.assertContains(
+            response,
+            f'data-canton-boundaries-url="{reverse("geo:cantons_geojson")}"',
+        )
+        self.assertContains(
+            response,
+            (
+                'data-municipality-boundaries-url="'
+                f'{reverse("geo:municipality_boundaries_geojson")}"'
+            ),
+        )
         for future_target in future_targets:
             self.assertNotContains(response, future_target)
 
