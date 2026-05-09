@@ -1,5 +1,7 @@
 """Tests for the game app."""
 
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.contrib.gis.geos import Point
 from django.core.exceptions import ValidationError
@@ -267,6 +269,19 @@ class GameStartTests(TestCase):
         self.assertEqual(Game.objects.count(), 0)
         self.assertEqual(Turn.objects.count(), 0)
 
+    def test_start_game_rechecks_active_game_before_setup_error(self) -> None:
+        """Starting a game resumes a concurrently-created game before erroring."""
+        existing_game = Game.objects.create(user=self.user)
+
+        with patch(
+            "game.services.get_active_game",
+            side_effect=[None, existing_game],
+        ):
+            game = start_game(self.user)
+
+        self.assertEqual(game, existing_game)
+        self.assertEqual(Game.objects.filter(user=self.user).count(), 1)
+
     def test_game_index_shows_start_form_without_active_game(self) -> None:
         """Game index renders a start form when no active game exists."""
         self.client.force_login(self.user)
@@ -350,3 +365,5 @@ class GameStartTests(TestCase):
             "At least 5 active municipalities",
             status_code=400,
         )
+        self.assertContains(response, 'role="alert"', status_code=400)
+        self.assertContains(response, 'aria-live="assertive"', status_code=400)

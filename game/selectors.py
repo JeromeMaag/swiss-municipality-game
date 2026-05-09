@@ -14,7 +14,6 @@ def get_active_game(user) -> Game | None:
     """
     return (
         Game.objects.filter(user=user, status=Game.Status.ACTIVE)
-        .prefetch_related("turns__target__canton")
         .order_by("-started_at", "-id")
         .first()
     )

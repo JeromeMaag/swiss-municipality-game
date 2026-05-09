@@ -46,13 +46,18 @@ body {
 }
 
 .site-nav button,
-.auth-form button {
+.auth-form button,
+.game-panel button {
   background: #245a73;
   border: 0;
   color: #ffffff;
   cursor: pointer;
   font: inherit;
   font-weight: 700;
+}
+
+.site-nav button,
+.auth-form button {
   padding: 0.55rem 0.85rem;
 }
 
@@ -127,12 +132,6 @@ body {
 }
 
 .game-panel button {
-  background: #245a73;
-  border: 0;
-  color: #ffffff;
-  cursor: pointer;
-  font: inherit;
-  font-weight: 700;
   padding: 0.65rem 0.9rem;
 }
 

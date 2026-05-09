@@ -7,7 +7,9 @@
     <h1>Game</h1>
 
     {% if error %}
-      <p class="error-message">{{ error }}</p>
+      <p class="error-message" role="alert" aria-live="assertive" aria-atomic="true">
+        {{ error }}
+      </p>
     {% endif %}
 
     {% if active_game %}
