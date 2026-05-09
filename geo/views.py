@@ -1,7 +1,7 @@
 """Views for geodata pages and endpoints."""
 
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse
 from django.views.decorators.http import require_GET
 
 from .selectors import get_current_cantons, get_current_municipalities
@@ -27,16 +27,16 @@ def index(request):
     return HttpResponse("Geodata endpoints will be implemented in a later step.")
 
 
-def geojson_response(data: dict) -> JsonResponse:
+def geojson_response(data: str) -> HttpResponse:
     """Return a GeoJSON response.
 
     Args:
-        data: GeoJSON-compatible response data.
+        data: Serialized GeoJSON response data.
 
     Returns:
-        A JSON response with the GeoJSON content type.
+        A response with the GeoJSON content type.
     """
-    return JsonResponse(data, content_type=GEOJSON_CONTENT_TYPE)
+    return HttpResponse(data, content_type=GEOJSON_CONTENT_TYPE)
 
 
 @login_required

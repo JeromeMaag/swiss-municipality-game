@@ -33,13 +33,12 @@ def get_current_municipalities() -> QuerySet[Municipality]:
     """Return active municipalities for the current dataset version.
 
     Returns:
-        A queryset of active municipalities ordered by name.
+        A queryset of active municipalities ordered by internal id.
     """
     dataset_version = get_current_dataset_version()
     if dataset_version is None:
         return Municipality.objects.none()
-    return (
-        Municipality.objects.filter(dataset_version=dataset_version, is_active=True)
-        .select_related("canton")
-        .order_by("name")
-    )
+    return Municipality.objects.filter(
+        dataset_version=dataset_version,
+        is_active=True,
+    ).order_by("id")

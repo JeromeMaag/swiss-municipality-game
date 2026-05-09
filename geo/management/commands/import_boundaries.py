@@ -400,7 +400,7 @@ def shapely_to_multipolygon(shapely_geometry) -> MultiPolygon:
     raise CommandError(f"Unsupported geometry type: {geometry.geom_type}")
 
 
-def simplify_geometry(geometry: MultiPolygon, tolerance: float) -> MultiPolygon:
+def simplify_geometry(geometry: MultiPolygon, tolerance: float) -> MultiPolygon | None:
     """Simplify a geometry while preserving topology.
 
     Args:
@@ -408,10 +408,10 @@ def simplify_geometry(geometry: MultiPolygon, tolerance: float) -> MultiPolygon:
         tolerance: Simplification tolerance.
 
     Returns:
-        Simplified geometry or the original geometry.
+        Simplified geometry, or None when simplification is disabled.
     """
     if tolerance <= 0:
-        return geometry
+        return None
     simplified = geometry.simplify(tolerance, preserve_topology=True)
     if simplified.geom_type == "Polygon":
         return MultiPolygon(simplified, srid=4326)

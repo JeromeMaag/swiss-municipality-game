@@ -18,7 +18,7 @@ from shapely.geometry import Polygon
 
 from tests.utils import make_test_geometry
 
-from .management.commands.import_boundaries import to_float, to_int
+from .management.commands.import_boundaries import simplify_geometry, to_float, to_int
 from .models import Canton, GeoDatasetVersion, Municipality
 
 
@@ -263,6 +263,22 @@ class GeoJSONEndpointTests(TestCase):
         self.assertNotIn("canton", properties)
         self.assertNotIn("canton_abbreviation", properties)
 
+    def test_municipality_boundaries_are_not_ordered_by_name(self) -> None:
+        """Municipality boundary endpoint avoids name-based feature ordering."""
+        other_municipality = Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=1,
+            name="Aarau",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+        response = self.client.get(reverse("geo:municipality_boundaries_geojson"))
+        data = self.assert_geojson_response(response)
+
+        feature_ids = [feature["properties"]["id"] for feature in data["features"]]
+        self.assertEqual(feature_ids, [self.municipality.id, other_municipality.id])
+
     def test_feature_collection_endpoints_are_empty_without_dataset(self) -> None:
         """Feature collection endpoints return empty data before import."""
         Municipality.objects.all().delete()
@@ -300,6 +316,17 @@ class ImportBoundariesCommandTests(TestCase):
 
         with self.assertRaises(CommandError):
             to_float("nan")
+
+    def test_simplify_geometry_returns_none_without_tolerance(self) -> None:
+        """Geometry simplification does not duplicate full geometries by default."""
+        self.assertIsNone(simplify_geometry(make_test_geometry(), 0.0))
+
+    def test_simplify_geometry_returns_geometry_with_tolerance(self) -> None:
+        """Geometry simplification stores a geometry when explicitly enabled."""
+        simplified = simplify_geometry(make_test_geometry(), 0.0001)
+
+        self.assertIsNotNone(simplified)
+        self.assertEqual(simplified.srid, 4326)
 
     def test_command_lists_layers_when_layer_names_are_missing(self) -> None:
         """Command lists datasource layers when no layer names are provided."""
@@ -413,9 +440,11 @@ class ImportBoundariesCommandTests(TestCase):
         self.assertEqual(str(dataset_version), "swissBOUNDARIES3D 2026-01-01")
         self.assertEqual(canton.abbreviation, "ZH")
         self.assertEqual(canton.geom.srid, 4326)
+        self.assertIsNone(canton.geom_simplified)
         self.assertEqual(municipality.bfs_number, 261)
         self.assertEqual(municipality.canton, canton)
         self.assertEqual(municipality.area_km2, 87.88)
+        self.assertIsNone(municipality.geom_simplified)
         self.assertIsNotNone(municipality.label_point)
         self.assertEqual(Canton.objects.count(), 1)
         self.assertEqual(Municipality.objects.count(), 1)
