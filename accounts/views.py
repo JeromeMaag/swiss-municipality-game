@@ -5,6 +5,9 @@ from django.contrib.auth.views import LoginView as DjangoLoginView
 from django.contrib.auth.views import LogoutView as DjangoLogoutView
 from django.shortcuts import redirect
 from django.urls import reverse_lazy
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import never_cache
+from django.views.decorators.debug import sensitive_post_parameters
 from django.views.generic.edit import FormView
 
 from .forms import RegistrationForm
@@ -23,6 +26,8 @@ class LogoutView(DjangoLogoutView):
     http_method_names = ["post", "options"]
 
 
+@method_decorator(sensitive_post_parameters("password1", "password2"), name="dispatch")
+@method_decorator(never_cache, name="dispatch")
 class RegisterView(FormView):
     """Render and process the registration form."""
 

@@ -1,7 +1,7 @@
 """Tests for the accounts app."""
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.urls import reverse
 
 
@@ -13,6 +13,7 @@ class AuthFlowTests(TestCase):
         response = self.client.get(reverse("accounts:register"))
 
         self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "accounts/register.html")
         self.assertContains(response, "Register")
         self.assertContains(response, "name=\"username\"")
 
@@ -32,6 +33,22 @@ class AuthFlowTests(TestCase):
         user = get_user_model().objects.get(username="newplayer")
         self.assertEqual(int(self.client.session["_auth_user_id"]), user.id)
 
+    def test_invalid_registration_does_not_create_user(self) -> None:
+        """Invalid registration redisplays the form without creating a user."""
+        response = self.client.post(
+            reverse("accounts:register"),
+            {
+                "username": "newplayer",
+                "password1": "StrongPass123!",
+                "password2": "DifferentPass123!",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "accounts/register.html")
+        self.assertFalse(get_user_model().objects.filter(username="newplayer").exists())
+        self.assertNotIn("_auth_user_id", self.client.session)
+
     def test_authenticated_user_is_redirected_from_register(self) -> None:
         """Authenticated users do not see the registration form again."""
         user = get_user_model().objects.create_user(
@@ -49,6 +66,7 @@ class AuthFlowTests(TestCase):
         response = self.client.get(reverse("accounts:login"))
 
         self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "accounts/login.html")
         self.assertContains(response, "Login")
         self.assertContains(response, "name=\"username\"")
 
@@ -67,6 +85,22 @@ class AuthFlowTests(TestCase):
         self.assertRedirects(response, reverse("game:index"))
         self.assertEqual(int(self.client.session["_auth_user_id"]), user.id)
 
+    def test_invalid_login_does_not_authenticate(self) -> None:
+        """Invalid login redisplays the form without authenticating the user."""
+        get_user_model().objects.create_user(
+            username="player",
+            password="StrongPass123!",
+        )
+
+        response = self.client.post(
+            reverse("accounts:login"),
+            {"username": "player", "password": "WrongPass123!"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "accounts/login.html")
+        self.assertNotIn("_auth_user_id", self.client.session)
+
     def test_login_redirects_to_next_url(self) -> None:
         """Login redirects to the requested next URL when provided."""
         get_user_model().objects.create_user(
@@ -76,6 +110,20 @@ class AuthFlowTests(TestCase):
 
         response = self.client.post(
             f"{reverse('accounts:login')}?next={reverse('game:index')}",
+            {"username": "player", "password": "StrongPass123!"},
+        )
+
+        self.assertRedirects(response, reverse("game:index"))
+
+    def test_login_rejects_external_next_url(self) -> None:
+        """Login does not redirect to unsafe external next URLs."""
+        get_user_model().objects.create_user(
+            username="player",
+            password="StrongPass123!",
+        )
+
+        response = self.client.post(
+            f"{reverse('accounts:login')}?next=https://example.test/phishing",
             {"username": "player", "password": "StrongPass123!"},
         )
 
@@ -104,3 +152,45 @@ class AuthFlowTests(TestCase):
             response,
             f"{reverse('accounts:login')}?next={reverse('game:index')}",
         )
+
+
+class AuthCsrfTests(TestCase):
+    """Tests that auth-changing requests require CSRF protection."""
+
+    def setUp(self) -> None:
+        """Create a CSRF-enforcing test client."""
+        self.csrf_client = Client(enforce_csrf_checks=True)
+
+    def test_register_requires_csrf_token(self) -> None:
+        """Registration POSTs without CSRF tokens are rejected."""
+        response = self.csrf_client.post(
+            reverse("accounts:register"),
+            {
+                "username": "newplayer",
+                "password1": "StrongPass123!",
+                "password2": "StrongPass123!",
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_login_requires_csrf_token(self) -> None:
+        """Login POSTs without CSRF tokens are rejected."""
+        response = self.csrf_client.post(
+            reverse("accounts:login"),
+            {"username": "player", "password": "StrongPass123!"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_logout_requires_csrf_token(self) -> None:
+        """Logout POSTs without CSRF tokens are rejected."""
+        user = get_user_model().objects.create_user(
+            username="player",
+            password="StrongPass123!",
+        )
+        self.csrf_client.force_login(user)
+
+        response = self.csrf_client.post(reverse("accounts:logout"))
+
+        self.assertEqual(response.status_code, 403)
