@@ -74,13 +74,19 @@ class GameEvent(models.Model):
         errors = {}
 
         if self.game_id and self.user_id != self.game.user_id:
-            errors["user"] = "Event user must match the linked game user."
+            errors.setdefault("user", []).append(
+                "Event user must match the linked game user."
+            )
 
         if self.turn_id:
             if self.user_id != self.turn.game.user_id:
-                errors["user"] = "Event user must match the linked turn game user."
+                errors.setdefault("user", []).append(
+                    "Event user must match the linked turn game user."
+                )
             if self.game_id and self.turn.game_id != self.game_id:
-                errors["turn"] = "Event turn must belong to the linked game."
+                errors.setdefault("turn", []).append(
+                    "Event turn must belong to the linked game."
+                )
 
         if errors:
             raise ValidationError(errors)

@@ -83,6 +83,17 @@ class GameEventModelTests(TestCase):
         with self.assertRaises(ValidationError):
             event.full_clean()
 
+    def test_event_user_must_match_turn_game_user(self) -> None:
+        """Event validation rejects users that do not own the linked turn game."""
+        event = GameEvent(
+            user=self.other_user,
+            turn=self.turn,
+            event_type=GameEvent.Type.TURN_STARTED,
+        )
+
+        with self.assertRaises(ValidationError):
+            event.full_clean()
+
     def test_event_turn_must_belong_to_game(self) -> None:
         """Event validation rejects turns from another linked game."""
         other_game = Game.objects.create(user=self.user)
