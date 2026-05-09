@@ -32,6 +32,12 @@ Create an admin user:
 python manage.py createsuperuser
 ```
 
+Seed five dummy municipalities for local development:
+
+```cmd
+python manage.py seed_dev_geodata
+```
+
 Start the development server:
 
 ```cmd

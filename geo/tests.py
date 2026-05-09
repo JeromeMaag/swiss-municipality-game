@@ -21,7 +21,13 @@ from tests.utils import make_test_geometry
 
 from .management.commands.import_boundaries import simplify_geometry, to_float, to_int
 from .management.commands.import_population import read_csv_rows
+from .management.commands.seed_dev_geodata import (
+    DATASET_NAME,
+    DATASET_VERSION,
+    DEV_MUNICIPALITIES,
+)
 from .models import Canton, GeoDatasetVersion, Municipality
+from .selectors import get_current_dataset_version
 
 
 class GeoModelTests(TestCase):
@@ -732,3 +738,55 @@ class ImportPopulationCommandTests(TestCase):
             ):
                 with self.assertRaises(CommandError):
                     call_command("import_population", "population.csv", stdout=StringIO())
+
+
+class SeedDevGeodataCommandTests(TestCase):
+    """Tests for local development geodata seeding."""
+
+    def test_command_creates_dev_dataset_with_active_municipalities(self) -> None:
+        """Seed command creates a current dataset with five active municipalities."""
+        output = StringIO()
+
+        call_command("seed_dev_geodata", stdout=output)
+
+        dataset_version = GeoDatasetVersion.objects.get(
+            name=DATASET_NAME,
+            version_label=DATASET_VERSION,
+        )
+        self.assertEqual(
+            dataset_version.notes,
+            "Local dummy geodata for development only.",
+        )
+        self.assertEqual(dataset_version.cantons.count(), 1)
+        self.assertEqual(
+            dataset_version.municipalities.filter(is_active=True).count(),
+            len(DEV_MUNICIPALITIES),
+        )
+        self.assertIn("Seeded 5 development municipalities.", output.getvalue())
+
+    def test_command_is_idempotent(self) -> None:
+        """Running the seed command twice does not duplicate records."""
+        call_command("seed_dev_geodata", stdout=StringIO())
+        call_command("seed_dev_geodata", stdout=StringIO())
+
+        dataset_version = GeoDatasetVersion.objects.get(
+            name=DATASET_NAME,
+            version_label=DATASET_VERSION,
+        )
+        self.assertEqual(dataset_version.cantons.count(), 1)
+        self.assertEqual(
+            dataset_version.municipalities.count(),
+            len(DEV_MUNICIPALITIES),
+        )
+
+    def test_command_refreshes_current_dataset_timestamp(self) -> None:
+        """Seed command makes the dev dataset the current dataset."""
+        call_command("seed_dev_geodata", stdout=StringIO())
+        GeoDatasetVersion.objects.create(
+            name="newer-dataset",
+            version_label="local",
+        )
+
+        call_command("seed_dev_geodata", stdout=StringIO())
+
+        self.assertEqual(get_current_dataset_version().name, DATASET_NAME)
