@@ -282,6 +282,29 @@ class GameStartTests(TestCase):
         self.assertEqual(game, existing_game)
         self.assertEqual(Game.objects.filter(user=self.user).count(), 1)
 
+    def test_start_game_recovers_from_active_game_integrity_error(self) -> None:
+        """Starting a game resumes the active game after a unique conflict."""
+        self.create_municipalities(5)
+        existing_game = Game.objects.create(user=self.user)
+
+        with (
+            patch(
+                "game.services.get_active_game",
+                side_effect=[None, existing_game],
+            ),
+            patch.object(Game.objects, "select_for_update") as select_for_update,
+            patch.object(Game.objects, "create", side_effect=IntegrityError),
+        ):
+            active_game_query = (
+                select_for_update.return_value.filter.return_value.order_by.return_value
+            )
+            active_game_query.first.return_value = None
+
+            game = start_game(self.user)
+
+        self.assertEqual(game, existing_game)
+        self.assertEqual(Game.objects.filter(user=self.user).count(), 1)
+
     def test_game_index_shows_start_form_without_active_game(self) -> None:
         """Game index renders a start form when no active game exists."""
         self.client.force_login(self.user)

@@ -36,17 +36,6 @@ def start_game(user) -> Game:
     if existing_game is not None:
         return existing_game
 
-    municipality_ids = list(get_current_municipalities().values_list("id", flat=True))
-    if len(municipality_ids) < TURN_COUNT:
-        existing_game = get_active_game(user)
-        if existing_game is not None:
-            return existing_game
-        raise NotEnoughMunicipalitiesError(
-            f"At least {TURN_COUNT} active municipalities are required to start a game."
-        )
-
-    target_ids = random.SystemRandom().sample(municipality_ids, TURN_COUNT)
-
     try:
         with transaction.atomic():
             existing_game = (
@@ -58,6 +47,21 @@ def start_game(user) -> Game:
             if existing_game is not None:
                 return existing_game
 
+            municipality_ids = list(
+                get_current_municipalities()
+                .select_for_update()
+                .values_list("id", flat=True)
+            )
+            if len(municipality_ids) < TURN_COUNT:
+                existing_game = get_active_game(user)
+                if existing_game is not None:
+                    return existing_game
+                raise NotEnoughMunicipalitiesError(
+                    f"At least {TURN_COUNT} active municipalities are required to "
+                    "start a game."
+                )
+
+            target_ids = random.SystemRandom().sample(municipality_ids, TURN_COUNT)
             game = Game.objects.create(user=user)
             turns = [
                 Turn(game=game, turn_number=turn_number, target_id=target_id)
