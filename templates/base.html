@@ -1,0 +1,18 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}GemeindeGuess CH{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="site-title" href="{% url 'home' %}">GemeindeGuess CH</a>
+    </header>
+    <main class="site-main">
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>
