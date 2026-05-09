@@ -1,1 +1,43 @@
 """Admin configuration for the geo app."""
+
+from django.contrib import admin
+
+from .models import Canton, GeoDatasetVersion, Municipality
+
+
+@admin.register(GeoDatasetVersion)
+class GeoDatasetVersionAdmin(admin.ModelAdmin):
+    """Admin configuration for geodata dataset versions."""
+
+    list_display = ("name", "version_label", "imported_at")
+    search_fields = ("name", "version_label", "source_url")
+    readonly_fields = ("imported_at",)
+
+
+@admin.register(Canton)
+class CantonAdmin(admin.ModelAdmin):
+    """Admin configuration for cantons."""
+
+    list_display = ("abbreviation", "name", "bfs_number", "dataset_version")
+    list_filter = ("dataset_version",)
+    search_fields = ("abbreviation", "name", "bfs_number")
+    autocomplete_fields = ("dataset_version",)
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(Municipality)
+class MunicipalityAdmin(admin.ModelAdmin):
+    """Admin configuration for municipalities."""
+
+    list_display = (
+        "name",
+        "bfs_number",
+        "canton",
+        "dataset_version",
+        "population",
+        "is_active",
+    )
+    list_filter = ("dataset_version", "canton", "is_active")
+    search_fields = ("name", "bfs_number", "canton__name", "canton__abbreviation")
+    autocomplete_fields = ("dataset_version", "canton")
+    readonly_fields = ("created_at", "updated_at")
