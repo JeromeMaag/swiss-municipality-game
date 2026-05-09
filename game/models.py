@@ -6,13 +6,16 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 
 
+GAME_STATUS_ACTIVE = "active"
+
+
 class Game(models.Model):
     """A five-turn game session for one user."""
 
     class Status(models.TextChoices):
         """Allowed lifecycle states for a game."""
 
-        ACTIVE = "active", "Active"
+        ACTIVE = GAME_STATUS_ACTIVE, "Active"
         FINISHED = "finished", "Finished"
         ABANDONED = "abandoned", "Abandoned"
 
@@ -41,7 +44,7 @@ class Game(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["user"],
-                condition=models.Q(status="active"),
+                condition=models.Q(status=GAME_STATUS_ACTIVE),
                 name="unique_active_game_per_user",
             ),
         ]

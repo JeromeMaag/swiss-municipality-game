@@ -4,7 +4,9 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET, require_POST
 
-from .selectors import get_active_game, get_current_turn
+from geo.models import Municipality
+
+from .selectors import get_active_game
 from .services import TURN_COUNT, NotEnoughMunicipalitiesError, start_game
 
 
@@ -59,16 +61,32 @@ def render_game_index(
         A rendered game index response.
     """
     turns = []
+    current_turn = None
+    current_target_name = ""
     if active_game is not None:
         turns = list(
-            active_game.turns.select_related("target__canton").order_by("turn_number")
+            active_game.turns.only(
+                "id",
+                "target",
+                "turn_number",
+                "revealed_at",
+            ).order_by("turn_number")
         )
+        current_turn = next(
+            (turn for turn in turns if turn.revealed_at is None),
+            None,
+        )
+        if current_turn is not None:
+            current_target_name = Municipality.objects.only("name").get(
+                pk=current_turn.target_id
+            ).name
     return render(
         request,
         "game/index.html",
         {
             "active_game": active_game,
-            "current_turn": get_current_turn(active_game),
+            "current_turn": current_turn,
+            "current_target_name": current_target_name,
             "turn_count": TURN_COUNT,
             "turns": turns,
             "error": error,
