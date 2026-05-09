@@ -59,7 +59,6 @@ class Canton(models.Model):
 
         ordering = ["abbreviation"]
         indexes = [
-            models.Index(fields=["dataset_version", "abbreviation"]),
             models.Index(fields=["dataset_version", "name"]),
         ]
         constraints = [
@@ -109,7 +108,6 @@ class Municipality(models.Model):
 
         ordering = ["name"]
         indexes = [
-            models.Index(fields=["dataset_version", "bfs_number"]),
             models.Index(fields=["dataset_version", "name"]),
             models.Index(fields=["canton", "name"]),
             models.Index(fields=["is_active"]),

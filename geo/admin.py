@@ -20,7 +20,7 @@ class CantonAdmin(admin.ModelAdmin):
 
     list_display = ("abbreviation", "name", "bfs_number", "dataset_version")
     list_filter = ("dataset_version",)
-    search_fields = ("abbreviation", "name", "bfs_number")
+    search_fields = ("abbreviation", "name", "=bfs_number")
     autocomplete_fields = ("dataset_version",)
     readonly_fields = ("created_at", "updated_at")
 
@@ -38,6 +38,6 @@ class MunicipalityAdmin(admin.ModelAdmin):
         "is_active",
     )
     list_filter = ("dataset_version", "canton", "is_active")
-    search_fields = ("name", "bfs_number", "canton__name", "canton__abbreviation")
+    search_fields = ("name", "=bfs_number", "canton__name", "canton__abbreviation")
     autocomplete_fields = ("dataset_version", "canton")
     readonly_fields = ("created_at", "updated_at")
