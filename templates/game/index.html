@@ -1,6 +1,18 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Game - GemeindeGuess CH{% endblock %}
+
+{% block extra_head %}
+  {% if active_game and current_turn %}
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIINfQPDnksrPyzbAh7z+drsqb6JcMk/sE="
+      crossorigin=""
+    >
+  {% endif %}
+{% endblock %}
 
 {% block content %}
   <section class="game-panel">
@@ -13,25 +25,47 @@
     {% endif %}
 
     {% if active_game %}
-      <p class="muted">Active game</p>
+      <div class="game-layout">
+        <aside class="game-sidebar" aria-label="Current game">
+          <p class="muted">Active game</p>
 
-      {% if current_turn %}
-        <section class="turn-panel" aria-labelledby="current-turn-heading">
-          <h2 id="current-turn-heading">
-            Turn {{ current_turn.turn_number }} of {{ turn_count }}
-          </h2>
-          <p>Target municipality: {{ current_target_name }}</p>
+          {% if current_turn %}
+            <section class="turn-panel" aria-labelledby="current-turn-heading">
+              <h2 id="current-turn-heading">
+                Turn {{ current_turn.turn_number }} of {{ turn_count }}
+              </h2>
+              <p>Target municipality: {{ current_target_name }}</p>
+            </section>
+          {% else %}
+            <p class="error-message" role="alert" aria-live="assertive">
+              No active turn is available for this game.
+            </p>
+          {% endif %}
+
+          <ol class="turn-list">
+            {% for turn in turns %}
+              <li>
+                Turn {{ turn.turn_number }}
+                {% if turn.revealed_at %}revealed{% else %}pending{% endif %}
+              </li>
+            {% endfor %}
+          </ol>
+        </aside>
+
+        <section class="map-panel" aria-label="Guess map">
+          {% if current_turn %}
+            <div
+              id="game-map"
+              class="game-map"
+              data-center-lat="46.8182"
+              data-center-lng="8.2275"
+              data-zoom="8"
+            ></div>
+          {% else %}
+            <div class="map-placeholder"></div>
+          {% endif %}
         </section>
-      {% endif %}
-
-      <ol class="turn-list">
-        {% for turn in turns %}
-          <li>
-            Turn {{ turn.turn_number }}
-            {% if turn.revealed_at %}revealed{% else %}pending{% endif %}
-          </li>
-        {% endfor %}
-      </ol>
+      </div>
     {% else %}
       <p class="muted">No active game yet.</p>
       <form method="post" action="{% url 'game:start' %}">
@@ -40,4 +74,16 @@
       </form>
     {% endif %}
   </section>
+{% endblock %}
+
+{% block extra_scripts %}
+  {% if active_game and current_turn %}
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+      defer
+    ></script>
+    <script src="{% static 'js/game_map.js' %}" defer></script>
+  {% endif %}
 {% endblock %}

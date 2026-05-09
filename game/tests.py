@@ -315,6 +315,7 @@ class GameStartTests(TestCase):
         self.assertTemplateUsed(response, "game/index.html")
         self.assertContains(response, "No active game yet.")
         self.assertContains(response, reverse("game:start"))
+        self.assertNotContains(response, 'id="game-map"')
 
     def test_start_view_requires_login(self) -> None:
         """Anonymous users cannot start games."""
@@ -371,8 +372,23 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Active game")
         self.assertNotContains(response, f"Active game #{game.id}")
         self.assertContains(response, first_turn.target.name)
+        self.assertContains(response, 'id="game-map"')
+        self.assertContains(response, "leaflet@1.9.4")
+        self.assertContains(response, "/static/js/game_map.js")
+        self.assertContains(response, 'data-center-lat="46.8182"')
         for future_target in future_targets:
             self.assertNotContains(response, future_target)
+
+    def test_game_index_handles_active_game_without_turns(self) -> None:
+        """Game index reports active games that do not have a current turn."""
+        Game.objects.create(user=self.user)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("game:index"))
+
+        self.assertContains(response, "No active turn is available")
+        self.assertNotContains(response, 'id="game-map"')
+        self.assertNotContains(response, "/static/js/game_map.js")
 
     def test_start_view_returns_error_when_setup_is_incomplete(self) -> None:
         """Game start endpoint reports missing setup data."""

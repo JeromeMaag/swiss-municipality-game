@@ -63,7 +63,7 @@ body {
 
 .site-main {
   margin: 0 auto;
-  max-width: 960px;
+  max-width: 1180px;
   padding: 3rem 1.5rem;
 }
 
@@ -124,7 +124,7 @@ body {
 }
 
 .game-panel {
-  max-width: 720px;
+  max-width: 100%;
 }
 
 .game-panel h1 {
@@ -133,6 +133,17 @@ body {
 
 .game-panel button {
   padding: 0.65rem 0.9rem;
+}
+
+.game-layout {
+  align-items: stretch;
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+}
+
+.game-sidebar {
+  min-width: 0;
 }
 
 .turn-panel {
@@ -161,4 +172,32 @@ body {
   background: #fff1f1;
   color: #8d1f1f;
   padding: 0.75rem 1rem;
+}
+
+.map-panel {
+  border: 1px solid #d8dee8;
+  background: #dfe7ec;
+  min-height: 520px;
+}
+
+.game-map {
+  background: #dfe7ec;
+  min-height: 520px;
+  width: 100%;
+}
+
+.map-placeholder {
+  min-height: 520px;
+}
+
+@media (max-width: 820px) {
+  .game-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .map-panel,
+  .game-map,
+  .map-placeholder {
+    min-height: 420px;
+  }
 }
