@@ -1,5 +1,6 @@
 """Database models for Swiss geodata."""
 
+from django.core.exceptions import ValidationError
 from django.contrib.gis.db import models
 
 
@@ -128,3 +129,21 @@ class Municipality(models.Model):
             A human-readable municipality name with its canton abbreviation.
         """
         return f"{self.name} ({self.canton.abbreviation})"
+
+    def clean(self) -> None:
+        """Validate municipality consistency.
+
+        Raises:
+            ValidationError: If the municipality and canton belong to different
+                dataset versions.
+        """
+        super().clean()
+        if self.canton_id and self.dataset_version_id != self.canton.dataset_version_id:
+            raise ValidationError(
+                {
+                    "canton": (
+                        "Municipality and canton must belong to the same dataset "
+                        "version."
+                    )
+                }
+            )

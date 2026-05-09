@@ -1,6 +1,7 @@
 """Tests for the geo app."""
 
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 
@@ -40,6 +41,14 @@ class GeoModelTests(TestCase):
     def test_dataset_version_string(self) -> None:
         """Dataset versions expose a concise display label."""
         self.assertEqual(str(self.dataset_version), "swissBOUNDARIES3D 2026-01-01")
+
+    def test_dataset_version_name_and_label_are_unique(self) -> None:
+        """Dataset names and version labels are unique together."""
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            GeoDatasetVersion.objects.create(
+                name="swissBOUNDARIES3D",
+                version_label="2026-01-01",
+            )
 
     def test_canton_string(self) -> None:
         """Cantons expose abbreviation and name in their display label."""
@@ -91,6 +100,23 @@ class GeoModelTests(TestCase):
                 geom=make_test_geometry(),
             )
 
+    def test_canton_abbreviation_can_repeat_across_datasets(self) -> None:
+        """Canton abbreviations may repeat across different dataset versions."""
+        other_dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2027-01-01",
+        )
+
+        canton = Canton.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+
+        self.assertEqual(canton.abbreviation, "ZH")
+
     def test_municipality_bfs_number_can_repeat_across_datasets(self) -> None:
         """Municipality BFS numbers may repeat across different dataset versions."""
         Municipality.objects.create(
@@ -121,3 +147,27 @@ class GeoModelTests(TestCase):
         )
 
         self.assertEqual(municipality.bfs_number, 261)
+
+    def test_municipality_requires_canton_from_same_dataset(self) -> None:
+        """Municipality validation rejects cantons from another dataset version."""
+        other_dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2027-01-01",
+        )
+        other_canton = Canton.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+        municipality = Municipality(
+            dataset_version=self.dataset_version,
+            bfs_number=9999,
+            name="Invalid Municipality",
+            canton=other_canton,
+            geom=make_test_geometry(),
+        )
+
+        with self.assertRaises(ValidationError):
+            municipality.full_clean()
