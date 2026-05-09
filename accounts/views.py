@@ -1,30 +1,68 @@
 """Views for account-related pages."""
 
-from django.http import HttpResponse
-from django.views.decorators.http import require_GET
+from django.contrib.auth import login
+from django.contrib.auth.views import LoginView as DjangoLoginView
+from django.contrib.auth.views import LogoutView as DjangoLogoutView
+from django.shortcuts import redirect
+from django.urls import reverse_lazy
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import never_cache
+from django.views.decorators.debug import sensitive_post_parameters
+from django.views.generic.edit import FormView
+
+from .forms import RegistrationForm
 
 
-@require_GET
-def login_placeholder(request):
-    """Render a temporary login placeholder.
+class LoginView(DjangoLoginView):
+    """Render and process the login form."""
 
-    Args:
-        request: The incoming HTTP request.
-
-    Returns:
-        A plain HTTP response until the real login view is implemented.
-    """
-    return HttpResponse("Login will be implemented in a later step.")
+    template_name = "accounts/login.html"
+    redirect_authenticated_user = True
 
 
-@require_GET
-def register_placeholder(request):
-    """Render a temporary registration placeholder.
+class LogoutView(DjangoLogoutView):
+    """Log out authenticated users via POST."""
 
-    Args:
-        request: The incoming HTTP request.
+    http_method_names = ["post", "options"]
 
-    Returns:
-        A plain HTTP response until the real registration view is implemented.
-    """
-    return HttpResponse("Registration will be implemented in a later step.")
+
+@method_decorator(sensitive_post_parameters("password1", "password2"), name="dispatch")
+@method_decorator(never_cache, name="dispatch")
+class RegisterView(FormView):
+    """Render and process the registration form."""
+
+    form_class = RegistrationForm
+    template_name = "accounts/register.html"
+    success_url = reverse_lazy("game:index")
+
+    def dispatch(self, request, *args, **kwargs):
+        """Redirect authenticated users away from registration.
+
+        Args:
+            request: The incoming HTTP request.
+            *args: Positional view arguments.
+            **kwargs: Keyword view arguments.
+
+        Returns:
+            An HTTP response for the registration flow or redirect.
+        """
+        if request.user.is_authenticated:
+            return redirect(self.success_url)
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        """Create the user and authenticate the new session.
+
+        Args:
+            form: The validated registration form.
+
+        Returns:
+            A redirect response to the configured success URL.
+        """
+        user = form.save()
+        login(
+            self.request,
+            user,
+            backend="django.contrib.auth.backends.ModelBackend",
+        )
+        return super().form_valid(form)

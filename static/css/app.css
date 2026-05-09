@@ -14,8 +14,12 @@ body {
 }
 
 .site-header {
+  align-items: center;
   border-bottom: 1px solid #d8dee8;
   background: #ffffff;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
   padding: 1rem 1.5rem;
 }
 
@@ -23,6 +27,33 @@ body {
   color: inherit;
   font-weight: 700;
   text-decoration: none;
+}
+
+.site-nav {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+}
+
+.site-nav a {
+  color: #245a73;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.site-nav form {
+  margin: 0;
+}
+
+.site-nav button,
+.auth-form button {
+  background: #245a73;
+  border: 0;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0.55rem 0.85rem;
 }
 
 .site-main {
@@ -46,4 +77,43 @@ body {
   font-size: 1.125rem;
   line-height: 1.6;
   margin: 0;
+}
+
+.auth-panel {
+  max-width: 440px;
+}
+
+.auth-panel h1 {
+  margin-top: 0;
+}
+
+.auth-form p {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 1rem;
+}
+
+.auth-form input {
+  border: 1px solid #c6ced9;
+  font: inherit;
+  padding: 0.65rem 0.75rem;
+}
+
+.auth-form .helptext {
+  color: #526071;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.auth-form ul {
+  color: #526071;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin: 0.25rem 0 1rem;
+  padding-left: 1.25rem;
+}
+
+.auth-note {
+  color: #526071;
+  margin-top: 1rem;
 }
