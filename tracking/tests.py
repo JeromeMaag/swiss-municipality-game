@@ -3,6 +3,7 @@
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.utils import timezone
 
 from game.models import Game, Turn
 from geo.models import Canton, GeoDatasetVersion, Municipality
@@ -84,7 +85,11 @@ class GameEventModelTests(TestCase):
 
     def test_event_turn_must_belong_to_game(self) -> None:
         """Event validation rejects turns from another linked game."""
-        other_game = Game.objects.create(user=self.user)
+        other_game = Game.objects.create(
+            user=self.user,
+            status=Game.Status.FINISHED,
+            finished_at=timezone.now(),
+        )
         event = GameEvent(
             user=self.user,
             game=other_game,

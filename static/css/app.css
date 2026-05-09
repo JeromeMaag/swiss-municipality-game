@@ -46,13 +46,18 @@ body {
 }
 
 .site-nav button,
-.auth-form button {
+.auth-form button,
+.game-panel button {
   background: #245a73;
   border: 0;
   color: #ffffff;
   cursor: pointer;
   font: inherit;
   font-weight: 700;
+}
+
+.site-nav button,
+.auth-form button {
   padding: 0.55rem 0.85rem;
 }
 
@@ -116,4 +121,44 @@ body {
 .auth-note {
   color: #526071;
   margin-top: 1rem;
+}
+
+.game-panel {
+  max-width: 720px;
+}
+
+.game-panel h1 {
+  margin-top: 0;
+}
+
+.game-panel button {
+  padding: 0.65rem 0.9rem;
+}
+
+.turn-panel {
+  border: 1px solid #d8dee8;
+  background: #ffffff;
+  margin: 1.5rem 0;
+  padding: 1rem;
+}
+
+.turn-panel h2 {
+  font-size: 1.25rem;
+  margin: 0 0 0.75rem;
+}
+
+.turn-list {
+  line-height: 1.7;
+  padding-left: 1.5rem;
+}
+
+.muted {
+  color: #526071;
+}
+
+.error-message {
+  border: 1px solid #d68b8b;
+  background: #fff1f1;
+  color: #8d1f1f;
+  padding: 0.75rem 1rem;
 }
