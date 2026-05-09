@@ -20,6 +20,7 @@ from shapely.geometry import Polygon
 from tests.utils import make_test_geometry
 
 from .management.commands.import_boundaries import simplify_geometry, to_float, to_int
+from .management.commands.import_population import read_csv_rows
 from .models import Canton, GeoDatasetVersion, Municipality
 
 
@@ -464,3 +465,223 @@ class ImportBoundariesCommandTests(TestCase):
         self.assertIsNotNone(municipality.label_point)
         self.assertEqual(Canton.objects.count(), 1)
         self.assertEqual(Municipality.objects.count(), 1)
+
+
+class ImportPopulationCommandTests(TestCase):
+    """Tests for the population import management command."""
+
+    def setUp(self) -> None:
+        """Create shared geodata fixtures for population import tests."""
+        self.dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2026-01-01",
+        )
+        self.canton = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+        self.municipality = Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=261,
+            name="Zurich",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+    def set_old_municipality_updated_at(self) -> datetime:
+        """Set the fixture municipality to an old update timestamp.
+
+        Returns:
+            The timestamp written to the database.
+        """
+        old_updated_at = datetime(2026, 1, 1, tzinfo=UTC)
+        Municipality.objects.filter(id=self.municipality.id).update(
+            updated_at=old_updated_at
+        )
+        return old_updated_at
+
+    def test_read_csv_rows_reads_header_and_rows(self) -> None:
+        """CSV reader returns field names and row dictionaries."""
+        csv_content = "bfs_number;population\n261;443000\n"
+        with mock.patch("pathlib.Path.open", mock.mock_open(read_data=csv_content)):
+            fieldnames, rows = read_csv_rows(Path("population.csv"), ";")
+
+        self.assertEqual(fieldnames, ["bfs_number", "population"])
+        self.assertEqual(rows, [{"bfs_number": "261", "population": "443000"}])
+
+    def test_command_updates_current_dataset_population(self) -> None:
+        """Command updates populations on the current dataset version."""
+        output = StringIO()
+        old_updated_at = self.set_old_municipality_updated_at()
+        with mock.patch(
+            "geo.management.commands.import_population.resolve_csv_path",
+            return_value=Path("population.csv"),
+        ):
+            with mock.patch(
+                "geo.management.commands.import_population.read_csv_rows",
+                return_value=(
+                    ["bfs_number", "population"],
+                    [
+                        {"bfs_number": "261", "population": "443000"},
+                        {"bfs_number": "9999", "population": "123"},
+                    ],
+                ),
+            ):
+                call_command("import_population", "population.csv", stdout=output)
+
+        self.municipality.refresh_from_db()
+        self.assertEqual(self.municipality.population, 443000)
+        self.assertGreater(self.municipality.updated_at, old_updated_at)
+        self.assertIn("Updated 1 municipalities", output.getvalue())
+        self.assertIn("Missing municipalities for BFS numbers: 9999", output.getvalue())
+
+    def test_command_can_target_explicit_dataset_version(self) -> None:
+        """Command updates the explicitly selected dataset version only."""
+        other_dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2027-01-01",
+        )
+        other_canton = Canton.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+        other_municipality = Municipality.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=261,
+            name="Zurich",
+            canton=other_canton,
+            population=1,
+            geom=make_test_geometry(),
+        )
+
+        with mock.patch(
+            "geo.management.commands.import_population.resolve_csv_path",
+            return_value=Path("population.csv"),
+        ):
+            with mock.patch(
+                "geo.management.commands.import_population.read_csv_rows",
+                return_value=(
+                    ["bfs_number", "population"],
+                    [{"bfs_number": "261", "population": "443000"}],
+                ),
+            ):
+                call_command(
+                    "import_population",
+                    "population.csv",
+                    "--dataset-version",
+                    "2026-01-01",
+                    stdout=StringIO(),
+                )
+
+        self.municipality.refresh_from_db()
+        other_municipality.refresh_from_db()
+        self.assertEqual(self.municipality.population, 443000)
+        self.assertEqual(other_municipality.population, 1)
+
+    def test_command_supports_custom_columns_and_delimiter(self) -> None:
+        """Command imports configurable CSV columns and delimiters."""
+        with mock.patch(
+            "geo.management.commands.import_population.resolve_csv_path",
+            return_value=Path("population.csv"),
+        ):
+            with mock.patch(
+                "geo.management.commands.import_population.read_csv_rows",
+                return_value=(
+                    ["bfs", "pop"],
+                    [{"bfs": "261.0", "pop": "443000.0"}],
+                ),
+            ) as read_csv_rows:
+                call_command(
+                    "import_population",
+                    "population.csv",
+                    "--bfs-column",
+                    "bfs",
+                    "--population-column",
+                    "pop",
+                    "--delimiter",
+                    ";",
+                    stdout=StringIO(),
+                )
+
+        self.municipality.refresh_from_db()
+        self.assertEqual(self.municipality.population, 443000)
+        read_csv_rows.assert_called_once_with(Path("population.csv"), ";")
+
+    def test_command_rejects_invalid_population_values(self) -> None:
+        """Command rejects non-numeric population values."""
+        with mock.patch(
+            "geo.management.commands.import_population.resolve_csv_path",
+            return_value=Path("population.csv"),
+        ):
+            with mock.patch(
+                "geo.management.commands.import_population.read_csv_rows",
+                return_value=(
+                    ["bfs_number", "population"],
+                    [{"bfs_number": "261", "population": "unknown"}],
+                ),
+            ):
+                with self.assertRaises(CommandError):
+                    call_command("import_population", "population.csv", stdout=StringIO())
+
+    def test_command_rejects_missing_columns(self) -> None:
+        """Command rejects CSV files without required columns."""
+        with mock.patch(
+            "geo.management.commands.import_population.resolve_csv_path",
+            return_value=Path("population.csv"),
+        ):
+            with mock.patch(
+                "geo.management.commands.import_population.read_csv_rows",
+                return_value=(["bfs_number"], [{"bfs_number": "261"}]),
+            ):
+                with self.assertRaises(CommandError):
+                    call_command("import_population", "population.csv", stdout=StringIO())
+
+    def test_command_rejects_duplicate_csv_columns(self) -> None:
+        """Command rejects duplicate CSV header names."""
+        csv_content = "bfs_number,bfs_number,population\n261,9999,443000\n"
+        with mock.patch("pathlib.Path.open", mock.mock_open(read_data=csv_content)):
+            with self.assertRaises(CommandError):
+                read_csv_rows(Path("population.csv"), ",")
+
+    def test_command_rejects_reused_configured_columns(self) -> None:
+        """Command rejects using one CSV column for BFS and population."""
+        with mock.patch(
+            "geo.management.commands.import_population.resolve_csv_path",
+            return_value=Path("population.csv"),
+        ):
+            with mock.patch(
+                "geo.management.commands.import_population.read_csv_rows",
+                return_value=(["value"], [{"value": "261"}]),
+            ):
+                with self.assertRaises(CommandError):
+                    call_command(
+                        "import_population",
+                        "population.csv",
+                        "--bfs-column",
+                        "value",
+                        "--population-column",
+                        "value",
+                        stdout=StringIO(),
+                    )
+
+    def test_command_rejects_non_positive_bfs_numbers(self) -> None:
+        """Command rejects zero or negative BFS numbers."""
+        with mock.patch(
+            "geo.management.commands.import_population.resolve_csv_path",
+            return_value=Path("population.csv"),
+        ):
+            with mock.patch(
+                "geo.management.commands.import_population.read_csv_rows",
+                return_value=(
+                    ["bfs_number", "population"],
+                    [{"bfs_number": "0", "population": "443000"}],
+                ),
+            ):
+                with self.assertRaises(CommandError):
+                    call_command("import_population", "population.csv", stdout=StringIO())
