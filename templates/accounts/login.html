@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Login | GemeindeGuess CH{% endblock %}
+
+{% block content %}
+  <section class="auth-panel">
+    <h1>Login</h1>
+    <form method="post" class="auth-form">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <button type="submit">Login</button>
+    </form>
+    <p class="auth-note">
+      No account yet? <a href="{% url 'accounts:register' %}">Register</a>.
+    </p>
+  </section>
+{% endblock %}
