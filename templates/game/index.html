@@ -68,7 +68,7 @@
               data-center-lat="46.8182"
               data-center-lng="8.2275"
               data-zoom="8"
-              data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/3857/{z}/{x}/{y}.jpeg"
+              data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
               data-canton-boundaries-url="{% url 'geo:cantons_geojson' %}"
               data-municipality-boundaries-url="{% url 'geo:municipality_boundaries_geojson' %}"
             ></div>
@@ -93,6 +93,6 @@
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
       defer
     ></script>
-    <script src="{% static 'js/game_map.js' %}?v=swisstopo-base-1" defer></script>
+    <script src="{% static 'js/game_map.js' %}?v=swissimage-base-1" defer></script>
   {% endif %}
 {% endblock %}
