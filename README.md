@@ -14,18 +14,6 @@ for /f "delims=" %i in ('dir /b /s .venv\Lib\site-packages\shapely.libs\geos_c*.
 
 ## Common Commands
 
-Run Django configuration checks:
-
-```cmd
-python manage.py check
-```
-
-Run the test suite:
-
-```cmd
-python manage.py test
-```
-
 Start the local PostGIS database:
 
 ```cmd
@@ -38,10 +26,45 @@ Create or update database tables:
 python manage.py migrate
 ```
 
+Create an admin user:
+
+```cmd
+python manage.py createsuperuser
+```
+
 Start the development server:
 
 ```cmd
 python manage.py runserver
 ```
 
+Run Django configuration checks:
+
+```cmd
+python manage.py check
+```
+
+Run the test suite:
+
+```cmd
+python manage.py test
+```
+
 The app is available at `http://127.0.0.1:8000/`.
+
+## Local Database
+
+PostgreSQL data is stored in the Docker volume
+`swiss-municipality-guess_postgres_data`.
+
+Stop the database while keeping its data:
+
+```cmd
+docker compose down
+```
+
+Stop the database and delete all local data:
+
+```cmd
+docker compose down -v
+```
