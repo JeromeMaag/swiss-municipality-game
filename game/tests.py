@@ -376,6 +376,11 @@ class GameStartTests(TestCase):
         self.assertContains(response, "leaflet@1.9.4")
         self.assertContains(response, "/static/js/game_map.js")
         self.assertContains(response, 'data-center-lat="46.8182"')
+        self.assertContains(response, "No point selected")
+        self.assertContains(response, "Confirm guess")
+        self.assertContains(response, "data-guess-lat")
+        self.assertContains(response, "data-guess-lng")
+        self.assertContains(response, "data-confirm-guess")
         self.assertContains(
             response,
             f'data-canton-boundaries-url="{reverse("geo:cantons_geojson")}"',

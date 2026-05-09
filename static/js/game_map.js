@@ -44,6 +44,63 @@
       });
   }
 
+  function formatCoordinate(value) {
+    return value.toFixed(5);
+  }
+
+  function createGuessMarker(map) {
+    const marker = document.createElement("div");
+    marker.className = "guess-marker";
+    marker.setAttribute("aria-hidden", "true");
+    map.getContainer().appendChild(marker);
+    return marker;
+  }
+
+  function positionGuessMarker(map, marker, latlng) {
+    const point = map.latLngToContainerPoint(latlng);
+    marker.style.transform = (
+      "translate(" + point.x + "px, " + point.y + "px) translate(-50%, -50%)"
+    );
+  }
+
+  function initializeGuessInteraction(map) {
+    const form = document.querySelector("[data-guess-form]");
+    if (!form) {
+      return;
+    }
+
+    const latitudeInput = form.querySelector("[data-guess-lat]");
+    const longitudeInput = form.querySelector("[data-guess-lng]");
+    const coordinatesOutput = form.querySelector("[data-guess-coordinates]");
+    const confirmButton = form.querySelector("[data-confirm-guess]");
+    let marker = null;
+    let selectedLatLng = null;
+
+    function updateMarkerPosition() {
+      if (marker !== null && selectedLatLng !== null) {
+        positionGuessMarker(map, marker, selectedLatLng);
+      }
+    }
+
+    map.on("move zoom resize viewreset", updateMarkerPosition);
+
+    map.on("click", function (event) {
+      const latitude = formatCoordinate(event.latlng.lat);
+      const longitude = formatCoordinate(event.latlng.lng);
+      selectedLatLng = event.latlng;
+
+      if (marker === null) {
+        marker = createGuessMarker(map);
+      }
+      positionGuessMarker(map, marker, selectedLatLng);
+
+      latitudeInput.value = latitude;
+      longitudeInput.value = longitude;
+      coordinatesOutput.textContent = "Selected point: " + latitude + ", " + longitude;
+      confirmButton.disabled = false;
+    });
+  }
+
   function initializeGameMap() {
     const mapElement = document.getElementById("game-map");
     if (!mapElement || !window.L || mapElement.dataset.initialized === "true") {
@@ -60,6 +117,7 @@
 
     map.setView([latitude, longitude], zoom);
     window.L.control.scale({ imperial: false, metric: true }).addTo(map);
+    initializeGuessInteraction(map);
     mapElement.dataset.initialized = "true";
     addBoundaryLayer(map, mapElement.dataset.municipalityBoundariesUrl, {
       fitBounds: true,
