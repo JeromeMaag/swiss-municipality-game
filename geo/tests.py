@@ -1,5 +1,6 @@
 """Tests for the geo app."""
 
+from datetime import UTC, datetime
 import json
 from io import StringIO
 from pathlib import Path
@@ -410,6 +411,7 @@ class ImportBoundariesCommandTests(TestCase):
             return canton_gdf if layer == "cantons" else municipality_gdf
 
         source = Path("boundaries.gpkg")
+        old_imported_at = datetime(2026, 1, 1, tzinfo=UTC)
         with mock.patch(
             "geo.management.commands.import_boundaries.resolve_data_source",
             return_value=source,
@@ -418,26 +420,40 @@ class ImportBoundariesCommandTests(TestCase):
                 "geo.management.commands.import_boundaries.read_layer",
                 side_effect=read_layer,
             ):
-                for _ in range(2):
-                    call_command(
-                        "import_boundaries",
-                        str(source),
-                        "--dataset-version",
-                        "2026-01-01",
-                        "--canton-layer",
-                        "cantons",
-                        "--municipality-layer",
-                        "municipalities",
-                        "--municipality-area-field",
-                        "AREA_KM2",
-                        stdout=output,
-                    )
+                call_command(
+                    "import_boundaries",
+                    str(source),
+                    "--dataset-version",
+                    "2026-01-01",
+                    "--canton-layer",
+                    "cantons",
+                    "--municipality-layer",
+                    "municipalities",
+                    "--municipality-area-field",
+                    "AREA_KM2",
+                    stdout=output,
+                )
+                GeoDatasetVersion.objects.update(imported_at=old_imported_at)
+                call_command(
+                    "import_boundaries",
+                    str(source),
+                    "--dataset-version",
+                    "2026-01-01",
+                    "--canton-layer",
+                    "cantons",
+                    "--municipality-layer",
+                    "municipalities",
+                    "--municipality-area-field",
+                    "AREA_KM2",
+                    stdout=output,
+                )
 
         dataset_version = GeoDatasetVersion.objects.get()
         canton = Canton.objects.get()
         municipality = Municipality.objects.get()
 
         self.assertEqual(str(dataset_version), "swissBOUNDARIES3D 2026-01-01")
+        self.assertGreater(dataset_version.imported_at, old_imported_at)
         self.assertEqual(canton.abbreviation, "ZH")
         self.assertEqual(canton.geom.srid, 4326)
         self.assertIsNone(canton.geom_simplified)

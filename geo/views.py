@@ -16,15 +16,15 @@ GEOJSON_CONTENT_TYPE = "application/geo+json"
 
 @require_GET
 def index(request):
-    """Render a temporary geodata placeholder.
+    """Render a temporary geodata page placeholder.
 
     Args:
         request: The incoming HTTP request.
 
     Returns:
-        A plain HTTP response until geodata endpoints are implemented.
+        A plain HTTP response while the geodata page UI is pending.
     """
-    return HttpResponse("Geodata endpoints will be implemented in a later step.")
+    return HttpResponse("Geodata API endpoints are available; page UI is pending.")
 
 
 def geojson_response(data: str) -> HttpResponse:

@@ -9,6 +9,7 @@ import pandas as pd
 from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.utils import timezone
 
 from geo.models import Canton, GeoDatasetVersion, Municipality
 
@@ -130,6 +131,7 @@ class Command(BaseCommand):
                 defaults={
                     "source_url": options["source_url"],
                     "notes": options["notes"],
+                    "imported_at": timezone.now(),
                 },
             )
 
