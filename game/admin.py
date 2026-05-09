@@ -20,7 +20,7 @@ class GameAdmin(admin.ModelAdmin):
 
     list_display = ("id", "user", "status", "total_score", "started_at", "finished_at")
     list_filter = ("status", "started_at", "finished_at")
-    search_fields = ("=id", "user__username")
+    search_fields = ("user__username",)
     autocomplete_fields = ("user",)
     readonly_fields = ("started_at",)
     inlines = (TurnInline,)
@@ -32,7 +32,7 @@ class TurnAdmin(admin.ModelAdmin):
 
     list_display = ("id", "game", "turn_number", "target", "started_at", "revealed_at")
     list_filter = ("turn_number", "started_at", "revealed_at")
-    search_fields = ("=id", "=game__id", "target__name", "=target__bfs_number")
+    search_fields = ("target__name",)
     autocomplete_fields = ("game", "target")
     readonly_fields = ("started_at",)
 
@@ -50,6 +50,6 @@ class GuessAdmin(admin.ModelAdmin):
         "guessed_at",
     )
     list_filter = ("guessed_at",)
-    search_fields = ("=id", "=turn__id", "user__username", "turn__target__name")
+    search_fields = ("user__username", "turn__target__name")
     autocomplete_fields = ("turn", "user")
     readonly_fields = ("guessed_at",)

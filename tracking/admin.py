@@ -11,6 +11,6 @@ class GameEventAdmin(admin.ModelAdmin):
 
     list_display = ("id", "event_type", "user", "game", "turn", "created_at")
     list_filter = ("event_type", "created_at")
-    search_fields = ("=id", "event_type", "user__username", "=game__id", "=turn__id")
+    search_fields = ("event_type", "user__username")
     autocomplete_fields = ("user", "game", "turn")
     readonly_fields = ("created_at",)
