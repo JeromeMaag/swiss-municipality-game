@@ -1,26 +1,14 @@
 """Tests for the tracking app."""
 
 from django.contrib.auth import get_user_model
-from django.contrib.gis.geos import MultiPolygon, Polygon
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from game.models import Game, Turn
 from geo.models import Canton, GeoDatasetVersion, Municipality
+from tests.utils import make_test_geometry
 
 from .models import GameEvent
-
-
-def make_test_geometry() -> MultiPolygon:
-    """Create a simple WGS84 multipolygon for tracking model tests.
-
-    Returns:
-        A square multipolygon with SRID 4326.
-    """
-    polygon = Polygon(
-        ((8.0, 47.0), (8.1, 47.0), (8.1, 47.1), (8.0, 47.1), (8.0, 47.0))
-    )
-    return MultiPolygon(polygon, srid=4326)
 
 
 class GameEventModelTests(TestCase):
