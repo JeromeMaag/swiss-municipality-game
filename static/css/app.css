@@ -211,6 +211,133 @@ body {
   outline-offset: -2px;
 }
 
+/* Leaflet's structural CSS is kept local so tile layout does not depend on CDN CSS. */
+.leaflet-container {
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
+}
+
+.leaflet-pane,
+.leaflet-tile,
+.leaflet-marker-icon,
+.leaflet-marker-shadow,
+.leaflet-tile-container,
+.leaflet-pane > svg,
+.leaflet-pane > canvas,
+.leaflet-zoom-box,
+.leaflet-image-layer,
+.leaflet-layer {
+  left: 0;
+  position: absolute;
+  top: 0;
+}
+
+.leaflet-container img.leaflet-tile {
+  height: 256px;
+  max-width: none;
+  width: 256px;
+}
+
+.leaflet-tile-pane {
+  z-index: 200;
+}
+
+.leaflet-overlay-pane {
+  z-index: 400;
+}
+
+.leaflet-marker-pane {
+  z-index: 600;
+}
+
+.leaflet-tooltip-pane {
+  z-index: 650;
+}
+
+.leaflet-popup-pane {
+  z-index: 700;
+}
+
+.leaflet-top,
+.leaflet-bottom {
+  pointer-events: none;
+  position: absolute;
+  z-index: 1000;
+}
+
+.leaflet-top {
+  top: 0;
+}
+
+.leaflet-bottom {
+  bottom: 0;
+}
+
+.leaflet-left {
+  left: 0;
+}
+
+.leaflet-right {
+  right: 0;
+}
+
+.leaflet-control {
+  clear: both;
+  pointer-events: auto;
+  position: relative;
+  z-index: 800;
+}
+
+.leaflet-left .leaflet-control {
+  float: left;
+  margin-left: 0.625rem;
+}
+
+.leaflet-right .leaflet-control {
+  float: right;
+  margin-right: 0.625rem;
+}
+
+.leaflet-top .leaflet-control {
+  margin-top: 0.625rem;
+}
+
+.leaflet-bottom .leaflet-control {
+  margin-bottom: 0.625rem;
+}
+
+.leaflet-control-zoom a {
+  background: #ffffff;
+  border-bottom: 1px solid #c6ced9;
+  color: #17202a;
+  display: block;
+  font-size: 1.1rem;
+  font-weight: 700;
+  height: 1.75rem;
+  line-height: 1.65rem;
+  text-align: center;
+  text-decoration: none;
+  width: 1.75rem;
+}
+
+.leaflet-control-zoom a:first-child {
+  border-radius: 0.25rem 0.25rem 0 0;
+}
+
+.leaflet-control-zoom a:last-child {
+  border-bottom: 0;
+  border-radius: 0 0 0.25rem 0.25rem;
+}
+
+.leaflet-control-attribution,
+.leaflet-control-scale-line {
+  background: rgba(255, 255, 255, 0.85);
+  color: #17202a;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.25rem;
+}
+
 .guess-marker {
   background: #d84235;
   border: 3px solid #ffffff;

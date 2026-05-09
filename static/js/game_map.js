@@ -44,6 +44,19 @@
       });
   }
 
+  function addBaseMapLayer(map, url) {
+    if (!url) {
+      return null;
+    }
+
+    return window.L.tileLayer(url, {
+      attribution: "Map data &copy; swisstopo",
+      maxNativeZoom: 18,
+      maxZoom: 18,
+      minZoom: 6,
+    }).addTo(map);
+  }
+
   function formatCoordinate(value) {
     return value.toFixed(5);
   }
@@ -116,6 +129,7 @@
     });
 
     map.setView([latitude, longitude], zoom);
+    addBaseMapLayer(map, mapElement.dataset.baseMapUrl);
     window.L.control.scale({ imperial: false, metric: true }).addTo(map);
     initializeGuessInteraction(map);
     mapElement.dataset.initialized = "true";
@@ -124,7 +138,7 @@
       style: {
         color: "#7f98a8",
         fillColor: "#dce8ee",
-        fillOpacity: 0.28,
+        fillOpacity: 0.08,
         opacity: 0.9,
         weight: 1,
       },
