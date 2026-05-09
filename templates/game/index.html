@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Game - GemeindeGuess CH{% endblock %}
+
+{% block content %}
+  <section class="game-panel">
+    <h1>Game</h1>
+
+    {% if error %}
+      <p class="error-message">{{ error }}</p>
+    {% endif %}
+
+    {% if active_game %}
+      <p class="muted">Active game</p>
+
+      {% if current_turn %}
+        <section class="turn-panel" aria-labelledby="current-turn-heading">
+          <h2 id="current-turn-heading">
+            Turn {{ current_turn.turn_number }} of {{ turn_count }}
+          </h2>
+          <p>Target municipality: {{ current_turn.target.name }}</p>
+        </section>
+      {% endif %}
+
+      <ol class="turn-list">
+        {% for turn in turns %}
+          <li>
+            Turn {{ turn.turn_number }}
+            {% if turn.revealed_at %}revealed{% else %}pending{% endif %}
+          </li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      <p class="muted">No active game yet.</p>
+      <form method="post" action="{% url 'game:start' %}">
+        {% csrf_token %}
+        <button type="submit">Start game</button>
+      </form>
+    {% endif %}
+  </section>
+{% endblock %}

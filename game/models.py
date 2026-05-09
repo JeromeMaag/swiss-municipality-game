@@ -38,6 +38,13 @@ class Game(models.Model):
             models.Index(fields=["user", "status"]),
             models.Index(fields=["status", "started_at"]),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=models.Q(status="active"),
+                name="unique_active_game_per_user",
+            ),
+        ]
 
     def __str__(self) -> str:
         """Return the game display label.
