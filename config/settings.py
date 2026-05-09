@@ -44,9 +44,13 @@ def get_list_env(name: str, default: list[str] | None = None) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-change-me")
+SECRET_KEY_PLACEHOLDER = "dev-change-me"
+SECRET_KEY = os.getenv("SECRET_KEY", SECRET_KEY_PLACEHOLDER)
 
 DEBUG = get_bool_env("DEBUG", default=True)
+
+if not DEBUG and SECRET_KEY == SECRET_KEY_PLACEHOLDER:
+    raise ValueError("SECRET_KEY must be configured when DEBUG is False.")
 
 ALLOWED_HOSTS = get_list_env("ALLOWED_HOSTS", ["localhost", "127.0.0.1"])
 
@@ -124,7 +128,7 @@ USE_I18N = True
 
 USE_TZ = True
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
