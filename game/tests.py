@@ -773,6 +773,33 @@ class GameStartTests(TestCase):
             ).exists()
         )
 
+    def test_tracking_event_rejects_next_turn_for_finished_game(self) -> None:
+        """Tracking endpoint rejects next-turn clicks after the final turn."""
+        municipality = self.create_municipalities(1)[0]
+        self.client.force_login(self.user)
+        game = Game.objects.create(user=self.user)
+        turn = Turn.objects.create(
+            game=game,
+            turn_number=1,
+            target=municipality,
+        )
+        submit_guess(self.user, turn.id, 47.05, 8.05)
+        turn.refresh_from_db()
+
+        response = self.post_tracking_event(
+            turn,
+            event_type=GameEvent.Type.NEXT_TURN_CLICKED,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(
+            GameEvent.objects.filter(
+                game=game,
+                turn=turn,
+                event_type=GameEvent.Type.NEXT_TURN_CLICKED,
+            ).exists()
+        )
+
     def test_tracking_event_rejects_non_client_event_type(self) -> None:
         """Tracking endpoint rejects server-only event types."""
         self.create_municipalities(5)
@@ -824,6 +851,49 @@ class GameStartTests(TestCase):
         turn = game.turns.order_by("turn_number").first()
 
         response = self.post_tracking_event(turn, payload=["not", "an", "object"])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(
+            GameEvent.objects.filter(
+                game=game,
+                turn=turn,
+                event_type=GameEvent.Type.MAP_CLICKED,
+            ).exists()
+        )
+
+    def test_tracking_event_rejects_malformed_json(self) -> None:
+        """Tracking endpoint rejects malformed JSON request bodies."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+        game = start_game(self.user)
+        turn = game.turns.order_by("turn_number").first()
+
+        response = self.client.post(
+            reverse("game:track_turn_event", args=[turn.id]),
+            data="{invalid-json",
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(
+            GameEvent.objects.filter(
+                game=game,
+                turn=turn,
+                event_type=GameEvent.Type.MAP_CLICKED,
+            ).exists()
+        )
+
+    def test_tracking_event_rejects_oversized_json(self) -> None:
+        """Tracking endpoint rejects request bodies above the size limit."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+        game = start_game(self.user)
+        turn = game.turns.order_by("turn_number").first()
+
+        response = self.post_tracking_event(
+            turn,
+            payload={"value": "x" * 4096},
+        )
 
         self.assertEqual(response.status_code, 400)
         self.assertFalse(

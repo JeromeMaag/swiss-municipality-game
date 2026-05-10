@@ -179,8 +179,21 @@ def validate_tracking_event_state(*, event_type: str, turn: Turn) -> None:
             raise ValueError("Tracking event is not valid for this turn state.")
         return
 
-    if event_type in (GameEvent.Type.REVEAL_SHOWN, GameEvent.Type.NEXT_TURN_CLICKED):
+    if event_type == GameEvent.Type.REVEAL_SHOWN:
         if turn.revealed_at is None:
+            raise ValueError("Tracking event is not valid for this turn state.")
+        return
+
+    if event_type == GameEvent.Type.NEXT_TURN_CLICKED:
+        next_turn_exists = turn.game.turns.filter(
+            revealed_at__isnull=True,
+            turn_number__gt=turn.turn_number,
+        ).exists()
+        if (
+            turn.revealed_at is None
+            or turn.game.status != Game.Status.ACTIVE
+            or not next_turn_exists
+        ):
             raise ValueError("Tracking event is not valid for this turn state.")
 
 
@@ -218,13 +231,11 @@ def parse_tracking_request(request) -> tuple[str, dict]:
         ValueError: If the request body is invalid or the event type is not
             allowed for client-side tracking.
     """
-    if request_body_exceeds_tracking_limit(request):
+    body = get_tracking_request_body(request)
+    if len(body) > MAX_TRACKING_REQUEST_BYTES:
         raise ValueError("Tracking payload is too large.")
-    if len(request.body) > MAX_TRACKING_REQUEST_BYTES:
-        raise ValueError("Tracking payload is too large.")
-
     try:
-        data = json.loads(request.body.decode("utf-8") or "{}")
+        data = json.loads(body.decode("utf-8") or "{}")
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("Tracking payload must be valid JSON.") from error
 
@@ -242,22 +253,27 @@ def parse_tracking_request(request) -> tuple[str, dict]:
     return event_type, payload
 
 
-def request_body_exceeds_tracking_limit(request) -> bool:
-    """Return whether the declared tracking request body is too large.
+def get_tracking_request_body(request) -> bytes:
+    """Return a tracking request body after checking the declared size.
 
     Args:
         request: The incoming HTTP request.
 
     Returns:
-        True when the request declares a body larger than the tracking limit.
+        The raw request body.
+
+    Raises:
+        ValueError: If the declared request body size is too large.
     """
     content_length = request.META.get("CONTENT_LENGTH")
-    if not content_length:
-        return False
-    try:
-        return int(content_length) > MAX_TRACKING_REQUEST_BYTES
-    except ValueError:
-        return False
+    if content_length:
+        try:
+            declared_length = int(content_length)
+        except ValueError:
+            declared_length = 0
+        if declared_length > MAX_TRACKING_REQUEST_BYTES:
+            raise ValueError("Tracking payload is too large.")
+    return request.body
 
 
 def get_last_guess_result(request) -> Guess | None:

@@ -17,10 +17,6 @@
     return "";
   }
 
-  function getCsrfToken(mapElement) {
-    return mapElement.dataset.csrfToken || readCookie("csrftoken");
-  }
-
   function sendTrackingEvent(mapElement, eventType, payload) {
     const url = mapElement.dataset.trackingUrl;
     if (!url || !window.fetch) {
@@ -34,7 +30,7 @@
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        "X-CSRFToken": getCsrfToken(mapElement),
+        "X-CSRFToken": readCookie("csrftoken"),
       },
       body: JSON.stringify({
         event_type: eventType,
@@ -160,12 +156,6 @@
       const hadMarker = marker !== null;
       selectedLatLng = event.latlng;
 
-      sendTrackingEvent(mapElement, "MAP_CLICKED", {
-        latitude: Number(latitude),
-        longitude: Number(longitude),
-        zoom: map.getZoom(),
-      });
-
       if (marker === null) {
         marker = createGuessMarker(map);
       }
@@ -176,7 +166,7 @@
       coordinatesOutput.textContent = "Selected point: " + latitude + ", " + longitude;
       confirmButton.disabled = false;
 
-      sendTrackingEvent(mapElement, "PIN_MOVED", {
+      sendTrackingEvent(mapElement, "MAP_CLICKED", {
         had_existing_pin: hadMarker,
         latitude: Number(latitude),
         longitude: Number(longitude),

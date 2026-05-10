@@ -133,7 +133,6 @@
               data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
               data-canton-boundaries-url="{% url 'geo:cantons_geojson' %}"
               data-municipality-boundaries-url="{% url 'geo:municipality_boundaries_geojson' %}"
-              data-csrf-token="{{ csrf_token }}"
               {% if last_guess %}
                 data-tracking-url="{% url 'game:track_turn_event' last_guess.turn.id %}"
               {% elif current_turn %}
