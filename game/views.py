@@ -315,7 +315,7 @@ def get_last_guess_result(request) -> Guess | None:
         return None
 
     return (
-        Guess.objects.select_related("turn__game", "turn__target")
+        Guess.objects.select_related("turn__game", "turn__target__canton")
         .only(
             "id",
             "point",
@@ -329,6 +329,17 @@ def get_last_guess_result(request) -> Guess | None:
             "turn__game__total_score",
             "turn__game__user",
             "turn__target__name",
+            "turn__target__population",
+            "turn__target__canton__abbreviation",
+            "turn__target__canton__name",
+        )
+        .defer(
+            "turn__target__geom",
+            "turn__target__geom_simplified",
+            "turn__target__label_point",
+            "turn__target__canton__geom",
+            "turn__target__canton__geom_simplified",
+            "turn__target__canton__label_point",
         )
         .filter(pk=guess_pk, user=request.user)
         .first()

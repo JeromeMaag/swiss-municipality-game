@@ -1052,6 +1052,8 @@ class GameStartTests(TestCase):
         self.client.force_login(self.user)
         game = start_game(self.user)
         first_turn = game.turns.select_related("target").order_by("turn_number").first()
+        first_turn.target.population = 12_345
+        first_turn.target.save(update_fields=["population"])
 
         response = self.client.post(
             reverse("game:guess"),
@@ -1067,6 +1069,10 @@ class GameStartTests(TestCase):
         self.assertContains(response, first_turn.target.name)
         self.assertContains(response, "Score")
         self.assertContains(response, "1000")
+        self.assertContains(response, "Canton")
+        self.assertContains(response, "Zurich (ZH)")
+        self.assertContains(response, "Population")
+        self.assertContains(response, "12345")
         self.assertContains(response, "Distance to municipality")
         self.assertContains(response, "0 m")
         self.assertContains(response, "Next turn")
@@ -1111,6 +1117,8 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Game finished")
         self.assertContains(response, "Result")
         self.assertContains(response, "Total score")
+        self.assertContains(response, "Canton")
+        self.assertContains(response, "Zurich (ZH)")
         self.assertContains(response, "View summary")
         self.assertContains(response, reverse("game:summary", args=[game.id]))
         self.assertContains(response, 'id="game-map"')
