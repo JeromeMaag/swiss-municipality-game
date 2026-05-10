@@ -4,35 +4,54 @@
 
 {% block content %}
   <section class="game-panel">
-    <h1>Game summary</h1>
-    <p class="muted">Finished game</p>
+    <div class="summary-header">
+      <div>
+        <h1>Game summary</h1>
+        <p class="muted">Finished game</p>
+      </div>
+      <a class="button-link" href="{% url 'game:index' %}">Start new game</a>
+    </div>
 
-    <section class="turn-panel" aria-labelledby="summary-score-heading">
+    <section class="summary-score" aria-labelledby="summary-score-heading">
       <h2 id="summary-score-heading">Total score</h2>
       <p>{{ game.total_score }}</p>
     </section>
 
-    <ol class="turn-list">
+    <ol class="summary-turn-list">
       {% for turn in game.turns.all %}
         <li>
-          <strong>Turn {{ turn.turn_number }}</strong>
-          <div>{{ turn.target.name }} ({{ turn.target.canton.abbreviation }})</div>
-          {% if turn.target.population %}
-            <div>Population: {{ turn.target.population }}</div>
-          {% endif %}
-          <div>Score: {{ turn.guess.score }}</div>
-          <div>
-            Distance to municipality:
-            {{ turn.guess.distance_to_municipality_m|floatformat:0 }} m
-          </div>
-          <div>
-            Distance to boundary:
-            {{ turn.guess.distance_to_boundary_m|floatformat:0 }} m
-          </div>
+          <article class="summary-turn">
+            <header>
+              <p class="muted">Turn {{ turn.turn_number }}</p>
+              <h2>{{ turn.target.name }}</h2>
+            </header>
+            <dl class="result-list">
+              <div>
+                <dt>Canton</dt>
+                <dd>{{ turn.target.canton.abbreviation }}</dd>
+              </div>
+              {% if turn.target.population %}
+                <div>
+                  <dt>Population</dt>
+                  <dd>{{ turn.target.population }}</dd>
+                </div>
+              {% endif %}
+              <div>
+                <dt>Score</dt>
+                <dd>{{ turn.guess.score }}</dd>
+              </div>
+              <div>
+                <dt>Distance to municipality</dt>
+                <dd>{{ turn.guess.distance_to_municipality_m|floatformat:0 }} m</dd>
+              </div>
+              <div>
+                <dt>Distance to boundary</dt>
+                <dd>{{ turn.guess.distance_to_boundary_m|floatformat:0 }} m</dd>
+              </div>
+            </dl>
+          </article>
         </li>
       {% endfor %}
     </ol>
-
-    <a class="button-link" href="{% url 'game:index' %}">Back to game</a>
   </section>
 {% endblock %}
