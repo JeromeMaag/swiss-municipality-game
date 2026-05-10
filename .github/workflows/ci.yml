@@ -6,10 +6,15 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   django:
     name: Django checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -54,6 +59,9 @@ jobs:
 
       - name: Run Django checks
         run: python manage.py check
+
+      - name: Check migration files
+        run: python manage.py makemigrations --check --dry-run
 
       - name: Run tests
         run: python manage.py test
