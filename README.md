@@ -26,6 +26,12 @@ Create or update database tables:
 python manage.py migrate
 ```
 
+Download official municipality boundaries and population data:
+
+```cmd
+python manage.py setup_geodata
+```
+
 Create an admin user:
 
 ```cmd
@@ -38,10 +44,16 @@ Seed five dummy municipalities for local development:
 python manage.py seed_dev_geodata
 ```
 
-Import the latest official swissBOUNDARIES3D canton and municipality boundaries:
+Import only the latest official swissBOUNDARIES3D canton and municipality boundaries:
 
 ```cmd
 python manage.py import_swissboundaries3d
+```
+
+Import only official BFS STATPOP population values for existing municipalities:
+
+```cmd
+python manage.py import_statpop_population
 ```
 
 Start the development server:
