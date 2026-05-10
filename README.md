@@ -5,6 +5,16 @@ A small Django game for guessing Swiss municipalities on a map.
 The app uses GeoDjango, PostGIS, Leaflet, official swisstopo municipality
 boundaries, and BFS STATPOP population data.
 
+## Gameplay
+
+Log in, start a game, and guess where the shown Swiss municipality is located.
+Place a pin on the map and confirm the guess. The game then reveals the target
+municipality, the distance, the score, the canton, and the population when it is
+available.
+
+A game has five turns. After the last turn, the summary page shows all guesses
+and the total score.
+
 ## Setup
 
 Create and activate a virtual environment, then install the dependencies:
@@ -78,3 +88,21 @@ Delete the local database data:
 ```cmd
 docker compose down -v
 ```
+
+## Docs
+
+- [Gameplay](docs/gameplay.md)
+- [Data import](docs/data_import.md)
+- [Architecture](docs/architecture.md)
+
+## Planned
+
+- Switchable background maps
+- Play without an account
+- Statistics and history
+- Visual update; the current UI is still rough
+- More game modes:
+  - learn cantons
+  - only municipalities from one canton
+  - places instead of municipalities
+  - multiplayer options
