@@ -26,7 +26,6 @@ from .services import (
 CLIENT_TRACKING_EVENT_TYPES = frozenset(
     {
         GameEvent.Type.MAP_CLICKED,
-        GameEvent.Type.PIN_MOVED,
         GameEvent.Type.REVEAL_SHOWN,
         GameEvent.Type.NEXT_TURN_CLICKED,
     }
@@ -168,7 +167,7 @@ def validate_tracking_event_state(*, event_type: str, turn: Turn) -> None:
     Raises:
         ValueError: If the event is not valid for the turn's current state.
     """
-    if event_type in (GameEvent.Type.MAP_CLICKED, GameEvent.Type.PIN_MOVED):
+    if event_type == GameEvent.Type.MAP_CLICKED:
         current_turn_id = (
             turn.game.turns.filter(revealed_at__isnull=True)
             .order_by("turn_number")
@@ -279,18 +278,20 @@ def get_tracking_request_body(request) -> bytes:
         The raw request body.
 
     Raises:
-        ValueError: If the declared request body size is invalid or too large.
+        ValueError: If the declared request body size is missing, invalid, or too
+            large.
     """
     content_length = request.META.get("CONTENT_LENGTH")
-    if content_length:
-        try:
-            declared_length = int(content_length)
-        except ValueError:
-            raise ValueError("Tracking content length is invalid.") from None
-        if declared_length < 0:
-            raise ValueError("Tracking content length is invalid.")
-        if declared_length > MAX_TRACKING_REQUEST_BYTES:
-            raise ValueError("Tracking payload is too large.")
+    if not content_length:
+        raise ValueError("Tracking content length is required.")
+    try:
+        declared_length = int(content_length)
+    except ValueError:
+        raise ValueError("Tracking content length is invalid.") from None
+    if declared_length < 0:
+        raise ValueError("Tracking content length is invalid.")
+    if declared_length > MAX_TRACKING_REQUEST_BYTES:
+        raise ValueError("Tracking payload is too large.")
     return request.body
 
 

@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.gis.geos import Point
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.test import Client, TestCase
+from django.test import Client, RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -24,6 +24,7 @@ from .services import (
     start_game,
     submit_guess,
 )
+from .views import parse_tracking_request
 
 
 class ScoringTests(TestCase):
@@ -690,10 +691,7 @@ class GameStartTests(TestCase):
         game = start_game(self.user)
         turn = game.turns.order_by("turn_number").first()
 
-        active_event_types = [
-            GameEvent.Type.MAP_CLICKED,
-            GameEvent.Type.PIN_MOVED,
-        ]
+        active_event_types = [GameEvent.Type.MAP_CLICKED]
         revealed_event_types = [
             GameEvent.Type.REVEAL_SHOWN,
             GameEvent.Type.NEXT_TURN_CLICKED,
@@ -862,6 +860,27 @@ class GameStartTests(TestCase):
             1,
         )
 
+    def test_tracking_event_rejects_unemitted_client_event_type(self) -> None:
+        """Tracking endpoint rejects client event types not emitted by the UI."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+        game = start_game(self.user)
+        turn = game.turns.order_by("turn_number").first()
+
+        response = self.post_tracking_event(
+            turn,
+            event_type=GameEvent.Type.PIN_MOVED,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(
+            GameEvent.objects.filter(
+                game=game,
+                turn=turn,
+                event_type=GameEvent.Type.PIN_MOVED,
+            ).exists()
+        )
+
     def test_tracking_event_rejects_foreign_turn(self) -> None:
         """Users cannot post tracking events to another user's turn."""
         other_user = get_user_model().objects.create_user(
@@ -974,6 +993,24 @@ class GameStartTests(TestCase):
                 event_type=GameEvent.Type.MAP_CLICKED,
             ).exists()
         )
+
+    def test_tracking_event_rejects_missing_content_length(self) -> None:
+        """Tracking parser rejects missing declared content lengths."""
+        payload = json.dumps(
+            {
+                "event_type": GameEvent.Type.MAP_CLICKED,
+                "payload": {"latitude": 47.05},
+            }
+        )
+        request = RequestFactory().post(
+            reverse("game:track_turn_event", args=[1]),
+            data=payload,
+            content_type="application/json",
+        )
+        request.META.pop("CONTENT_LENGTH", None)
+
+        with self.assertRaises(ValueError):
+            parse_tracking_request(request)
 
     def test_start_view_creates_game_and_redirects(self) -> None:
         """Game start endpoint creates a game and redirects to the index."""
