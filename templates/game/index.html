@@ -36,13 +36,20 @@
               </h2>
               <p>Target municipality: {{ current_target_name }}</p>
             </section>
-            <form class="guess-form" data-guess-form>
-              <input type="hidden" name="lat" data-guess-lat>
-              <input type="hidden" name="lng" data-guess-lng>
+            <form
+              class="guess-form"
+              method="post"
+              action="{% url 'game:guess' %}"
+              data-guess-form
+            >
+              {% csrf_token %}
+              <input type="hidden" name="turn_id" value="{{ current_turn.id }}">
+              <input type="hidden" name="latitude" data-guess-lat>
+              <input type="hidden" name="longitude" data-guess-lng>
               <p class="guess-coordinates" data-guess-coordinates>
                 No point selected
               </p>
-              <button type="button" data-confirm-guess disabled>
+              <button type="submit" data-confirm-guess disabled>
                 Confirm guess
               </button>
             </form>

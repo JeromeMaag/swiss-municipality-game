@@ -7,7 +7,13 @@ from django.views.decorators.http import require_GET, require_POST
 from geo.models import Municipality
 
 from .selectors import get_active_game
-from .services import TURN_COUNT, NotEnoughMunicipalitiesError, start_game
+from .services import (
+    TURN_COUNT,
+    GuessSubmissionError,
+    NotEnoughMunicipalitiesError,
+    start_game,
+    submit_guess,
+)
 
 
 @login_required
@@ -40,6 +46,36 @@ def start(request):
         start_game(request.user)
     except NotEnoughMunicipalitiesError as error:
         return render_game_index(request, error=str(error), status=400)
+    return redirect("game:index")
+
+
+@login_required
+@require_POST
+def guess(request):
+    """Submit a guess for the current game turn.
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        A redirect to the game index, or a validation response when the guess is
+        rejected.
+    """
+    try:
+        submit_guess(
+            user=request.user,
+            turn_id=request.POST.get("turn_id"),
+            latitude=request.POST.get("latitude"),
+            longitude=request.POST.get("longitude"),
+        )
+    except GuessSubmissionError as error:
+        active_game = get_active_game(request.user)
+        return render_game_index(
+            request,
+            active_game=active_game,
+            error=str(error),
+            status=400,
+        )
     return redirect("game:index")
 
 

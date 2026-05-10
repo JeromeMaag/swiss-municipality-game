@@ -130,7 +130,7 @@ def start_game(user) -> Game:
         raise
 
 
-def submit_guess(user, turn_id: int, latitude, longitude) -> GuessSubmissionResult:
+def submit_guess(user, turn_id, latitude, longitude) -> GuessSubmissionResult:
     """Submit and score a point guess for the current turn.
 
     Args:
@@ -158,6 +158,7 @@ def submit_guess(user, turn_id: int, latitude, longitude) -> GuessSubmissionResu
         minimum=-180,
         maximum=180,
     )
+    turn_pk = _normalize_turn_id(turn_id)
     point = Point(longitude, latitude, srid=4326)
 
     with transaction.atomic():
@@ -165,7 +166,7 @@ def submit_guess(user, turn_id: int, latitude, longitude) -> GuessSubmissionResu
             turn = (
                 Turn.objects.select_for_update()
                 .select_related("game")
-                .get(pk=turn_id)
+                .get(pk=turn_pk)
             )
         except Turn.DoesNotExist as error:
             raise GuessSubmissionError("Turn does not exist.") from error
@@ -264,6 +265,28 @@ def _normalize_coordinate(value, *, name: str, minimum: float, maximum: float) -
             f"{name} must be between {minimum} and {maximum}."
         )
     return coordinate
+
+
+def _normalize_turn_id(value) -> int:
+    """Normalize and validate a submitted turn identifier.
+
+    Args:
+        value: Raw turn identifier.
+
+    Returns:
+        A positive integer turn primary key.
+
+    Raises:
+        GuessSubmissionError: If the turn identifier is not a positive integer.
+    """
+    try:
+        turn_id = int(value)
+    except (TypeError, ValueError) as error:
+        raise GuessSubmissionError("Turn is invalid.") from error
+
+    if turn_id < 1:
+        raise GuessSubmissionError("Turn is invalid.")
+    return turn_id
 
 
 def _validate_guessable_turn(*, user, game: Game, turn: Turn) -> None:

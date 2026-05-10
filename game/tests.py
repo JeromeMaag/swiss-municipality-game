@@ -348,6 +348,18 @@ class GuessSubmissionServiceTests(TestCase):
 
         self.assertFalse(Guess.objects.exists())
 
+    def test_submit_guess_rejects_invalid_turn_id(self) -> None:
+        """Invalid turn identifiers are rejected before persistence."""
+        self.create_game_with_turns()
+
+        invalid_turn_ids = [None, "", "abc", "0"]
+        for turn_id in invalid_turn_ids:
+            with self.subTest(turn_id=turn_id):
+                with self.assertRaises(GuessSubmissionError):
+                    submit_guess(self.user, turn_id, 47.05, 8.05)
+
+        self.assertFalse(Guess.objects.exists())
+
     def test_submit_guess_rejects_wrong_user(self) -> None:
         """Users cannot guess turns owned by another user."""
         _game, turns = self.create_game_with_turns()
@@ -564,6 +576,42 @@ class GameStartTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
 
+    def test_guess_view_requires_login(self) -> None:
+        """Anonymous users cannot submit guesses."""
+        response = self.client.post(reverse("game:guess"))
+
+        self.assertRedirects(
+            response,
+            f"{reverse('accounts:login')}?next={reverse('game:guess')}",
+        )
+
+    def test_guess_view_rejects_get(self) -> None:
+        """Guess endpoint only accepts POST."""
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("game:guess"))
+
+        self.assertEqual(response.status_code, 405)
+
+    def test_guess_view_requires_csrf(self) -> None:
+        """Guess POSTs require CSRF protection."""
+        self.create_municipalities(5)
+        game = start_game(self.user)
+        turn = game.turns.order_by("turn_number").first()
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user)
+
+        response = csrf_client.post(
+            reverse("game:guess"),
+            {
+                "turn_id": turn.id,
+                "latitude": "47.05",
+                "longitude": "8.05",
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
     def test_start_view_creates_game_and_redirects(self) -> None:
         """Game start endpoint creates a game and redirects to the index."""
         self.create_municipalities(5)
@@ -574,6 +622,51 @@ class GameStartTests(TestCase):
         self.assertRedirects(response, reverse("game:index"))
         self.assertEqual(Game.objects.filter(user=self.user).count(), 1)
         self.assertEqual(Turn.objects.count(), 5)
+
+    def test_guess_view_submits_current_turn_and_redirects(self) -> None:
+        """Guess endpoint submits a valid current turn guess."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+        game = start_game(self.user)
+        turn = game.turns.order_by("turn_number").first()
+
+        response = self.client.post(
+            reverse("game:guess"),
+            {
+                "turn_id": turn.id,
+                "latitude": "47.05",
+                "longitude": "8.05",
+            },
+        )
+
+        self.assertRedirects(response, reverse("game:index"))
+        turn.refresh_from_db()
+        game.refresh_from_db()
+        self.assertIsNotNone(turn.revealed_at)
+        self.assertEqual(game.total_score, 1000)
+        self.assertTrue(Guess.objects.filter(turn=turn, user=self.user).exists())
+
+    def test_guess_view_returns_error_for_invalid_guess(self) -> None:
+        """Guess endpoint renders validation errors for invalid submissions."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+        game = start_game(self.user)
+        turn = game.turns.order_by("turn_number").first()
+
+        response = self.client.post(
+            reverse("game:guess"),
+            {
+                "turn_id": turn.id,
+                "latitude": "not-a-number",
+                "longitude": "8.05",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertTemplateUsed(response, "game/index.html")
+        self.assertContains(response, "Latitude must be a number.", status_code=400)
+        self.assertContains(response, 'role="alert"', status_code=400)
+        self.assertFalse(Guess.objects.exists())
 
     def test_game_index_shows_active_game_without_future_targets(self) -> None:
         """Game index shows the current target without revealing future targets."""
@@ -611,6 +704,12 @@ class GameStartTests(TestCase):
         self.assertContains(response, "ch.swisstopo.swissimage")
         self.assertContains(response, "No point selected")
         self.assertContains(response, "Confirm guess")
+        self.assertContains(response, reverse("game:guess"))
+        self.assertContains(response, 'method="post"')
+        self.assertContains(response, 'name="turn_id"')
+        self.assertContains(response, f'value="{first_turn.id}"')
+        self.assertContains(response, 'name="latitude"')
+        self.assertContains(response, 'name="longitude"')
         self.assertContains(response, "data-guess-lat")
         self.assertContains(response, "data-guess-lng")
         self.assertContains(response, "data-confirm-guess")
