@@ -28,19 +28,6 @@ GEOJSON_CACHE_SECONDS = 60 * 60
 EMPTY_FEATURE_COLLECTION = '{"type":"FeatureCollection","features":[]}'
 
 
-@require_GET
-def index(request):
-    """Render a temporary geodata page placeholder.
-
-    Args:
-        request: The incoming HTTP request.
-
-    Returns:
-        A plain HTTP response while the geodata page UI is pending.
-    """
-    return HttpResponse("Geodata API endpoints are available; page UI is pending.")
-
-
 def geojson_response(data: str, etag: str = "") -> HttpResponse:
     """Return a GeoJSON response.
 

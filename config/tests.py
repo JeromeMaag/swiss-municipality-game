@@ -95,6 +95,8 @@ class HomeViewTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "home.html")
+        self.assertContains(response, "Guess Swiss municipalities on a map")
+        self.assertNotContains(response, "Django project shell")
 
     def test_home_rejects_post_requests(self) -> None:
         """Home page only allows GET requests."""
