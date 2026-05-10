@@ -10,6 +10,7 @@ from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
+from shapely import force_2d
 
 from geo.models import Canton, GeoDatasetVersion, Municipality
 
@@ -378,7 +379,12 @@ def find_canton(
         if canton.geom.contains(label_point) or canton.geom.intersects(label_point):
             return canton
 
-    raise CommandError("Could not match municipality row to a canton.")
+    municipality_name = to_str(row_value(row, options["municipality_name_field"]))
+    municipality_bfs = to_int(row_value(row, options["municipality_bfs_field"]))
+    raise CommandError(
+        "Could not match municipality row to a canton: "
+        f"{municipality_name or 'unknown'} ({municipality_bfs or 'unknown'})."
+    )
 
 
 def shapely_to_multipolygon(shapely_geometry) -> MultiPolygon:
@@ -393,7 +399,7 @@ def shapely_to_multipolygon(shapely_geometry) -> MultiPolygon:
     Raises:
         CommandError: If the geometry is not polygonal.
     """
-    geometry = GEOSGeometry(memoryview(shapely_geometry.wkb), srid=4326)
+    geometry = GEOSGeometry(memoryview(force_2d(shapely_geometry).wkb), srid=4326)
     if geometry.geom_type == "Polygon":
         return MultiPolygon(geometry, srid=4326)
     if geometry.geom_type == "MultiPolygon":

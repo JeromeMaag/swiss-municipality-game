@@ -9,6 +9,7 @@ from unittest import mock
 import geopandas as gpd
 from django.contrib.auth import get_user_model
 from django.contrib.gis.geos import Point
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -21,7 +22,19 @@ from tests.utils import make_test_geometry
 
 from .management.commands.import_boundaries import simplify_geometry, to_float, to_int
 from .management.commands.import_population import read_csv_rows
+from .management.commands.seed_dev_geodata import (
+    DATASET_NAME,
+    DATASET_VERSION,
+    DEV_MUNICIPALITIES,
+)
+from .management.commands.import_swissboundaries3d import (
+    DATASET_NAME as OFFICIAL_BOUNDARIES_DATASET_NAME,
+    download_asset,
+    load_stac_items,
+    safe_extract_zip,
+)
 from .models import Canton, GeoDatasetVersion, Municipality
+from .selectors import get_current_dataset_version
 
 
 class GeoModelTests(TestCase):
@@ -184,6 +197,8 @@ class GeoJSONEndpointTests(TestCase):
 
     def setUp(self) -> None:
         """Create shared geodata fixtures and authenticate a user."""
+        cache.clear()
+        self.addCleanup(cache.clear)
         user_model = get_user_model()
         self.user = user_model.objects.create_user(
             username="player",
@@ -264,6 +279,69 @@ class GeoJSONEndpointTests(TestCase):
         self.assertNotIn("name", properties)
         self.assertNotIn("canton", properties)
         self.assertNotIn("canton_abbreviation", properties)
+
+    def test_boundary_responses_are_cacheable_per_browser(self) -> None:
+        """Boundary endpoints expose private browser cache metadata."""
+        response = self.client.get(reverse("geo:municipality_boundaries_geojson"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("private", response["Cache-Control"])
+        self.assertIn("max-age=3600", response["Cache-Control"])
+        self.assertIn("ETag", response)
+
+    def test_boundary_responses_support_conditional_gets(self) -> None:
+        """Boundary endpoints return 304 when the client cache is current."""
+        response = self.client.get(reverse("geo:municipality_boundaries_geojson"))
+        etag = response["ETag"]
+
+        cached_response = self.client.get(
+            reverse("geo:municipality_boundaries_geojson"),
+            HTTP_IF_NONE_MATCH=etag,
+        )
+
+        self.assertEqual(cached_response.status_code, 304)
+        self.assertEqual(cached_response["ETag"], etag)
+
+    def test_boundary_cache_changes_when_current_dataset_changes(self) -> None:
+        """Boundary cache keys change when a newer dataset becomes current."""
+        first_response = self.client.get(reverse("geo:municipality_boundaries_geojson"))
+        first_etag = first_response["ETag"]
+        first_data = self.assert_geojson_response(first_response)
+        first_feature_id = first_data["features"][0]["properties"]["id"]
+        other_dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2027-01-01",
+        )
+        other_canton = Canton.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=2,
+            abbreviation="BE",
+            name="Bern",
+            geom=make_test_geometry(),
+        )
+        other_municipality = Municipality.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=351,
+            name="Bern",
+            canton=other_canton,
+            geom=make_test_geometry(),
+        )
+
+        second_response = self.client.get(
+            reverse("geo:municipality_boundaries_geojson"),
+            HTTP_IF_NONE_MATCH=first_etag,
+        )
+        second_data = self.assert_geojson_response(second_response)
+
+        self.assertNotEqual(second_response["ETag"], first_etag)
+        self.assertNotEqual(
+            second_data["features"][0]["properties"]["id"],
+            first_feature_id,
+        )
+        self.assertEqual(
+            second_data["features"][0]["properties"]["id"],
+            other_municipality.id,
+        )
 
     def test_municipality_boundaries_are_not_ordered_by_name(self) -> None:
         """Municipality boundary endpoint avoids name-based feature ordering."""
@@ -465,6 +543,272 @@ class ImportBoundariesCommandTests(TestCase):
         self.assertIsNotNone(municipality.label_point)
         self.assertEqual(Canton.objects.count(), 1)
         self.assertEqual(Municipality.objects.count(), 1)
+
+
+class ImportSwissBoundaries3DCommandTests(TestCase):
+    """Tests for the official swissBOUNDARIES3D import command."""
+
+    class RedirectResponse:
+        """Minimal context manager for mocked URL responses."""
+
+        def __init__(self, url: str, content: bytes = b"{}") -> None:
+            """Store mocked response data.
+
+            Args:
+                url: Final response URL.
+                content: Response body bytes.
+            """
+            self.url = url
+            self.content = content
+
+        def __enter__(self):
+            """Return the mocked response object.
+
+            Returns:
+                The response object.
+            """
+            return self
+
+        def __exit__(self, *_args) -> None:
+            """Close the mocked response context."""
+
+        def geturl(self) -> str:
+            """Return the final response URL.
+
+            Returns:
+                The mocked final URL.
+            """
+            return self.url
+
+        def read(self) -> bytes:
+            """Read mocked response content.
+
+            Returns:
+                Response content bytes.
+            """
+            return self.content
+
+    def test_command_rejects_unsupported_stac_url_scheme(self) -> None:
+        """Command rejects non-HTTP STAC item URLs."""
+        with self.assertRaisesMessage(
+            CommandError,
+            "URL scheme 'file' is not allowed.",
+        ):
+            call_command(
+                "import_swissboundaries3d",
+                "--stac-items-url",
+                "file:///tmp/items.json",
+                stdout=StringIO(),
+            )
+
+    def test_load_stac_items_rejects_unsupported_redirect_scheme(self) -> None:
+        """STAC requests reject redirects to non-HTTP URLs."""
+        response = self.RedirectResponse("file:///tmp/items.json")
+        with mock.patch("urllib.request.urlopen", return_value=response):
+            with self.assertRaisesMessage(
+                CommandError,
+                "URL scheme 'file' is not allowed.",
+            ):
+                load_stac_items("https://example.test/items.json")
+
+    def test_download_asset_rejects_unsupported_url_scheme(self) -> None:
+        """Asset downloads reject non-HTTP URLs."""
+        with self.assertRaisesMessage(
+            CommandError,
+            "URL scheme 'file' is not allowed.",
+        ):
+            download_asset("file:///tmp/boundaries.gpkg.zip", Path("asset.zip"))
+
+    def test_download_asset_rejects_unsupported_redirect_scheme(self) -> None:
+        """Asset downloads reject redirects to non-HTTP URLs."""
+        response = self.RedirectResponse("file:///tmp/boundaries.gpkg.zip")
+        with mock.patch("urllib.request.urlopen", return_value=response):
+            with self.assertRaisesMessage(
+                CommandError,
+                "URL scheme 'file' is not allowed.",
+            ):
+                download_asset("https://example.test/boundaries.gpkg.zip", Path("asset.zip"))
+
+    def test_safe_extract_zip_rejects_path_traversal(self) -> None:
+        """ZIP extraction rejects archive members outside the destination."""
+        archive = mock.Mock()
+        member = mock.Mock()
+        member.filename = "../outside.gpkg"
+        member.external_attr = 0
+        member.is_dir.return_value = False
+        archive.infolist.return_value = [member]
+
+        with self.assertRaises(CommandError):
+            safe_extract_zip(archive, Path("data/raw/import-test"))
+
+        archive.extractall.assert_not_called()
+
+    def test_safe_extract_zip_rejects_symlinks(self) -> None:
+        """ZIP extraction rejects Unix symlink entries."""
+        archive = mock.Mock()
+        member = mock.Mock()
+        member.filename = "link.gpkg"
+        member.external_attr = 0o120000 << 16
+        member.is_dir.return_value = False
+        archive.infolist.return_value = [member]
+
+        with self.assertRaisesMessage(
+            CommandError,
+            "Unsafe symlink found in swissBOUNDARIES3D ZIP.",
+        ):
+            safe_extract_zip(archive, Path("data/raw/import-test"))
+
+        archive.open.assert_not_called()
+
+    def test_command_imports_latest_geopackage_asset(self) -> None:
+        """Command downloads the newest official GeoPackage and imports boundaries."""
+        output = StringIO()
+        asset_url = "https://example.test/swissboundaries3d_2026-01.gpkg.zip"
+        stac_items = {
+            "features": [
+                {
+                    "id": "swissboundaries3d_2025-01",
+                    "properties": {"datetime": "2025-01-01T00:00:00Z"},
+                    "assets": {
+                        "old.gpkg.zip": {
+                            "href": "https://example.test/old.gpkg.zip",
+                            "type": "application/x.geopackage+zip",
+                        },
+                    },
+                },
+                {
+                    "id": "swissboundaries3d_2026-01",
+                    "properties": {"datetime": "2026-01-01T00:00:00Z"},
+                    "assets": {
+                        "current.gpkg.zip": {
+                            "href": asset_url,
+                            "type": "application/x.geopackage+zip",
+                        },
+                    },
+                },
+            ],
+        }
+        canton_gdf = gpd.GeoDataFrame(
+            [
+                {
+                    "kantonsnummer": 1,
+                    "name": "Zurich",
+                    "geometry": Polygon(
+                        (
+                            (8.0, 47.0),
+                            (8.2, 47.0),
+                            (8.2, 47.2),
+                            (8.0, 47.2),
+                            (8.0, 47.0),
+                        )
+                    ),
+                },
+            ],
+            crs="EPSG:4326",
+        )
+        municipality_gdf = gpd.GeoDataFrame(
+            [
+                {
+                    "objektart": "Gemeindegebiet",
+                    "bfs_nummer": 131,
+                    "kantonsnummer": 1,
+                    "name": "Adliswil",
+                    "geometry": Polygon(
+                        (
+                            (8.02, 47.02),
+                            (8.08, 47.02),
+                            (8.08, 47.08),
+                            (8.02, 47.08),
+                            (8.02, 47.02),
+                        )
+                    ),
+                },
+                {
+                    "objektart": "Kantonsgebiet",
+                    "bfs_nummer": 9051,
+                    "kantonsnummer": 1,
+                    "name": "Zurichsee (ZH)",
+                    "geometry": Polygon(
+                        (
+                            (8.1, 47.1),
+                            (8.15, 47.1),
+                            (8.15, 47.15),
+                            (8.1, 47.15),
+                            (8.1, 47.1),
+                        )
+                    ),
+                },
+                {
+                    "objektart": "Gemeindegebiet",
+                    "bfs_nummer": 7004,
+                    "kantonsnummer": None,
+                    "name": "Triesenberg",
+                    "geometry": Polygon(
+                        (
+                            (9.5, 47.0),
+                            (9.6, 47.0),
+                            (9.6, 47.1),
+                            (9.5, 47.1),
+                            (9.5, 47.0),
+                        )
+                    ),
+                },
+            ],
+            crs="EPSG:4326",
+        )
+
+        def read_official_layer(_source, layer):
+            """Return fake swissBOUNDARIES3D layers.
+
+            Args:
+                _source: Ignored GeoPackage path.
+                layer: Requested layer name.
+
+            Returns:
+                The matching fake GeoDataFrame.
+            """
+            if layer == "tlm_kantonsgebiet":
+                return canton_gdf
+            if layer == "tlm_hoheitsgebiet":
+                return municipality_gdf
+            raise AssertionError(f"Unexpected layer requested: {layer}")
+
+        with (
+            mock.patch(
+                "geo.management.commands.import_swissboundaries3d.load_stac_items",
+                return_value=stac_items,
+            ),
+            mock.patch(
+                "geo.management.commands.import_swissboundaries3d.download_asset",
+            ) as download_asset,
+            mock.patch(
+                "geo.management.commands.import_swissboundaries3d."
+                "extract_single_geopackage",
+                return_value=Path("official.gpkg"),
+            ),
+            mock.patch(
+                "geo.management.commands.import_swissboundaries3d.read_layer",
+                side_effect=read_official_layer,
+            ),
+        ):
+            call_command("import_swissboundaries3d", stdout=output)
+
+        dataset_version = GeoDatasetVersion.objects.get(
+            name=OFFICIAL_BOUNDARIES_DATASET_NAME,
+            version_label="2026-01-01",
+        )
+        canton = Canton.objects.get()
+        municipality = Municipality.objects.get()
+
+        download_asset.assert_called_once_with(asset_url, mock.ANY)
+        self.assertEqual(dataset_version.source_url, asset_url)
+        self.assertEqual(canton.abbreviation, "ZH")
+        self.assertEqual(canton.bfs_number, 1)
+        self.assertEqual(municipality.name, "Adliswil")
+        self.assertEqual(municipality.bfs_number, 131)
+        self.assertEqual(municipality.canton, canton)
+        self.assertEqual(Municipality.objects.count(), 1)
+        self.assertIn("Imported 1 cantons and 1 municipalities", output.getvalue())
 
 
 class ImportPopulationCommandTests(TestCase):
@@ -732,3 +1076,58 @@ class ImportPopulationCommandTests(TestCase):
             ):
                 with self.assertRaises(CommandError):
                     call_command("import_population", "population.csv", stdout=StringIO())
+
+
+class SeedDevGeodataCommandTests(TestCase):
+    """Tests for local development geodata seeding."""
+
+    def test_command_creates_dev_dataset_with_active_municipalities(self) -> None:
+        """Seed command creates a current dataset with five active municipalities."""
+        output = StringIO()
+
+        call_command("seed_dev_geodata", stdout=output)
+
+        dataset_version = GeoDatasetVersion.objects.get(
+            name=DATASET_NAME,
+            version_label=DATASET_VERSION,
+        )
+        self.assertEqual(
+            dataset_version.notes,
+            "Local dummy geodata for development only.",
+        )
+        self.assertEqual(dataset_version.cantons.count(), 1)
+        self.assertEqual(
+            dataset_version.municipalities.filter(is_active=True).count(),
+            len(DEV_MUNICIPALITIES),
+        )
+        self.assertIn(
+            f"Seeded {len(DEV_MUNICIPALITIES)} development municipalities.",
+            output.getvalue(),
+        )
+
+    def test_command_is_idempotent(self) -> None:
+        """Running the seed command twice does not duplicate records."""
+        call_command("seed_dev_geodata", stdout=StringIO())
+        call_command("seed_dev_geodata", stdout=StringIO())
+
+        dataset_version = GeoDatasetVersion.objects.get(
+            name=DATASET_NAME,
+            version_label=DATASET_VERSION,
+        )
+        self.assertEqual(dataset_version.cantons.count(), 1)
+        self.assertEqual(
+            dataset_version.municipalities.count(),
+            len(DEV_MUNICIPALITIES),
+        )
+
+    def test_command_refreshes_current_dataset_timestamp(self) -> None:
+        """Seed command makes the dev dataset the current dataset."""
+        call_command("seed_dev_geodata", stdout=StringIO())
+        GeoDatasetVersion.objects.create(
+            name="newer-dataset",
+            version_label="local",
+        )
+
+        call_command("seed_dev_geodata", stdout=StringIO())
+
+        self.assertEqual(get_current_dataset_version().name, DATASET_NAME)

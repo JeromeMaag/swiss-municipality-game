@@ -24,6 +24,18 @@ def get_current_cantons() -> QuerySet[Canton]:
     dataset_version = get_current_dataset_version()
     if dataset_version is None:
         return Canton.objects.none()
+    return get_cantons_for_dataset(dataset_version)
+
+
+def get_cantons_for_dataset(dataset_version: GeoDatasetVersion) -> QuerySet[Canton]:
+    """Return cantons for one dataset version.
+
+    Args:
+        dataset_version: Dataset version to query.
+
+    Returns:
+        A queryset of cantons ordered by abbreviation.
+    """
     return Canton.objects.filter(dataset_version=dataset_version).order_by(
         "abbreviation"
     )
@@ -38,6 +50,20 @@ def get_current_municipalities() -> QuerySet[Municipality]:
     dataset_version = get_current_dataset_version()
     if dataset_version is None:
         return Municipality.objects.none()
+    return get_municipalities_for_dataset(dataset_version)
+
+
+def get_municipalities_for_dataset(
+    dataset_version: GeoDatasetVersion,
+) -> QuerySet[Municipality]:
+    """Return active municipalities for one dataset version.
+
+    Args:
+        dataset_version: Dataset version to query.
+
+    Returns:
+        A queryset of active municipalities ordered by internal id.
+    """
     return Municipality.objects.filter(
         dataset_version=dataset_version,
         is_active=True,

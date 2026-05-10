@@ -32,6 +32,18 @@ Create an admin user:
 python manage.py createsuperuser
 ```
 
+Seed five dummy municipalities for local development:
+
+```cmd
+python manage.py seed_dev_geodata
+```
+
+Import the latest official swissBOUNDARIES3D canton and municipality boundaries:
+
+```cmd
+python manage.py import_swissboundaries3d
+```
+
 Start the development server:
 
 ```cmd

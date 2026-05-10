@@ -63,7 +63,7 @@ body {
 
 .site-main {
   margin: 0 auto;
-  max-width: 960px;
+  max-width: 1180px;
   padding: 3rem 1.5rem;
 }
 
@@ -124,7 +124,7 @@ body {
 }
 
 .game-panel {
-  max-width: 720px;
+  max-width: 100%;
 }
 
 .game-panel h1 {
@@ -133,6 +133,17 @@ body {
 
 .game-panel button {
   padding: 0.65rem 0.9rem;
+}
+
+.game-layout {
+  align-items: stretch;
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+}
+
+.game-sidebar {
+  min-width: 0;
 }
 
 .turn-panel {
@@ -152,6 +163,22 @@ body {
   padding-left: 1.5rem;
 }
 
+.guess-form {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0 0 1.5rem;
+}
+
+.guess-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.guess-coordinates {
+  color: #526071;
+  margin: 0;
+}
+
 .muted {
   color: #526071;
 }
@@ -161,4 +188,84 @@ body {
   background: #fff1f1;
   color: #8d1f1f;
   padding: 0.75rem 1rem;
+}
+
+.map-panel {
+  border: 1px solid #d8dee8;
+  background: #dfe7ec;
+  height: 520px;
+  overflow: hidden;
+  position: relative;
+}
+
+.game-map {
+  background: #dfe7ec;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.game-map--boundary-error {
+  outline: 2px solid #d68b8b;
+  outline-offset: -2px;
+}
+
+.map-status {
+  background: #fff1f1;
+  border: 1px solid #d68b8b;
+  color: #8d1f1f;
+  left: 1rem;
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  position: absolute;
+  right: 1rem;
+  top: 1rem;
+  z-index: 900;
+}
+
+.map-status:empty {
+  display: none;
+}
+
+.guess-marker {
+  background: #d84235;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px #8d1f1f, 0 0.35rem 1rem rgba(23, 32, 42, 0.32);
+  height: 1.6rem;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  width: 1.6rem;
+  z-index: 750;
+}
+
+.guess-marker::after {
+  background: #ffffff;
+  border-radius: 50%;
+  content: "";
+  display: block;
+  height: 0.35rem;
+  margin: 0.45rem auto 0;
+  width: 0.35rem;
+}
+
+.map-placeholder {
+  min-height: 520px;
+}
+
+@media (max-width: 820px) {
+  .game-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .map-panel {
+    height: 420px;
+  }
+
+  .map-placeholder {
+    min-height: 420px;
+  }
 }
