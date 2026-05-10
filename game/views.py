@@ -1,13 +1,18 @@
 """Views for game pages."""
 
+import json
+
 from django.contrib.auth.decorators import login_required
-from django.http import Http404
+from django.core.exceptions import ValidationError
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET, require_POST
 
 from geo.models import Municipality
+from tracking.models import GameEvent
+from tracking.services import track_event
 
-from .models import Game, Guess
+from .models import Game, Guess, Turn
 from .selectors import get_active_game, get_finished_game_summary
 from .services import (
     TURN_COUNT,
@@ -16,6 +21,16 @@ from .services import (
     start_game,
     submit_guess,
 )
+
+
+CLIENT_TRACKING_EVENT_TYPES = frozenset(
+    {
+        GameEvent.Type.MAP_CLICKED,
+        GameEvent.Type.REVEAL_SHOWN,
+        GameEvent.Type.NEXT_TURN_CLICKED,
+    }
+)
+MAX_TRACKING_REQUEST_BYTES = 4096
 
 
 @login_required
@@ -96,6 +111,108 @@ def guess(request):
 
 
 @login_required
+@require_POST
+def track_turn_event(request, turn_id: int):
+    """Persist a client-side tracking event for a game turn.
+
+    Args:
+        request: The incoming HTTP request.
+        turn_id: Turn primary key from the tracking URL.
+
+    Returns:
+        An empty successful response when the event is stored, or a JSON error
+        response for invalid tracking input.
+
+    Raises:
+        Http404: If the turn does not belong to the current user.
+    """
+    try:
+        event_type, payload = parse_tracking_request(request)
+    except ValueError as error:
+        return JsonResponse({"error": str(error)}, status=400)
+
+    try:
+        turn = Turn.objects.select_related("game").get(
+            pk=turn_id,
+            game__user=request.user,
+        )
+    except Turn.DoesNotExist as error:
+        raise Http404("Turn not found.") from error
+
+    try:
+        validate_tracking_event_state(event_type=event_type, turn=turn)
+        track_event(
+            user=request.user,
+            game=turn.game,
+            turn=turn,
+            event_type=event_type,
+            payload=payload,
+        )
+    except ValueError as error:
+        return JsonResponse({"error": str(error)}, status=400)
+    except ValidationError as error:
+        error_detail = getattr(error, "message_dict", {"errors": error.messages})
+        return JsonResponse({"error": error_detail}, status=400)
+
+    return HttpResponse(status=204)
+
+
+def validate_tracking_event_state(*, event_type: str, turn: Turn) -> None:
+    """Validate that a client event matches the current turn state.
+
+    Args:
+        event_type: Client-side tracking event type.
+        turn: Turn associated with the event.
+
+    Raises:
+        ValueError: If the event is not valid for the turn's current state.
+    """
+    if event_type == GameEvent.Type.MAP_CLICKED:
+        current_turn_id = (
+            turn.game.turns.filter(revealed_at__isnull=True)
+            .order_by("turn_number")
+            .values_list("id", flat=True)
+            .first()
+        )
+        if turn.game.status != Game.Status.ACTIVE or current_turn_id != turn.id:
+            raise ValueError("Tracking event is not valid for this turn state.")
+        return
+
+    if event_type == GameEvent.Type.REVEAL_SHOWN:
+        if turn.revealed_at is None or not is_latest_revealed_turn(turn):
+            raise ValueError("Tracking event is not valid for this turn state.")
+        return
+
+    if event_type == GameEvent.Type.NEXT_TURN_CLICKED:
+        next_turn_exists = turn.game.turns.filter(
+            revealed_at__isnull=True,
+            turn_number__gt=turn.turn_number,
+        ).exists()
+        if (
+            turn.revealed_at is None
+            or not is_latest_revealed_turn(turn)
+            or turn.game.status != Game.Status.ACTIVE
+            or not next_turn_exists
+        ):
+            raise ValueError("Tracking event is not valid for this turn state.")
+
+
+def is_latest_revealed_turn(turn: Turn) -> bool:
+    """Return whether a turn is the latest revealed turn in its game.
+
+    Args:
+        turn: Turn to compare against the game state.
+
+    Returns:
+        True when no later turn has already been revealed.
+    """
+    return not turn.game.turns.filter(
+        revealed_at__isnull=False,
+        turn_number__gt=turn.turn_number,
+    ).exists()
+
+
+@login_required
 @require_GET
 def summary(request, game_id: int):
     """Render the summary for a finished game owned by the current user.
@@ -114,6 +231,68 @@ def summary(request, game_id: int):
     if game is None:
         raise Http404("Game summary not found.")
     return render(request, "game/summary.html", {"game": game})
+
+
+def parse_tracking_request(request) -> tuple[str, dict]:
+    """Parse and validate a client tracking request body.
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        A tuple of event type and JSON payload.
+
+    Raises:
+        ValueError: If the request body is invalid or the event type is not
+            allowed for client-side tracking.
+    """
+    body = get_tracking_request_body(request)
+    if len(body) > MAX_TRACKING_REQUEST_BYTES:
+        raise ValueError("Tracking payload is too large.")
+    try:
+        data = json.loads(body.decode("utf-8") or "{}")
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("Tracking payload must be valid JSON.") from error
+
+    if not isinstance(data, dict):
+        raise ValueError("Tracking payload must be a JSON object.")
+
+    event_type = data.get("event_type")
+    if event_type not in CLIENT_TRACKING_EVENT_TYPES:
+        raise ValueError("Tracking event type is not allowed.")
+
+    payload = data.get("payload", {})
+    if not isinstance(payload, dict):
+        raise ValueError("Tracking event payload must be a JSON object.")
+
+    return event_type, payload
+
+
+def get_tracking_request_body(request) -> bytes:
+    """Return a tracking request body after checking the declared size.
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        The raw request body.
+
+    Raises:
+        ValueError: If the declared request body size is missing, invalid, or too
+            large.
+    """
+    content_length = request.META.get("CONTENT_LENGTH")
+    if not content_length:
+        raise ValueError("Tracking content length is required.")
+    try:
+        declared_length = int(content_length)
+    except ValueError:
+        raise ValueError("Tracking content length is invalid.") from None
+    if declared_length < 0:
+        raise ValueError("Tracking content length is invalid.")
+    if declared_length > MAX_TRACKING_REQUEST_BYTES:
+        raise ValueError("Tracking payload is too large.")
+    return request.body
 
 
 def get_last_guess_result(request) -> Guess | None:
