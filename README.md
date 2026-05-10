@@ -99,10 +99,15 @@ docker compose down -v
 
 - Switchable background maps
 - Play without an account
+- Google login
+- Email verification
+- Email password reset
 - Statistics and history
+- Admin statistics dashboard
 - Visual update; the current UI is still rough
 - More game modes:
   - learn cantons
   - only municipalities from one canton
   - places instead of municipalities
+  - historical municipality datasets
   - multiplayer options
