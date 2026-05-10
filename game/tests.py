@@ -458,7 +458,7 @@ class GameStartTests(TestCase):
         *,
         client=None,
         event_type: str = GameEvent.Type.MAP_CLICKED,
-        payload: dict | None = None,
+        payload: object | None = None,
     ):
         """Post a JSON tracking event to the turn event endpoint.
 
@@ -893,6 +893,34 @@ class GameStartTests(TestCase):
         response = self.post_tracking_event(
             turn,
             payload={"value": "x" * 4096},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(
+            GameEvent.objects.filter(
+                game=game,
+                turn=turn,
+                event_type=GameEvent.Type.MAP_CLICKED,
+            ).exists()
+        )
+
+    def test_tracking_event_rejects_invalid_content_length(self) -> None:
+        """Tracking endpoint rejects invalid declared content lengths."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+        game = start_game(self.user)
+        turn = game.turns.order_by("turn_number").first()
+
+        response = self.client.post(
+            reverse("game:track_turn_event", args=[turn.id]),
+            data=json.dumps(
+                {
+                    "event_type": GameEvent.Type.MAP_CLICKED,
+                    "payload": {"latitude": 47.05},
+                }
+            ),
+            content_type="application/json",
+            CONTENT_LENGTH="not-a-number",
         )
 
         self.assertEqual(response.status_code, 400)

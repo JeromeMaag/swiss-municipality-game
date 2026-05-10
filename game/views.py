@@ -263,14 +263,14 @@ def get_tracking_request_body(request) -> bytes:
         The raw request body.
 
     Raises:
-        ValueError: If the declared request body size is too large.
+        ValueError: If the declared request body size is invalid or too large.
     """
     content_length = request.META.get("CONTENT_LENGTH")
     if content_length:
         try:
             declared_length = int(content_length)
         except ValueError:
-            declared_length = 0
+            raise ValueError("Tracking content length is invalid.") from None
         if declared_length > MAX_TRACKING_REQUEST_BYTES:
             raise ValueError("Tracking payload is too large.")
     return request.body
