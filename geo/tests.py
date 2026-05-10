@@ -647,23 +647,25 @@ class ImportSwissBoundaries3DCommandTests(TestCase):
             """
             return canton_gdf if layer == "tlm_kantonsgebiet" else municipality_gdf
 
-        with mock.patch(
-            "geo.management.commands.import_swissboundaries3d.load_stac_items",
-            return_value=stac_items,
-        ):
-            with mock.patch(
+        with (
+            mock.patch(
+                "geo.management.commands.import_swissboundaries3d.load_stac_items",
+                return_value=stac_items,
+            ),
+            mock.patch(
                 "geo.management.commands.import_swissboundaries3d.download_asset",
-            ) as download_asset:
-                with mock.patch(
-                    "geo.management.commands.import_swissboundaries3d."
-                    "extract_single_geopackage",
-                    return_value=Path("official.gpkg"),
-                ):
-                    with mock.patch(
-                        "geo.management.commands.import_swissboundaries3d.read_layer",
-                        side_effect=read_official_layer,
-                    ):
-                        call_command("import_swissboundaries3d", stdout=output)
+            ) as download_asset,
+            mock.patch(
+                "geo.management.commands.import_swissboundaries3d."
+                "extract_single_geopackage",
+                return_value=Path("official.gpkg"),
+            ),
+            mock.patch(
+                "geo.management.commands.import_swissboundaries3d.read_layer",
+                side_effect=read_official_layer,
+            ),
+        ):
+            call_command("import_swissboundaries3d", stdout=output)
 
         dataset_version = GeoDatasetVersion.objects.get(
             name=OFFICIAL_BOUNDARIES_DATASET_NAME,
