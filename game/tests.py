@@ -1089,7 +1089,7 @@ class GameStartTests(TestCase):
                 f'?turn={first_turn.id}"'
             ),
         )
-        self.assertContains(response, 'data-label-min-zoom="12"')
+        self.assertContains(response, 'data-label-min-zoom="11"')
         self.assertContains(response, 'id="game-map"')
         self.assertContains(response, f'data-reveal-target-id="{first_turn.target.id}"')
         self.assertContains(response, 'data-reveal-lat="47.050000"')
@@ -1164,7 +1164,7 @@ class GameStartTests(TestCase):
                 f'?turn={turn.id}"'
             ),
         )
-        self.assertContains(response, 'data-label-min-zoom="12"')
+        self.assertContains(response, 'data-label-min-zoom="11"')
         self.assertContains(response, f'data-reveal-target-id="{municipality.id}"')
         self.assertContains(response, 'data-reveal-lat="47.050000"')
         self.assertContains(response, 'data-reveal-lng="8.050000"')
