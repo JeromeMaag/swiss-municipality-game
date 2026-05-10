@@ -629,7 +629,8 @@ class GameStartTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "game/index.html")
-        self.assertContains(response, "No active game yet.")
+        self.assertContains(response, "New game")
+        self.assertContains(response, "Start")
         self.assertContains(response, reverse("game:start"))
         self.assertNotContains(response, 'id="game-map"')
 
@@ -1124,9 +1125,10 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Zurich (ZH)")
         self.assertContains(response, "Population")
         self.assertContains(response, "12345")
-        self.assertContains(response, "Distance to municipality")
+        self.assertContains(response, "Municipality")
+        self.assertContains(response, "Boundary")
         self.assertContains(response, "0 m")
-        self.assertContains(response, "Next turn")
+        self.assertContains(response, "Next")
         self.assertContains(response, "data-next-turn-link")
         self.assertContains(
             response,
@@ -1144,12 +1146,12 @@ class GameStartTests(TestCase):
         self.assertContains(response, f'data-reveal-target-id="{first_turn.target.id}"')
         self.assertContains(response, 'data-reveal-lat="47.050000"')
         self.assertContains(response, 'data-reveal-lng="8.050000"')
-        self.assertNotContains(response, "Turn 2 of 5")
+        self.assertNotContains(response, "2/5")
         self.assertNotContains(response, "data-guess-form")
 
         response = self.client.get(reverse("game:index"))
         self.assertNotContains(response, "Result")
-        self.assertContains(response, "Turn 2 of 5")
+        self.assertContains(response, "2/5")
         self.assertNotIn(
             MUNICIPALITY_LABEL_ACCESS_SESSION_KEY,
             self.client.session,
@@ -1199,12 +1201,11 @@ class GameStartTests(TestCase):
         )
 
         self.assertContains(response, "Finished game")
-        self.assertContains(response, "Game finished")
-        self.assertContains(response, "Result")
-        self.assertContains(response, "Total score")
+        self.assertContains(response, "Finished game")
+        self.assertContains(response, "Score")
         self.assertContains(response, "Canton")
         self.assertContains(response, "Zurich (ZH)")
-        self.assertContains(response, "View summary")
+        self.assertContains(response, "Summary")
         self.assertContains(response, reverse("game:summary", args=[game.id]))
         self.assertContains(response, 'id="game-map"')
         self.assertContains(
@@ -1258,7 +1259,9 @@ class GameStartTests(TestCase):
 
         response = self.client.get(reverse("game:index"))
 
-        self.assertContains(response, "Active game")
+        self.assertContains(response, "GemeindeGuess CH")
+        self.assertContains(response, f"{first_turn.turn_number}/5")
+        self.assertContains(response, "Score")
         self.assertNotContains(response, f"Active game #{game.id}")
         self.assertContains(response, first_turn.target.name)
         self.assertContains(response, 'id="game-map"')
@@ -1278,8 +1281,10 @@ class GameStartTests(TestCase):
         self.assertContains(response, 'aria-live="polite"')
         self.assertContains(response, "wmts.geo.admin.ch")
         self.assertContains(response, "ch.swisstopo.swissimage")
-        self.assertContains(response, "No point selected")
-        self.assertContains(response, "Confirm guess")
+        self.assertContains(response, "Guess")
+        self.assertNotContains(response, "Place your pin on the map.")
+        self.assertNotContains(response, "No point selected")
+        self.assertNotContains(response, "Confirm guess")
         self.assertContains(response, reverse("game:guess"))
         self.assertContains(response, 'method="post"')
         self.assertContains(response, 'name="turn_id"')

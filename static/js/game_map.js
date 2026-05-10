@@ -238,7 +238,6 @@
 
     const latitudeInput = form.querySelector("[data-guess-lat]");
     const longitudeInput = form.querySelector("[data-guess-lng]");
-    const coordinatesOutput = form.querySelector("[data-guess-coordinates]");
     const confirmButton = form.querySelector("[data-confirm-guess]");
     let marker = null;
     let selectedLatLng = null;
@@ -265,7 +264,6 @@
 
       latitudeInput.value = latitude;
       longitudeInput.value = longitude;
-      coordinatesOutput.textContent = "Selected point: " + latitude + ", " + longitude;
       confirmButton.disabled = false;
 
       sendTrackingEvent(mapElement, "MAP_CLICKED", {
