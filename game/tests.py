@@ -646,6 +646,62 @@ class GameStartTests(TestCase):
         self.assertEqual(game.total_score, 1000)
         self.assertTrue(Guess.objects.filter(turn=turn, user=self.user).exists())
 
+    def test_guess_view_shows_result_after_submission(self) -> None:
+        """Game index shows the last submitted guess result once."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+        game = start_game(self.user)
+        first_turn = game.turns.select_related("target").order_by("turn_number").first()
+
+        response = self.client.post(
+            reverse("game:guess"),
+            {
+                "turn_id": first_turn.id,
+                "latitude": "47.05",
+                "longitude": "8.05",
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "Result")
+        self.assertContains(response, first_turn.target.name)
+        self.assertContains(response, "Score")
+        self.assertContains(response, "1000")
+        self.assertContains(response, "Distance to municipality")
+        self.assertContains(response, "0 m")
+        self.assertContains(response, "Turn 2 of 5")
+
+        response = self.client.get(reverse("game:index"))
+        self.assertNotContains(response, "Result")
+
+    def test_guess_view_shows_final_result_for_finished_game(self) -> None:
+        """Final-turn submissions render the finished game result."""
+        municipality = self.create_municipalities(1)[0]
+        game = Game.objects.create(user=self.user)
+        turn = Turn.objects.create(
+            game=game,
+            turn_number=1,
+            target=municipality,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("game:guess"),
+            {
+                "turn_id": turn.id,
+                "latitude": "47.05",
+                "longitude": "8.05",
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "Finished game")
+        self.assertContains(response, "Game finished")
+        self.assertContains(response, "Result")
+        self.assertContains(response, "Total score")
+        self.assertNotContains(response, "No active game yet.")
+        self.assertNotContains(response, 'id="game-map"')
+
     def test_guess_view_returns_error_for_invalid_guess(self) -> None:
         """Guess endpoint renders validation errors for invalid submissions."""
         self.create_municipalities(5)

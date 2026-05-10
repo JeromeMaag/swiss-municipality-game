@@ -27,7 +27,38 @@
     {% if active_game %}
       <div class="game-layout">
         <aside class="game-sidebar" aria-label="Current game">
-          <p class="muted">Active game</p>
+          <p class="muted">
+            {% if active_game.status == "finished" %}
+              Finished game
+            {% else %}
+              Active game
+            {% endif %}
+          </p>
+
+          {% if last_guess %}
+            <section class="result-panel" aria-labelledby="result-heading" role="status" aria-live="polite">
+              <h2 id="result-heading">Result</h2>
+              <p>Target municipality: {{ last_guess.turn.target.name }}</p>
+              <dl class="result-list">
+                <div>
+                  <dt>Score</dt>
+                  <dd>{{ last_guess.score }}</dd>
+                </div>
+                <div>
+                  <dt>Distance to municipality</dt>
+                  <dd>{{ last_guess.distance_to_municipality_m|floatformat:0 }} m</dd>
+                </div>
+                <div>
+                  <dt>Distance to boundary</dt>
+                  <dd>{{ last_guess.distance_to_boundary_m|floatformat:0 }} m</dd>
+                </div>
+                <div>
+                  <dt>Total score</dt>
+                  <dd>{{ active_game.total_score }}</dd>
+                </div>
+              </dl>
+            </section>
+          {% endif %}
 
           {% if current_turn %}
             <section class="turn-panel" aria-labelledby="current-turn-heading">
@@ -54,9 +85,16 @@
               </button>
             </form>
           {% else %}
-            <p class="error-message" role="alert" aria-live="assertive">
-              No active turn is available for this game.
-            </p>
+            {% if active_game.status == "finished" %}
+              <section class="turn-panel" aria-labelledby="game-finished-heading">
+                <h2 id="game-finished-heading">Game finished</h2>
+                <p>Total score: {{ active_game.total_score }}</p>
+              </section>
+            {% else %}
+              <p class="error-message" role="alert" aria-live="assertive">
+                No active turn is available for this game.
+              </p>
+            {% endif %}
           {% endif %}
 
           <ol class="turn-list">
