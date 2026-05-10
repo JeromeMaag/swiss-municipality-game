@@ -110,7 +110,11 @@ docker compose down -v
 - [Data import](docs/data_import.md)
 - [Architecture](docs/architecture.md)
 
-## Planned
+## License
+
+This project is licensed under the MIT License.
+
+## Possible Next Steps
 
 - Switchable background maps
 - Play without an account
@@ -119,10 +123,10 @@ docker compose down -v
 - Email password reset
 - Statistics and history
 - Admin statistics dashboard
-- Visual update; the current UI is still rough
+- Visual polish for the game interface
 - More game modes:
-  - learn cantons
-  - only municipalities from one canton
-  - places instead of municipalities
+  - canton practice
+  - municipalities from one canton
+  - settlements or place names
   - historical municipality datasets
   - multiplayer options
