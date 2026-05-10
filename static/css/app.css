@@ -47,7 +47,8 @@ body {
 
 .site-nav button,
 .auth-form button,
-.game-panel button {
+.game-panel button,
+.button-link {
   background: #245a73;
   border: 0;
   color: #ffffff;
@@ -135,6 +136,12 @@ body {
   padding: 0.65rem 0.9rem;
 }
 
+.button-link {
+  display: inline-block;
+  padding: 0.65rem 0.9rem;
+  text-decoration: none;
+}
+
 .game-layout {
   align-items: stretch;
   display: grid;
@@ -153,9 +160,42 @@ body {
   padding: 1rem;
 }
 
-.turn-panel h2 {
+.turn-panel h2,
+.result-panel h2 {
   font-size: 1.25rem;
   margin: 0 0 0.75rem;
+}
+
+.result-panel {
+  border: 1px solid #b8cfbf;
+  background: #f3faf5;
+  margin: 1.5rem 0;
+  padding: 1rem;
+}
+
+.result-panel p {
+  margin: 0 0 1rem;
+}
+
+.result-list {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.result-list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.result-list dt {
+  color: #526071;
+}
+
+.result-list dd {
+  font-weight: 700;
+  margin: 0;
 }
 
 .turn-list {
@@ -250,6 +290,11 @@ body {
   height: 0.35rem;
   margin: 0.45rem auto 0;
   width: 0.35rem;
+}
+
+.guess-marker--revealed {
+  background: #ffcf4a;
+  box-shadow: 0 0 0 2px #5c3d00, 0 0.35rem 1rem rgba(23, 32, 42, 0.34);
 }
 
 .map-placeholder {

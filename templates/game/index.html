@@ -4,7 +4,7 @@
 {% block title %}Game - GemeindeGuess CH{% endblock %}
 
 {% block extra_head %}
-  {% if active_game and current_turn %}
+  {% if show_game_map %}
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -27,29 +27,84 @@
     {% if active_game %}
       <div class="game-layout">
         <aside class="game-sidebar" aria-label="Current game">
-          <p class="muted">Active game</p>
+          <p class="muted">
+            {% if active_game.status == "finished" %}
+              Finished game
+            {% else %}
+              Active game
+            {% endif %}
+          </p>
 
-          {% if current_turn %}
+          {% if last_guess %}
+            <section class="result-panel" aria-labelledby="result-heading" role="status" aria-live="polite">
+              <h2 id="result-heading">Result</h2>
+              <p>Target municipality: {{ last_guess.turn.target.name }}</p>
+              <dl class="result-list">
+                <div>
+                  <dt>Score</dt>
+                  <dd>{{ last_guess.score }}</dd>
+                </div>
+                <div>
+                  <dt>Distance to municipality</dt>
+                  <dd>{{ last_guess.distance_to_municipality_m|floatformat:0 }} m</dd>
+                </div>
+                <div>
+                  <dt>Distance to boundary</dt>
+                  <dd>{{ last_guess.distance_to_boundary_m|floatformat:0 }} m</dd>
+                </div>
+                <div>
+                  <dt>Total score</dt>
+                  <dd>{{ active_game.total_score }}</dd>
+                </div>
+              </dl>
+            </section>
+          {% endif %}
+
+          {% if last_guess %}
+            {% if active_game.status == "finished" %}
+              <section class="turn-panel" aria-labelledby="game-finished-heading">
+                <h2 id="game-finished-heading">Game finished</h2>
+                <p>Total score: {{ active_game.total_score }}</p>
+              </section>
+              <a class="button-link" href="{% url 'game:index' %}">Start new game</a>
+            {% else %}
+              <a class="button-link" href="{% url 'game:index' %}">Next turn</a>
+            {% endif %}
+          {% elif current_turn %}
             <section class="turn-panel" aria-labelledby="current-turn-heading">
               <h2 id="current-turn-heading">
                 Turn {{ current_turn.turn_number }} of {{ turn_count }}
               </h2>
               <p>Target municipality: {{ current_target_name }}</p>
             </section>
-            <form class="guess-form" data-guess-form>
-              <input type="hidden" name="lat" data-guess-lat>
-              <input type="hidden" name="lng" data-guess-lng>
+            <form
+              class="guess-form"
+              method="post"
+              action="{% url 'game:guess' %}"
+              data-guess-form
+            >
+              {% csrf_token %}
+              <input type="hidden" name="turn_id" value="{{ current_turn.id }}">
+              <input type="hidden" name="latitude" data-guess-lat>
+              <input type="hidden" name="longitude" data-guess-lng>
               <p class="guess-coordinates" data-guess-coordinates>
                 No point selected
               </p>
-              <button type="button" data-confirm-guess disabled>
+              <button type="submit" data-confirm-guess disabled>
                 Confirm guess
               </button>
             </form>
           {% else %}
-            <p class="error-message" role="alert" aria-live="assertive">
-              No active turn is available for this game.
-            </p>
+            {% if active_game.status == "finished" %}
+              <section class="turn-panel" aria-labelledby="game-finished-heading">
+                <h2 id="game-finished-heading">Game finished</h2>
+                <p>Total score: {{ active_game.total_score }}</p>
+              </section>
+            {% else %}
+              <p class="error-message" role="alert" aria-live="assertive">
+                No active turn is available for this game.
+              </p>
+            {% endif %}
           {% endif %}
 
           <ol class="turn-list">
@@ -63,7 +118,7 @@
         </aside>
 
         <section class="map-panel" aria-label="Guess map">
-          {% if current_turn %}
+          {% if show_game_map %}
             <p class="map-status" data-map-status role="status" aria-live="polite" aria-atomic="true"></p>
             <div
               id="game-map"
@@ -74,6 +129,11 @@
               data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
               data-canton-boundaries-url="{% url 'geo:cantons_geojson' %}"
               data-municipality-boundaries-url="{% url 'geo:municipality_boundaries_geojson' %}"
+              {% if last_guess %}
+                data-reveal-target-id="{{ last_guess.turn.target.id }}"
+                data-reveal-lat="{{ reveal_guess_lat }}"
+                data-reveal-lng="{{ reveal_guess_lng }}"
+              {% endif %}
             ></div>
           {% else %}
             <div class="map-placeholder"></div>
@@ -91,13 +151,13 @@
 {% endblock %}
 
 {% block extra_scripts %}
-  {% if active_game and current_turn %}
+  {% if show_game_map %}
     <script
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin="anonymous"
       defer
     ></script>
-    <script src="{% static 'js/game_map.js' %}?v=review-fixes-1" defer></script>
+    <script src="{% static 'js/game_map.js' %}?v=reveal-1" defer></script>
   {% endif %}
 {% endblock %}
