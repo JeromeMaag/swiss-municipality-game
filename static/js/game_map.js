@@ -47,6 +47,7 @@
     }
 
     return window.fetch(url, {
+      cache: "no-cache",
       credentials: "same-origin",
       headers: {
         Accept: "application/geo+json, application/json",

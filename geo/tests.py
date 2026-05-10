@@ -1,6 +1,6 @@
 """Tests for the geo app."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import json
 from io import StringIO
 from pathlib import Path
@@ -536,13 +536,14 @@ class GeoJSONEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 404)
 
-    def test_boundary_responses_are_cacheable_per_browser(self) -> None:
-        """Boundary endpoints expose private browser cache metadata."""
+    def test_boundary_responses_require_browser_revalidation(self) -> None:
+        """Boundary endpoints use ETags without allowing stale browser reuse."""
         response = self.client.get(reverse("geo:municipality_boundaries_geojson"))
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("private", response["Cache-Control"])
-        self.assertIn("max-age=3600", response["Cache-Control"])
+        self.assertIn("no-cache", response["Cache-Control"])
+        self.assertIn("max-age=0", response["Cache-Control"])
         self.assertIn("ETag", response)
 
     def test_boundary_responses_support_conditional_gets(self) -> None:
@@ -2009,6 +2010,7 @@ class SeedDevGeodataCommandTests(TestCase):
             dataset_version.municipalities.filter(is_active=True).count(),
             len(DEV_MUNICIPALITIES),
         )
+        self.assertEqual(get_current_dataset_version(), dataset_version)
         self.assertIn(
             f"Seeded {len(DEV_MUNICIPALITIES)} development municipalities.",
             output.getvalue(),
@@ -2029,17 +2031,24 @@ class SeedDevGeodataCommandTests(TestCase):
             len(DEV_MUNICIPALITIES),
         )
 
-    def test_command_refreshes_current_dataset_timestamp(self) -> None:
-        """Seed command makes the dev dataset the current dataset."""
+    def test_command_refreshes_dev_timestamp_without_overriding_regular_dataset(
+        self,
+    ) -> None:
+        """Seed command updates dev data without overriding regular geodata."""
         call_command("seed_dev_geodata", stdout=StringIO())
-        GeoDatasetVersion.objects.create(
+        regular_dataset = GeoDatasetVersion.objects.create(
             name="newer-dataset",
             version_label="local",
         )
 
         call_command("seed_dev_geodata", stdout=StringIO())
+        dev_dataset = GeoDatasetVersion.objects.get(
+            name=DATASET_NAME,
+            version_label=DATASET_VERSION,
+        )
 
-        self.assertEqual(get_current_dataset_version().name, DATASET_NAME)
+        self.assertGreater(dev_dataset.imported_at, regular_dataset.imported_at)
+        self.assertEqual(get_current_dataset_version(), regular_dataset)
 
 
 class GeodataAdminSetupTests(TestCase):
@@ -2257,6 +2266,22 @@ class GeoSelectorTests(TestCase):
 
     def test_get_current_dataset_version_returns_newest_import(self) -> None:
         """Current dataset selector returns the newest imported version."""
+        self.assertEqual(get_current_dataset_version(), self.current_dataset)
+
+    def test_get_current_dataset_version_prefers_official_over_newer_dev_seed(
+        self,
+    ) -> None:
+        """Development seed data is only current when no regular dataset exists."""
+        dev_dataset = GeoDatasetVersion.objects.create(
+            name=DATASET_NAME,
+            version_label=DATASET_VERSION,
+        )
+        GeoDatasetVersion.objects.filter(pk=dev_dataset.pk).update(
+            imported_at=timezone.now() + timedelta(minutes=1)
+        )
+        dev_dataset.refresh_from_db()
+
+        self.assertGreater(dev_dataset.imported_at, self.current_dataset.imported_at)
         self.assertEqual(get_current_dataset_version(), self.current_dataset)
 
     def test_get_current_cantons_returns_ordered_current_dataset(self) -> None:

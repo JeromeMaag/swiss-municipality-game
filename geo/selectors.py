@@ -5,14 +5,25 @@ from django.db.models import QuerySet
 from .models import Canton, GeoDatasetVersion, Municipality
 
 
+DEVELOPMENT_DATASET_NAMES = frozenset({"dev-seed"})
+
+
 def get_current_dataset_version() -> GeoDatasetVersion | None:
-    """Return the newest imported dataset version.
+    """Return the newest non-development dataset version.
 
     Returns:
-        The most recently imported dataset version, or None when no geodata has
-        been imported yet.
+        The most recently imported non-development dataset version, falling back
+        to development seed data only when no regular geodata exists.
     """
-    return GeoDatasetVersion.objects.order_by("-imported_at", "-id").first()
+    ordering = ("-imported_at", "-id")
+    dataset_version = (
+        GeoDatasetVersion.objects.exclude(name__in=DEVELOPMENT_DATASET_NAMES)
+        .order_by(*ordering)
+        .first()
+    )
+    if dataset_version is not None:
+        return dataset_version
+    return GeoDatasetVersion.objects.order_by(*ordering).first()
 
 
 def get_current_cantons() -> QuerySet[Canton]:
