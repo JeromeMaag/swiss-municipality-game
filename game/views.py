@@ -117,6 +117,7 @@ def get_last_guess_result(request) -> Guess | None:
         Guess.objects.select_related("turn__game", "turn__target")
         .only(
             "id",
+            "point",
             "distance_to_municipality_m",
             "distance_to_boundary_m",
             "score",
@@ -155,6 +156,8 @@ def render_game_index(
     turns = []
     current_turn = None
     current_target_name = ""
+    reveal_guess_lat = ""
+    reveal_guess_lng = ""
     if active_game is not None:
         turns = list(
             active_game.turns.only(
@@ -173,6 +176,9 @@ def render_game_index(
             current_target_name = Municipality.objects.only("name").get(
                 pk=current_turn.target_id
             ).name
+    if last_guess is not None:
+        reveal_guess_lat = f"{last_guess.point.y:.6f}"
+        reveal_guess_lng = f"{last_guess.point.x:.6f}"
     return render(
         request,
         "game/index.html",
@@ -181,6 +187,10 @@ def render_game_index(
             "current_turn": current_turn,
             "current_target_name": current_target_name,
             "last_guess": last_guess,
+            "reveal_guess_lat": reveal_guess_lat,
+            "reveal_guess_lng": reveal_guess_lng,
+            "show_game_map": active_game is not None
+            and (current_turn is not None or last_guess is not None),
             "turn_count": TURN_COUNT,
             "turns": turns,
             "error": error,

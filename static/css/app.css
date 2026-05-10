@@ -47,7 +47,8 @@ body {
 
 .site-nav button,
 .auth-form button,
-.game-panel button {
+.game-panel button,
+.button-link {
   background: #245a73;
   border: 0;
   color: #ffffff;
@@ -133,6 +134,12 @@ body {
 
 .game-panel button {
   padding: 0.65rem 0.9rem;
+}
+
+.button-link {
+  display: inline-block;
+  padding: 0.65rem 0.9rem;
+  text-decoration: none;
 }
 
 .game-layout {
@@ -283,6 +290,11 @@ body {
   height: 0.35rem;
   margin: 0.45rem auto 0;
   width: 0.35rem;
+}
+
+.guess-marker--revealed {
+  background: #ffcf4a;
+  box-shadow: 0 0 0 2px #5c3d00, 0 0.35rem 1rem rgba(23, 32, 42, 0.34);
 }
 
 .map-placeholder {

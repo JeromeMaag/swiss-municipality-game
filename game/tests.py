@@ -669,10 +669,17 @@ class GameStartTests(TestCase):
         self.assertContains(response, "1000")
         self.assertContains(response, "Distance to municipality")
         self.assertContains(response, "0 m")
-        self.assertContains(response, "Turn 2 of 5")
+        self.assertContains(response, "Next turn")
+        self.assertContains(response, 'id="game-map"')
+        self.assertContains(response, f'data-reveal-target-id="{first_turn.target.id}"')
+        self.assertContains(response, 'data-reveal-lat="47.050000"')
+        self.assertContains(response, 'data-reveal-lng="8.050000"')
+        self.assertNotContains(response, "Turn 2 of 5")
+        self.assertNotContains(response, "data-guess-form")
 
         response = self.client.get(reverse("game:index"))
         self.assertNotContains(response, "Result")
+        self.assertContains(response, "Turn 2 of 5")
 
     def test_guess_view_shows_final_result_for_finished_game(self) -> None:
         """Final-turn submissions render the finished game result."""
@@ -699,8 +706,13 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Game finished")
         self.assertContains(response, "Result")
         self.assertContains(response, "Total score")
+        self.assertContains(response, "Start new game")
+        self.assertContains(response, 'id="game-map"')
+        self.assertContains(response, f'data-reveal-target-id="{municipality.id}"')
+        self.assertContains(response, 'data-reveal-lat="47.050000"')
+        self.assertContains(response, 'data-reveal-lng="8.050000"')
         self.assertNotContains(response, "No active game yet.")
-        self.assertNotContains(response, 'id="game-map"')
+        self.assertNotContains(response, "data-guess-form")
 
     def test_guess_view_returns_error_for_invalid_guess(self) -> None:
         """Guess endpoint renders validation errors for invalid submissions."""

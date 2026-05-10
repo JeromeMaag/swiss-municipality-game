@@ -26,6 +26,7 @@
       .then(function (data) {
         const layer = window.L.geoJSON(data, {
           interactive: false,
+          onEachFeature: options.onEachFeature,
           style: options.style,
         }).addTo(map);
 
@@ -79,6 +80,12 @@
     return marker;
   }
 
+  function createRevealedGuessMarker(map) {
+    const marker = createGuessMarker(map);
+    marker.classList.add("guess-marker--revealed");
+    return marker;
+  }
+
   function positionGuessMarker(map, marker, latlng) {
     const point = map.latLngToContainerPoint(latlng);
     marker.style.transform = (
@@ -124,6 +131,86 @@
     });
   }
 
+  function readRevealState(mapElement) {
+    const targetId = mapElement.dataset.revealTargetId;
+    const latitude = Number.parseFloat(mapElement.dataset.revealLat);
+    const longitude = Number.parseFloat(mapElement.dataset.revealLng);
+    if (!targetId || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+    return {
+      latlng: window.L.latLng(latitude, longitude),
+      targetId: targetId,
+    };
+  }
+
+  function initializeReveal(map, revealState) {
+    const marker = createRevealedGuessMarker(map);
+
+    function updateMarkerPosition() {
+      positionGuessMarker(map, marker, revealState.latlng);
+    }
+
+    map.getContainer().classList.add("game-map--reveal");
+    map.on("move zoom resize viewreset", updateMarkerPosition);
+    updateMarkerPosition();
+  }
+
+  function isTargetFeature(feature, targetId) {
+    return Boolean(
+      feature &&
+      feature.properties &&
+      String(feature.properties.id) === String(targetId)
+    );
+  }
+
+  function municipalityStyle(revealState) {
+    return function (feature) {
+      if (revealState && isTargetFeature(feature, revealState.targetId)) {
+        return {
+          color: "#7cff8b",
+          fillColor: "#1b8f5a",
+          fillOpacity: 0.28,
+          opacity: 1,
+          weight: 2,
+        };
+      }
+      return {
+        color: "#ffffff",
+        fillOpacity: 0,
+        opacity: 0.75,
+        weight: 0.6,
+      };
+    };
+  }
+
+  function findTargetLayer(layer, targetId) {
+    let targetLayer = null;
+    if (!layer) {
+      return null;
+    }
+    layer.eachLayer(function (featureLayer) {
+      if (targetLayer === null && isTargetFeature(featureLayer.feature, targetId)) {
+        targetLayer = featureLayer;
+      }
+    });
+    return targetLayer;
+  }
+
+  function fitRevealBounds(map, municipalityLayer, revealState) {
+    const bounds = window.L.latLngBounds([revealState.latlng]);
+    const targetLayer = findTargetLayer(municipalityLayer, revealState.targetId);
+    if (targetLayer !== null) {
+      bounds.extend(targetLayer.getBounds());
+    }
+
+    map.fitBounds(bounds, {
+      animate: false,
+      maxZoom: 12,
+      padding: [42, 42],
+    });
+  }
+
   function initializeGameMap() {
     const mapElement = document.getElementById("game-map");
     if (!mapElement || !window.L || mapElement.dataset.initialized === "true") {
@@ -137,6 +224,7 @@
     const latitude = readNumber(mapElement, "centerLat", 46.8182);
     const longitude = readNumber(mapElement, "centerLng", 8.2275);
     const zoom = readNumber(mapElement, "zoom", 8);
+    const revealState = readRevealState(mapElement);
     const map = window.L.map(mapElement, {
       attributionControl: true,
       maxBounds: switzerlandBounds,
@@ -149,18 +237,20 @@
     map.setView([latitude, longitude], zoom);
     addBaseMapLayer(map, mapElement.dataset.baseMapUrl);
     window.L.control.scale({ imperial: false, metric: true }).addTo(map);
-    initializeGuessInteraction(map);
+    if (revealState) {
+      initializeReveal(map, revealState);
+    } else {
+      initializeGuessInteraction(map);
+    }
     mapElement.dataset.initialized = "true";
     addBoundaryLayer(map, mapElement.dataset.municipalityBoundariesUrl, {
       errorMessage: "Municipality boundaries could not be loaded.",
-      fitBounds: true,
-      style: {
-        color: "#ffffff",
-        fillOpacity: 0,
-        opacity: 0.75,
-        weight: 0.6,
-      },
-    }).then(function () {
+      fitBounds: !revealState,
+      style: municipalityStyle(revealState),
+    }).then(function (municipalityLayer) {
+      if (revealState && municipalityLayer !== null) {
+        fitRevealBounds(map, municipalityLayer, revealState);
+      }
       return addBoundaryLayer(map, mapElement.dataset.cantonBoundariesUrl, {
         errorMessage: "Canton boundaries could not be loaded.",
         fitBounds: false,
