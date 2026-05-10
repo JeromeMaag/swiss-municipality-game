@@ -1092,6 +1092,28 @@ class GameStartTests(TestCase):
         self.assertNotContains(response, "Result")
         self.assertContains(response, "Turn 2 of 5")
 
+    def test_guess_view_shows_zero_population_when_present(self) -> None:
+        """Game index distinguishes a zero population value from missing data."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+        game = start_game(self.user)
+        first_turn = game.turns.select_related("target").order_by("turn_number").first()
+        first_turn.target.population = 0
+        first_turn.target.save(update_fields=["population"])
+
+        response = self.client.post(
+            reverse("game:guess"),
+            {
+                "turn_id": first_turn.id,
+                "latitude": "47.05",
+                "longitude": "8.05",
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "Population")
+        self.assertContains(response, "<dd>0</dd>", html=True)
+
     def test_guess_view_shows_final_result_for_finished_game(self) -> None:
         """Final-turn submissions render the finished game result."""
         municipality = self.create_municipalities(1)[0]

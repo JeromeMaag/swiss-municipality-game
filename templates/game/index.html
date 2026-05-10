@@ -48,7 +48,7 @@
                   <dt>Canton</dt>
                   <dd>{{ last_guess.turn.target.canton.name }} ({{ last_guess.turn.target.canton.abbreviation }})</dd>
                 </div>
-                {% if last_guess.turn.target.population %}
+                {% if last_guess.turn.target.population is not None %}
                   <div>
                     <dt>Population</dt>
                     <dd>{{ last_guess.turn.target.population }}</dd>

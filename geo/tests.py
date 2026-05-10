@@ -26,6 +26,7 @@ from .management.commands.import_statpop_population import (
     apply_population_aggregation,
     parse_statpop_population_csv,
 )
+from .management.commands.setup_geodata import validate_setup_result
 from .management.commands.seed_dev_geodata import (
     DATASET_NAME,
     DATASET_VERSION,
@@ -1099,12 +1100,19 @@ class ImportStatpopPopulationCommandTests(TestCase):
             geom=make_test_geometry(),
         )
 
-    def create_municipality(self, bfs_number: int, name: str) -> Municipality:
+    def create_municipality(
+        self,
+        bfs_number: int,
+        name: str,
+        *,
+        is_active: bool = True,
+    ) -> Municipality:
         """Create one municipality in the shared dataset version.
 
         Args:
             bfs_number: Municipality BFS number.
             name: Municipality display name.
+            is_active: Whether the municipality is current.
 
         Returns:
             Created municipality.
@@ -1114,6 +1122,7 @@ class ImportStatpopPopulationCommandTests(TestCase):
             bfs_number=bfs_number,
             name=name,
             canton=self.canton,
+            is_active=is_active,
             geom=make_test_geometry(),
         )
 
@@ -1226,6 +1235,52 @@ class ImportStatpopPopulationCommandTests(TestCase):
         fetch_statpop_csv.assert_called_once_with(mock.ANY, "2024")
         self.assertIn("Updated 3 municipalities", output.getvalue())
         self.assertIn("BFS STATPOP 2024", output.getvalue())
+
+    def test_command_ignores_inactive_municipalities_for_missing_values(self) -> None:
+        """Command only requires STATPOP values for active municipalities."""
+        zurich = self.create_municipality(261, "Zurich")
+        inactive = self.create_municipality(
+            9999,
+            "Inactive Municipality",
+            is_active=False,
+        )
+        statpop_csv = "\n".join(
+            [
+                (
+                    '"Year","Canton (-) / District (>>) / Commune (......)",'
+                    '"Population type","Domicile 1 year ago","Sex","Age - total"'
+                ),
+                (
+                    '"2024","......0261 Zurich","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",443000'
+                ),
+            ]
+        )
+        output = StringIO()
+
+        with (
+            mock.patch(
+                "geo.management.commands.import_statpop_population."
+                "fetch_statpop_metadata",
+                return_value={"variables": [{"code": "Jahr", "values": ["2024"]}]},
+            ),
+            mock.patch(
+                "geo.management.commands.import_statpop_population.fetch_statpop_csv",
+                return_value=statpop_csv,
+            ),
+        ):
+            call_command(
+                "import_statpop_population",
+                "--dataset-version",
+                "2026-01-01",
+                stdout=output,
+            )
+
+        zurich.refresh_from_db()
+        inactive.refresh_from_db()
+        self.assertEqual(zurich.population, 443000)
+        self.assertIsNone(inactive.population)
+        self.assertIn("Updated 1 municipalities", output.getvalue())
 
     def test_command_rejects_missing_current_municipality_population(self) -> None:
         """Command fails when current municipalities have no STATPOP value."""
@@ -1373,6 +1428,28 @@ class SetupGeodataCommandTests(TestCase):
                     "2026-01-01",
                     stdout=StringIO(),
                 )
+
+    def test_setup_validation_ignores_inactive_municipality_population(self) -> None:
+        """Setup validation only requires population for active municipalities."""
+        active_municipality = self.create_imported_dataset(
+            municipality_population=443000
+        )
+        Municipality.objects.create(
+            dataset_version=active_municipality.dataset_version,
+            bfs_number=9999,
+            name="Inactive Municipality",
+            canton=active_municipality.canton,
+            is_active=False,
+            geom=make_test_geometry(),
+        )
+
+        municipality_count, missing_population_count = validate_setup_result(
+            active_municipality.dataset_version,
+            allow_incomplete_population=False,
+        )
+
+        self.assertEqual(municipality_count, 1)
+        self.assertEqual(missing_population_count, 0)
 
     def test_command_can_allow_incomplete_population(self) -> None:
         """Setup command can finish with explicit incomplete-population allowance."""

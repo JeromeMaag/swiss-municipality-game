@@ -440,9 +440,11 @@ def population_rows_for_dataset(
     """
     rows = []
     missing_bfs_numbers = []
-    current_bfs_numbers = Municipality.objects.filter(
-        dataset_version=dataset_version
-    ).values_list("bfs_number", flat=True).order_by("bfs_number")
+    current_bfs_numbers = (
+        Municipality.objects.filter(dataset_version=dataset_version, is_active=True)
+        .values_list("bfs_number", flat=True)
+        .order_by("bfs_number")
+    )
     for bfs_number in current_bfs_numbers:
         population = population_by_bfs.get(bfs_number)
         if population is None:

@@ -149,7 +149,10 @@ def validate_setup_result(
     if not dataset_version.cantons.exists():
         raise CommandError(f"{dataset_version} has no cantons.")
 
-    municipalities = Municipality.objects.filter(dataset_version=dataset_version)
+    municipalities = Municipality.objects.filter(
+        dataset_version=dataset_version,
+        is_active=True,
+    )
     municipality_count = municipalities.count()
     if municipality_count == 0:
         raise CommandError(f"{dataset_version} has no municipalities.")
