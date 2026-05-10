@@ -355,6 +355,26 @@ body {
   box-shadow: 0 0 0 2px #5c3d00, 0 0.35rem 1rem rgba(23, 32, 42, 0.34);
 }
 
+.municipality-label-marker {
+  background: transparent;
+  border: 0;
+  pointer-events: none;
+}
+
+.municipality-label {
+  background: rgba(255, 255, 255, 0.48);
+  color: #17202a;
+  display: inline-block;
+  font-size: 0.58rem;
+  font-weight: 600;
+  line-height: 1.1;
+  opacity: 0.82;
+  padding: 0.05rem 0.14rem;
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.9);
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+}
+
 .map-placeholder {
   min-height: 520px;
 }

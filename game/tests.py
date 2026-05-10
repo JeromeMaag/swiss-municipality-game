@@ -1081,6 +1081,11 @@ class GameStartTests(TestCase):
             response,
             f'data-tracking-url="{reverse("game:track_turn_event", args=[first_turn.id])}"',
         )
+        self.assertContains(
+            response,
+            f'data-municipality-labels-url="{reverse("geo:municipality_labels_geojson")}"',
+        )
+        self.assertContains(response, 'data-label-min-zoom="12"')
         self.assertContains(response, 'id="game-map"')
         self.assertContains(response, f'data-reveal-target-id="{first_turn.target.id}"')
         self.assertContains(response, 'data-reveal-lat="47.050000"')
@@ -1144,6 +1149,11 @@ class GameStartTests(TestCase):
         self.assertContains(response, "View summary")
         self.assertContains(response, reverse("game:summary", args=[game.id]))
         self.assertContains(response, 'id="game-map"')
+        self.assertContains(
+            response,
+            f'data-municipality-labels-url="{reverse("geo:municipality_labels_geojson")}"',
+        )
+        self.assertContains(response, 'data-label-min-zoom="12"')
         self.assertContains(response, f'data-reveal-target-id="{municipality.id}"')
         self.assertContains(response, 'data-reveal-lat="47.050000"')
         self.assertContains(response, 'data-reveal-lng="8.050000"')
@@ -1233,6 +1243,9 @@ class GameStartTests(TestCase):
                 f'{reverse("geo:municipality_boundaries_geojson")}"'
             ),
         )
+        self.assertNotContains(response, "data-municipality-labels-url")
+        self.assertNotContains(response, "data-label-min-zoom")
+        self.assertNotContains(response, reverse("geo:municipality_labels_geojson"))
         for future_target in future_targets:
             self.assertNotContains(response, future_target)
 

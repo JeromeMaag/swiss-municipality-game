@@ -253,6 +253,7 @@ class GeoJSONEndpointTests(TestCase):
         urls = [
             reverse("geo:cantons_geojson"),
             reverse("geo:municipality_boundaries_geojson"),
+            reverse("geo:municipality_labels_geojson"),
         ]
 
         for url in urls:
@@ -284,6 +285,29 @@ class GeoJSONEndpointTests(TestCase):
         self.assertNotIn("name", properties)
         self.assertNotIn("canton", properties)
         self.assertNotIn("canton_abbreviation", properties)
+
+    def test_municipality_labels_include_reveal_properties(self) -> None:
+        """Municipality label endpoint returns names for reveal mode."""
+        response = self.client.get(reverse("geo:municipality_labels_geojson"))
+        data = self.assert_geojson_response(response)
+
+        self.assertEqual(data["type"], "FeatureCollection")
+        self.assertEqual(len(data["features"]), 1)
+        feature = data["features"][0]
+        self.assertEqual(feature["geometry"]["type"], "Point")
+        self.assertEqual(feature["properties"]["id"], self.municipality.id)
+        self.assertEqual(feature["properties"]["name"], "Zurich")
+        self.assertEqual(feature["properties"]["canton_abbreviation"], "ZH")
+
+    def test_municipality_labels_skip_missing_label_points(self) -> None:
+        """Municipality label endpoint omits municipalities without label points."""
+        self.municipality.label_point = None
+        self.municipality.save(update_fields=["label_point"])
+
+        response = self.client.get(reverse("geo:municipality_labels_geojson"))
+        data = self.assert_geojson_response(response)
+
+        self.assertEqual(data["features"], [])
 
     def test_boundary_responses_are_cacheable_per_browser(self) -> None:
         """Boundary endpoints expose private browser cache metadata."""
@@ -372,6 +396,7 @@ class GeoJSONEndpointTests(TestCase):
         urls = [
             reverse("geo:cantons_geojson"),
             reverse("geo:municipality_boundaries_geojson"),
+            reverse("geo:municipality_labels_geojson"),
         ]
 
         for url in urls:

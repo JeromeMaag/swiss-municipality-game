@@ -13,10 +13,12 @@ from .selectors import (
     get_cantons_for_dataset,
     get_current_dataset_version,
     get_municipalities_for_dataset,
+    get_municipality_labels_for_dataset,
 )
 from .serializers import (
     serialize_canton_boundaries,
     serialize_municipality_boundaries,
+    serialize_municipality_labels,
 )
 
 
@@ -168,5 +170,25 @@ def municipality_boundaries(request):
         "municipalities",
         lambda dataset_version: serialize_municipality_boundaries(
             get_municipalities_for_dataset(dataset_version)
+        ),
+    )
+
+
+@login_required
+@require_GET
+def municipality_labels(request):
+    """Return current municipality label points for reveal mode.
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        A GeoJSON FeatureCollection response with municipality names.
+    """
+    return cached_geojson_response(
+        request,
+        "municipality-labels",
+        lambda dataset_version: serialize_municipality_labels(
+            get_municipality_labels_for_dataset(dataset_version)
         ),
     )

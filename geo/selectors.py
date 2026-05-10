@@ -68,3 +68,32 @@ def get_municipalities_for_dataset(
         dataset_version=dataset_version,
         is_active=True,
     ).order_by("id")
+
+
+def get_municipality_labels_for_dataset(
+    dataset_version: GeoDatasetVersion,
+) -> QuerySet[Municipality]:
+    """Return active municipalities with label points for one dataset version.
+
+    Args:
+        dataset_version: Dataset version to query.
+
+    Returns:
+        A queryset of active municipalities prepared for label serialization.
+    """
+    return (
+        Municipality.objects.filter(
+            dataset_version=dataset_version,
+            is_active=True,
+            label_point__isnull=False,
+        )
+        .select_related("canton")
+        .only(
+            "id",
+            "name",
+            "label_point",
+            "canton__id",
+            "canton__abbreviation",
+        )
+        .order_by("id")
+    )

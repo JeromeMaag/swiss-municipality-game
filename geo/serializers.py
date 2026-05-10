@@ -111,3 +111,23 @@ def serialize_municipality_boundaries(
             "id": municipality.id,
         },
     )
+
+
+def serialize_municipality_labels(municipalities: Iterable[Municipality]) -> str:
+    """Serialize municipality label points with names for reveal mode.
+
+    Args:
+        municipalities: Municipality objects to serialize.
+
+    Returns:
+        A GeoJSON FeatureCollection string with label point features.
+    """
+    return feature_collection(
+        municipalities,
+        lambda municipality: municipality.label_point,
+        lambda municipality: {
+            "id": municipality.id,
+            "name": municipality.name,
+            "canton_abbreviation": municipality.canton.abbreviation,
+        },
+    )

@@ -81,6 +81,80 @@
       });
   }
 
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function updateLayerVisibility(map, layer, minZoom) {
+    if (!layer) {
+      return;
+    }
+
+    if (map.getZoom() >= minZoom) {
+      if (!map.hasLayer(layer)) {
+        layer.addTo(map);
+      }
+      return;
+    }
+
+    if (map.hasLayer(layer)) {
+      map.removeLayer(layer);
+    }
+  }
+
+  function addLabelLayer(map, url, minZoom) {
+    if (!url) {
+      return Promise.resolve(null);
+    }
+
+    return window.fetch(url, {
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/geo+json, application/json",
+      },
+    })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("Label request failed with status " + response.status);
+        }
+        return response.json();
+      })
+      .then(function (data) {
+        const layer = window.L.geoJSON(data, {
+          interactive: false,
+          pointToLayer: function (feature, latlng) {
+            const properties = feature.properties || {};
+            return window.L.marker(latlng, {
+              icon: window.L.divIcon({
+                className: "municipality-label-marker",
+                html: (
+                  '<span class="municipality-label">' +
+                  escapeHtml(properties.name) +
+                  "</span>"
+                ),
+              }),
+              interactive: false,
+            });
+          },
+        });
+
+        updateLayerVisibility(map, layer, minZoom);
+        map.on("zoomend", function () {
+          updateLayerVisibility(map, layer, minZoom);
+        });
+        return layer;
+      })
+      .catch(function () {
+        showMapStatus(map, "Municipality labels could not be loaded.");
+        return null;
+      });
+  }
+
   function showMapStatus(map, message) {
     const statusElement = map.getContainer().parentElement.querySelector(
       "[data-map-status]"
@@ -293,6 +367,7 @@
     const latitude = readNumber(mapElement, "centerLat", 46.8182);
     const longitude = readNumber(mapElement, "centerLng", 8.2275);
     const zoom = readNumber(mapElement, "zoom", 8);
+    const labelMinZoom = readNumber(mapElement, "labelMinZoom", 12);
     const revealState = readRevealState(mapElement);
     const map = window.L.map(mapElement, {
       attributionControl: true,
@@ -331,6 +406,15 @@
           weight: 1.4,
         },
       });
+    }).then(function () {
+      if (revealState) {
+        return addLabelLayer(
+          map,
+          mapElement.dataset.municipalityLabelsUrl,
+          labelMinZoom
+        );
+      }
+      return null;
     });
 
     window.setTimeout(function () {
