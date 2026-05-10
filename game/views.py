@@ -180,7 +180,7 @@ def validate_tracking_event_state(*, event_type: str, turn: Turn) -> None:
         return
 
     if event_type == GameEvent.Type.REVEAL_SHOWN:
-        if turn.revealed_at is None:
+        if turn.revealed_at is None or not is_latest_revealed_turn(turn):
             raise ValueError("Tracking event is not valid for this turn state.")
         return
 
@@ -191,10 +191,26 @@ def validate_tracking_event_state(*, event_type: str, turn: Turn) -> None:
         ).exists()
         if (
             turn.revealed_at is None
+            or not is_latest_revealed_turn(turn)
             or turn.game.status != Game.Status.ACTIVE
             or not next_turn_exists
         ):
             raise ValueError("Tracking event is not valid for this turn state.")
+
+
+def is_latest_revealed_turn(turn: Turn) -> bool:
+    """Return whether a turn is the latest revealed turn in its game.
+
+    Args:
+        turn: Turn to compare against the game state.
+
+    Returns:
+        True when no later turn has already been revealed.
+    """
+    return not turn.game.turns.filter(
+        revealed_at__isnull=False,
+        turn_number__gt=turn.turn_number,
+    ).exists()
 
 
 @login_required

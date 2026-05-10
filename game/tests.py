@@ -773,6 +773,47 @@ class GameStartTests(TestCase):
             ).exists()
         )
 
+    def test_tracking_event_rejects_stale_revealed_turn(self) -> None:
+        """Tracking endpoint only accepts post-reveal events for latest reveal."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+        game = start_game(self.user)
+        turns = list(game.turns.order_by("turn_number"))
+        submit_guess(self.user, turns[0].id, 47.05, 8.05)
+        submit_guess(self.user, turns[1].id, 47.05, 8.05)
+
+        stale_reveal_response = self.post_tracking_event(
+            turns[0],
+            event_type=GameEvent.Type.REVEAL_SHOWN,
+        )
+        stale_next_turn_response = self.post_tracking_event(
+            turns[0],
+            event_type=GameEvent.Type.NEXT_TURN_CLICKED,
+        )
+        latest_reveal_response = self.post_tracking_event(
+            turns[1],
+            event_type=GameEvent.Type.REVEAL_SHOWN,
+        )
+        latest_next_turn_response = self.post_tracking_event(
+            turns[1],
+            event_type=GameEvent.Type.NEXT_TURN_CLICKED,
+        )
+
+        self.assertEqual(stale_reveal_response.status_code, 400)
+        self.assertEqual(stale_next_turn_response.status_code, 400)
+        self.assertEqual(latest_reveal_response.status_code, 204)
+        self.assertEqual(latest_next_turn_response.status_code, 204)
+        self.assertFalse(
+            GameEvent.objects.filter(
+                game=game,
+                turn=turns[0],
+                event_type__in=[
+                    GameEvent.Type.REVEAL_SHOWN,
+                    GameEvent.Type.NEXT_TURN_CLICKED,
+                ],
+            ).exists()
+        )
+
     def test_tracking_event_rejects_next_turn_for_finished_game(self) -> None:
         """Tracking endpoint rejects next-turn clicks after the final turn."""
         municipality = self.create_municipalities(1)[0]
