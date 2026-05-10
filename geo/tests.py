@@ -22,6 +22,10 @@ from tests.utils import make_test_geometry
 
 from .management.commands.import_boundaries import simplify_geometry, to_float, to_int
 from .management.commands.import_population import read_csv_rows
+from .management.commands.import_statpop_population import (
+    apply_population_aggregation,
+    parse_statpop_population_csv,
+)
 from .management.commands.seed_dev_geodata import (
     DATASET_NAME,
     DATASET_VERSION,
@@ -1076,6 +1080,190 @@ class ImportPopulationCommandTests(TestCase):
             ):
                 with self.assertRaises(CommandError):
                     call_command("import_population", "population.csv", stdout=StringIO())
+
+
+class ImportStatpopPopulationCommandTests(TestCase):
+    """Tests for the official BFS STATPOP population import command."""
+
+    def setUp(self) -> None:
+        """Create shared geodata fixtures for STATPOP import tests."""
+        self.dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2026-01-01",
+        )
+        self.canton = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+
+    def create_municipality(self, bfs_number: int, name: str) -> Municipality:
+        """Create one municipality in the shared dataset version.
+
+        Args:
+            bfs_number: Municipality BFS number.
+            name: Municipality display name.
+
+        Returns:
+            Created municipality.
+        """
+        return Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=bfs_number,
+            name=name,
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+    def test_parse_statpop_population_csv_extracts_municipality_rows(self) -> None:
+        """STATPOP parser extracts municipality rows and skips aggregate rows."""
+        statpop_csv = "\n".join(
+            [
+                (
+                    '"Year","Canton (-) / District (>>) / Commune (......)",'
+                    '"Population type","Domicile 1 year ago","Sex","Age - total"'
+                ),
+                (
+                    '"2024","Switzerland","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",9051029'
+                ),
+                (
+                    '"2024","- Zurich","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",1620020'
+                ),
+                (
+                    '"2024","......0261 Zurich","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",443000'
+                ),
+            ]
+        )
+
+        population_by_bfs = parse_statpop_population_csv(statpop_csv)
+
+        self.assertEqual(population_by_bfs, {261: 443000})
+
+    def test_apply_population_aggregation_adds_successor_municipalities(self) -> None:
+        """Known municipality mutations are aggregated onto successor BFS numbers."""
+        population_by_bfs = apply_population_aggregation(
+            {
+                2016: 550,
+                2027: 650,
+                5146: 100,
+                5149: 200,
+                5181: 300,
+                5200: 400,
+                5207: 500,
+            }
+        )
+
+        self.assertEqual(population_by_bfs[2056], 1200)
+        self.assertEqual(population_by_bfs[5395], 1500)
+        self.assertEqual(apply_population_aggregation({1065: 6500})[1065], 6500)
+
+    def test_command_imports_latest_statpop_population(self) -> None:
+        """Command imports the latest STATPOP data into the target dataset."""
+        zurich = self.create_municipality(261, "Zurich")
+        root = self.create_municipality(1065, "Root")
+        fetigny_menieres = self.create_municipality(2056, "Fetigny-Menieres")
+        statpop_csv = "\n".join(
+            [
+                (
+                    '"Year","Canton (-) / District (>>) / Commune (......)",'
+                    '"Population type","Domicile 1 year ago","Sex","Age - total"'
+                ),
+                (
+                    '"2024","......0261 Zurich","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",443000'
+                ),
+                (
+                    '"2024","......1065 Root","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",6000'
+                ),
+                (
+                    '"2024","......1057 Honau","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",500'
+                ),
+                (
+                    '"2024","......2016 Fetigny","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",700'
+                ),
+                (
+                    '"2024","......2027 Menieres","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",800'
+                ),
+            ]
+        )
+        output = StringIO()
+
+        with (
+            mock.patch(
+                "geo.management.commands.import_statpop_population."
+                "fetch_statpop_metadata",
+                return_value={
+                    "variables": [{"code": "Jahr", "values": ["2023", "2024"]}]
+                },
+            ),
+            mock.patch(
+                "geo.management.commands.import_statpop_population.fetch_statpop_csv",
+                return_value=statpop_csv,
+            ) as fetch_statpop_csv,
+        ):
+            call_command(
+                "import_statpop_population",
+                "--dataset-version",
+                "2026-01-01",
+                stdout=output,
+            )
+
+        zurich.refresh_from_db()
+        root.refresh_from_db()
+        fetigny_menieres.refresh_from_db()
+        self.assertEqual(zurich.population, 443000)
+        self.assertEqual(root.population, 6500)
+        self.assertEqual(fetigny_menieres.population, 1500)
+        fetch_statpop_csv.assert_called_once_with(mock.ANY, "2024")
+        self.assertIn("Updated 3 municipalities", output.getvalue())
+        self.assertIn("BFS STATPOP 2024", output.getvalue())
+
+    def test_command_rejects_missing_current_municipality_population(self) -> None:
+        """Command fails when current municipalities have no STATPOP value."""
+        self.create_municipality(9999, "Missing Municipality")
+        statpop_csv = "\n".join(
+            [
+                (
+                    '"Year","Canton (-) / District (>>) / Commune (......)",'
+                    '"Population type","Domicile 1 year ago","Sex","Age - total"'
+                ),
+                (
+                    '"2024","......0261 Zurich","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",443000'
+                ),
+            ]
+        )
+
+        with (
+            mock.patch(
+                "geo.management.commands.import_statpop_population."
+                "fetch_statpop_metadata",
+                return_value={"variables": [{"code": "Jahr", "values": ["2024"]}]},
+            ),
+            mock.patch(
+                "geo.management.commands.import_statpop_population.fetch_statpop_csv",
+                return_value=statpop_csv,
+            ),
+        ):
+            with self.assertRaisesMessage(
+                CommandError,
+                "Missing STATPOP population values",
+            ):
+                call_command(
+                    "import_statpop_population",
+                    "--dataset-version",
+                    "2026-01-01",
+                    stdout=StringIO(),
+                )
 
 
 class SeedDevGeodataCommandTests(TestCase):
