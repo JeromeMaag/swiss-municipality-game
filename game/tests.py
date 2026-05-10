@@ -15,7 +15,34 @@ from tests.utils import make_test_geometry
 from tracking.models import GameEvent
 
 from .models import Game, Guess, Turn
+from .scoring import calculate_score
 from .services import NotEnoughMunicipalitiesError, start_game
+
+
+class ScoringTests(TestCase):
+    """Tests for game scoring helpers."""
+
+    def test_calculate_score_returns_maximum_for_exact_hit(self) -> None:
+        """An exact hit receives the maximum score."""
+        self.assertEqual(calculate_score(0), 1000)
+
+    def test_calculate_score_decays_with_distance(self) -> None:
+        """Scores decay according to the configured distance curve."""
+        self.assertEqual(calculate_score(5_000), 819)
+        self.assertEqual(calculate_score(25_000), 368)
+        self.assertEqual(calculate_score(100_000), 18)
+
+    def test_calculate_score_rejects_negative_distance(self) -> None:
+        """Negative distances are invalid."""
+        with self.assertRaises(ValueError):
+            calculate_score(-1)
+
+    def test_calculate_score_rejects_non_finite_distance(self) -> None:
+        """Infinite and NaN distances are invalid."""
+        for distance in (float("inf"), float("nan")):
+            with self.subTest(distance=distance):
+                with self.assertRaises(ValueError):
+                    calculate_score(distance)
 
 
 class GameModelTests(TestCase):
