@@ -9,6 +9,7 @@ from django.core.management.base import CommandError
 
 
 MAX_VALIDATED_REDIRECTS = 5
+ENTITY_HEADERS = {"content-length", "content-type", "transfer-encoding"}
 
 
 class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -63,11 +64,17 @@ def open_url_with_validated_redirects(
 
             location = error.headers.get("Location")
             if not location:
-                raise CommandError("Redirect response is missing a Location header.")
+                raise CommandError(
+                    "Redirect response is missing a Location header."
+                ) from error
 
             redirect_url = urljoin(error.geturl(), location)
             validate_url(redirect_url)
-            current_request = build_redirect_request(current_request, redirect_url)
+            current_request = build_redirect_request(
+                current_request,
+                redirect_url,
+                error.code,
+            )
             continue
 
         validate_url(response.geturl())
@@ -79,19 +86,46 @@ def open_url_with_validated_redirects(
 def build_redirect_request(
     original_request: urllib.request.Request,
     redirect_url: str,
+    status_code: int,
 ) -> urllib.request.Request:
     """Build a follow-up request for a validated redirect URL.
 
     Args:
         original_request: Request that received the redirect.
         redirect_url: Validated absolute redirect target.
+        status_code: Redirect response status code.
 
     Returns:
         Request targeting the redirect URL.
     """
+    if status_code in {301, 302, 303}:
+        return urllib.request.Request(
+            redirect_url,
+            headers=redirect_get_headers(original_request),
+            method="GET",
+        )
+
     return urllib.request.Request(
         redirect_url,
         data=original_request.data,
         headers=dict(original_request.header_items()),
         method=original_request.get_method(),
     )
+
+
+def redirect_get_headers(
+    original_request: urllib.request.Request,
+) -> dict[str, str]:
+    """Return headers safe to reuse after switching a redirect to GET.
+
+    Args:
+        original_request: Request that received the redirect.
+
+    Returns:
+        Original headers without request-body-specific headers.
+    """
+    return {
+        name: value
+        for name, value in original_request.header_items()
+        if name.lower() not in ENTITY_HEADERS
+    }

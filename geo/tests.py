@@ -7,6 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 from urllib.error import HTTPError
+from urllib.request import Request
 import zipfile
 
 import geopandas as gpd
@@ -22,10 +23,12 @@ from django.urls import reverse
 from django.utils import timezone
 from shapely.geometry import Polygon
 
+from geo.admin_views import truncate_command_output
 from geo.constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
 from game.models import Game, Turn
 from tests.utils import make_test_geometry
 
+from .management.commands._http import build_redirect_request
 from .management.commands.import_boundaries import (
     list_available_layers,
     resolve_data_source,
@@ -95,6 +98,52 @@ def make_redirect_error(url: str, location: str) -> HTTPError:
         HTTPError representing a redirect response.
     """
     return HTTPError(url, 302, "Found", {"Location": location}, None)
+
+
+class GeoHttpHelperTests(TestCase):
+    """Tests for shared geodata HTTP helpers."""
+
+    def test_common_redirect_switches_post_to_get_without_body_headers(self) -> None:
+        """301, 302, and 303 redirects drop POST bodies before refetching."""
+        original_request = Request(
+            "https://www.pxweb.bfs.admin.ch/table.px",
+            data=b'{"query":[]}',
+            headers={"Accept": "text/csv", "Content-Type": "application/json"},
+            method="POST",
+        )
+
+        redirect_request = build_redirect_request(
+            original_request,
+            "https://www.pxweb.bfs.admin.ch/redirected.px",
+            303,
+        )
+
+        self.assertEqual(redirect_request.get_method(), "GET")
+        self.assertIsNone(redirect_request.data)
+        self.assertEqual(dict(redirect_request.header_items())["Accept"], "text/csv")
+        self.assertNotIn("Content-type", dict(redirect_request.header_items()))
+
+    def test_temporary_redirect_preserves_method_and_body(self) -> None:
+        """307 and 308 redirects preserve the original request semantics."""
+        original_request = Request(
+            "https://www.pxweb.bfs.admin.ch/table.px",
+            data=b'{"query":[]}',
+            headers={"Accept": "text/csv", "Content-Type": "application/json"},
+            method="POST",
+        )
+
+        redirect_request = build_redirect_request(
+            original_request,
+            "https://www.pxweb.bfs.admin.ch/redirected.px",
+            307,
+        )
+
+        self.assertEqual(redirect_request.get_method(), "POST")
+        self.assertEqual(redirect_request.data, b'{"query":[]}')
+        self.assertEqual(
+            dict(redirect_request.header_items())["Content-type"],
+            "application/json",
+        )
 
 
 class GeoModelTests(TestCase):
@@ -2128,6 +2177,12 @@ class GeodataAdminSetupTests(TestCase):
         self.assertEqual(response.status_code, 200)
         call_command.assert_not_called()
         self.assertContains(response, "Unknown geodata action.")
+
+    def test_command_output_truncation_respects_limit(self) -> None:
+        """Admin command output truncation never exceeds the requested limit."""
+        self.assertEqual(truncate_command_output("abcdef", limit=6), "abcdef")
+        self.assertEqual(truncate_command_output("abcdef", limit=5), "...ef")
+        self.assertEqual(truncate_command_output("abcdef", limit=3), "def")
 
 
 class GeoSelectorTests(TestCase):

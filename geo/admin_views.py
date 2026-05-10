@@ -89,7 +89,9 @@ def truncate_command_output(output: str, limit: int = 2000) -> str:
     """
     if len(output) <= limit:
         return output
-    return f"...{output[-limit:]}"
+    if limit <= 3:
+        return output[-limit:]
+    return f"...{output[-(limit - 3):]}"
 
 
 def get_geodata_status() -> dict:
