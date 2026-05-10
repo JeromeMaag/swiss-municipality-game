@@ -9,7 +9,10 @@
         <h1>Game summary</h1>
         <p class="muted">Finished game</p>
       </div>
-      <a class="button-link" href="{% url 'game:index' %}">Start new game</a>
+      <form method="post" action="{% url 'game:start' %}">
+        {% csrf_token %}
+        <button type="submit">Start new game</button>
+      </form>
     </div>
 
     <section class="summary-score" aria-labelledby="summary-score-heading">

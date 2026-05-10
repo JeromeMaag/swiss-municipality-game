@@ -211,6 +211,10 @@ body {
   margin-top: 0;
 }
 
+.summary-header form {
+  margin: 0;
+}
+
 .summary-score {
   border: 1px solid #b8cfbf;
   background: #f3faf5;
