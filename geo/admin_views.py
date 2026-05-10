@@ -5,6 +5,7 @@ from io import StringIO
 from django.contrib import admin, messages
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db.models import Count, Q
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods
 
@@ -111,15 +112,19 @@ def get_geodata_status() -> dict:
             "missing_population_count": 0,
         }
 
-    municipalities = Municipality.objects.filter(dataset_version=dataset_version)
-    active_municipalities = municipalities.filter(is_active=True)
+    municipality_counts = Municipality.objects.filter(
+        dataset_version=dataset_version
+    ).aggregate(
+        municipality_count=Count("id"),
+        active_municipality_count=Count("id", filter=Q(is_active=True)),
+        inactive_municipality_count=Count("id", filter=Q(is_active=False)),
+        missing_population_count=Count(
+            "id",
+            filter=Q(is_active=True, population__isnull=True),
+        ),
+    )
     return {
         "dataset_version": dataset_version,
         "canton_count": dataset_version.cantons.count(),
-        "municipality_count": municipalities.count(),
-        "active_municipality_count": active_municipalities.count(),
-        "inactive_municipality_count": municipalities.filter(is_active=False).count(),
-        "missing_population_count": active_municipalities.filter(
-            population__isnull=True
-        ).count(),
+        **municipality_counts,
     }

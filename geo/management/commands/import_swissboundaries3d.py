@@ -159,6 +159,10 @@ def load_stac_items(url: str) -> dict[str, Any]:
             validate_url=validate_url_scheme,
         ) as response:
             return json.load(response)
+    except json.JSONDecodeError as error:
+        raise CommandError(
+            f"Could not parse STAC items response as JSON: {error}"
+        ) from error
     except OSError as error:
         raise CommandError(f"Could not load STAC items: {error}") from error
 

@@ -28,7 +28,10 @@ from geo.constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
 from game.models import Game, Turn
 from tests.utils import make_test_geometry
 
-from .management.commands._http import build_redirect_request
+from .management.commands._http import (
+    build_redirect_request,
+    open_url_with_validated_redirects,
+)
 from .management.commands.import_boundaries import (
     list_available_layers,
     resolve_data_source,
@@ -100,6 +103,25 @@ def make_redirect_error(url: str, location: str) -> HTTPError:
     return HTTPError(url, 302, "Found", {"Location": location}, None)
 
 
+class ClosingRedirectError(HTTPError):
+    """HTTP redirect error that records whether it was closed."""
+
+    def __init__(self, url: str, location: str) -> None:
+        """Create a close-tracking redirect error.
+
+        Args:
+            url: URL that returned the redirect.
+            location: Redirect Location header value.
+        """
+        super().__init__(url, 302, "Found", {"Location": location}, None)
+        self.closed = False
+
+    def close(self) -> None:
+        """Record that the error response was closed."""
+        self.closed = True
+        super().close()
+
+
 class GeoHttpHelperTests(TestCase):
     """Tests for shared geodata HTTP helpers."""
 
@@ -144,6 +166,29 @@ class GeoHttpHelperTests(TestCase):
             dict(redirect_request.header_items())["Content-type"],
             "application/json",
         )
+
+    def test_redirect_errors_are_closed_before_following(self) -> None:
+        """Redirect response handles are closed before following Location."""
+        redirect_error = ClosingRedirectError(
+            "https://data.geo.admin.ch/items.json",
+            "https://data.geo.admin.ch/redirected.json",
+        )
+        response = mock.Mock()
+        response.geturl.return_value = "https://data.geo.admin.ch/redirected.json"
+        opener = mock.Mock()
+        opener.open.side_effect = [redirect_error, response]
+
+        with mock.patch("urllib.request.build_opener", return_value=opener):
+            self.assertIs(
+                open_url_with_validated_redirects(
+                    Request("https://data.geo.admin.ch/items.json"),
+                    timeout=60,
+                    validate_url=lambda _url: None,
+                ),
+                response,
+            )
+
+        self.assertTrue(redirect_error.closed)
 
 
 class GeoModelTests(TestCase):
@@ -935,6 +980,23 @@ class ImportSwissBoundaries3DCommandTests(TestCase):
             ):
                 load_stac_items("https://data.geo.admin.ch/items.json")
         self.assertEqual(opener.open.call_count, 1)
+
+    def test_load_stac_items_reports_invalid_json(self) -> None:
+        """STAC requests raise CommandError for malformed JSON responses."""
+        response = mock.Mock()
+        response.__enter__ = mock.Mock(return_value=StringIO("<html></html>"))
+        response.__exit__ = mock.Mock(return_value=None)
+
+        with mock.patch(
+            "geo.management.commands.import_swissboundaries3d."
+            "open_url_with_validated_redirects",
+            return_value=response,
+        ):
+            with self.assertRaisesMessage(
+                CommandError,
+                "Could not parse STAC items response as JSON",
+            ):
+                load_stac_items("https://data.geo.admin.ch/items.json")
 
     def test_load_stac_items_rejects_untrusted_hosts(self) -> None:
         """STAC requests reject hosts outside the swisstopo allowlist."""
@@ -2139,6 +2201,19 @@ class GeodataAdminSetupTests(TestCase):
     def test_admin_setup_requires_staff_access(self) -> None:
         """Anonymous users cannot access the admin setup page."""
         self.client.logout()
+
+        response = self.client.get(reverse("admin_geodata_setup"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/admin/login/", response["Location"])
+
+    def test_admin_setup_rejects_logged_in_non_staff_users(self) -> None:
+        """Logged-in non-staff users cannot access the admin setup page."""
+        regular_user = get_user_model().objects.create_user(
+            username="regular-user",
+            password="test",
+        )
+        self.client.force_login(regular_user)
 
         response = self.client.get(reverse("admin_geodata_setup"))
 

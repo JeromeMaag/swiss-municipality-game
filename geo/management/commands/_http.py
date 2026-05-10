@@ -75,6 +75,7 @@ def open_url_with_validated_redirects(
                 redirect_url,
                 error.code,
             )
+            error.close()
             continue
 
         validate_url(response.geturl())
