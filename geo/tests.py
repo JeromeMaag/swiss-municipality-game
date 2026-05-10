@@ -30,6 +30,7 @@ from .management.commands.seed_dev_geodata import (
 from .management.commands.import_swissboundaries3d import (
     DATASET_NAME as OFFICIAL_BOUNDARIES_DATASET_NAME,
     download_asset,
+    load_stac_items,
     safe_extract_zip,
 )
 from .models import Canton, GeoDatasetVersion, Municipality
@@ -505,6 +506,46 @@ class ImportBoundariesCommandTests(TestCase):
 class ImportSwissBoundaries3DCommandTests(TestCase):
     """Tests for the official swissBOUNDARIES3D import command."""
 
+    class RedirectResponse:
+        """Minimal context manager for mocked URL responses."""
+
+        def __init__(self, url: str, content: bytes = b"{}") -> None:
+            """Store mocked response data.
+
+            Args:
+                url: Final response URL.
+                content: Response body bytes.
+            """
+            self.url = url
+            self.content = content
+
+        def __enter__(self):
+            """Return the mocked response object.
+
+            Returns:
+                The response object.
+            """
+            return self
+
+        def __exit__(self, *_args) -> None:
+            """Close the mocked response context."""
+
+        def geturl(self) -> str:
+            """Return the final response URL.
+
+            Returns:
+                The mocked final URL.
+            """
+            return self.url
+
+        def read(self) -> bytes:
+            """Read mocked response content.
+
+            Returns:
+                Response content bytes.
+            """
+            return self.content
+
     def test_command_rejects_unsupported_stac_url_scheme(self) -> None:
         """Command rejects non-HTTP STAC item URLs."""
         with self.assertRaisesMessage(
@@ -518,6 +559,16 @@ class ImportSwissBoundaries3DCommandTests(TestCase):
                 stdout=StringIO(),
             )
 
+    def test_load_stac_items_rejects_unsupported_redirect_scheme(self) -> None:
+        """STAC requests reject redirects to non-HTTP URLs."""
+        response = self.RedirectResponse("file:///tmp/items.json")
+        with mock.patch("urllib.request.urlopen", return_value=response):
+            with self.assertRaisesMessage(
+                CommandError,
+                "URL scheme 'file' is not allowed.",
+            ):
+                load_stac_items("https://example.test/items.json")
+
     def test_download_asset_rejects_unsupported_url_scheme(self) -> None:
         """Asset downloads reject non-HTTP URLs."""
         with self.assertRaisesMessage(
@@ -525,6 +576,16 @@ class ImportSwissBoundaries3DCommandTests(TestCase):
             "URL scheme 'file' is not allowed.",
         ):
             download_asset("file:///tmp/boundaries.gpkg.zip", Path("asset.zip"))
+
+    def test_download_asset_rejects_unsupported_redirect_scheme(self) -> None:
+        """Asset downloads reject redirects to non-HTTP URLs."""
+        response = self.RedirectResponse("file:///tmp/boundaries.gpkg.zip")
+        with mock.patch("urllib.request.urlopen", return_value=response):
+            with self.assertRaisesMessage(
+                CommandError,
+                "URL scheme 'file' is not allowed.",
+            ):
+                download_asset("https://example.test/boundaries.gpkg.zip", Path("asset.zip"))
 
     def test_safe_extract_zip_rejects_path_traversal(self) -> None:
         """ZIP extraction rejects archive members outside the destination."""
@@ -537,6 +598,23 @@ class ImportSwissBoundaries3DCommandTests(TestCase):
             safe_extract_zip(archive, Path("data/raw/import-test"))
 
         archive.extractall.assert_not_called()
+
+    def test_safe_extract_zip_rejects_symlinks(self) -> None:
+        """ZIP extraction rejects Unix symlink entries."""
+        archive = mock.Mock()
+        member = mock.Mock()
+        member.filename = "link.gpkg"
+        member.external_attr = 0o120000 << 16
+        member.is_dir.return_value = False
+        archive.infolist.return_value = [member]
+
+        with self.assertRaisesMessage(
+            CommandError,
+            "Unsafe symlink found in swissBOUNDARIES3D ZIP.",
+        ):
+            safe_extract_zip(archive, Path("data/raw/import-test"))
+
+        archive.open.assert_not_called()
 
     def test_command_imports_latest_geopackage_asset(self) -> None:
         """Command downloads the newest official GeoPackage and imports boundaries."""

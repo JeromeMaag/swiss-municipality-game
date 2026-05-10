@@ -33,6 +33,8 @@ CANTON_ABBREVIATION_FIELD = "_canton_abbreviation"
 MUNICIPALITY_OBJECT_TYPE_FIELD = "objektart"
 MUNICIPALITY_OBJECT_TYPE = "Gemeindegebiet"
 ALLOWED_URL_SCHEMES = {"http", "https"}
+UNIX_FILE_TYPE_MASK = 0o170000
+UNIX_SYMLINK_TYPE = 0o120000
 
 CANTON_ABBREVIATIONS = {
     1: "ZH",
@@ -150,6 +152,7 @@ def load_stac_items(url: str) -> dict[str, Any]:
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
+            validate_url_scheme(response.geturl())
             return json.load(response)
     except OSError as error:
         raise CommandError(f"Could not load STAC items: {error}") from error
@@ -227,8 +230,12 @@ def download_asset(url: str, destination: Path) -> None:
         destination: Destination file path.
     """
     validate_url_scheme(url)
+    request = urllib.request.Request(url)
     try:
-        urllib.request.urlretrieve(url, destination)
+        with urllib.request.urlopen(request, timeout=300) as response:
+            validate_url_scheme(response.geturl())
+            with destination.open("wb") as output:
+                shutil.copyfileobj(response, output)
     except OSError as error:
         raise CommandError(f"Could not download swissBOUNDARIES3D asset: {error}") from error
 
@@ -284,17 +291,54 @@ def safe_extract_zip(archive: zipfile.ZipFile, destination: Path) -> None:
         destination: Extraction directory.
 
     Raises:
-        CommandError: If a ZIP member would be extracted outside the destination.
+        CommandError: If a ZIP member would be unsafe to extract.
     """
     resolved_destination = destination.resolve()
     for member in archive.infolist():
-        target = (resolved_destination / member.filename).resolve()
-        try:
-            target.relative_to(resolved_destination)
-        except ValueError as error:
-            raise CommandError("Unsafe path found in swissBOUNDARIES3D ZIP.") from error
+        target = safe_zip_member_path(resolved_destination, member.filename)
+        if is_zip_member_symlink(member):
+            raise CommandError("Unsafe symlink found in swissBOUNDARIES3D ZIP.")
+        if member.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
 
-    archive.extractall(resolved_destination)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with archive.open(member) as source, target.open("wb") as output:
+            shutil.copyfileobj(source, output)
+
+
+def safe_zip_member_path(destination: Path, filename: str) -> Path:
+    """Resolve a ZIP member path inside an extraction destination.
+
+    Args:
+        destination: Resolved extraction destination.
+        filename: ZIP member filename.
+
+    Returns:
+        Resolved target path.
+
+    Raises:
+        CommandError: If the member path would leave the destination.
+    """
+    target = (destination / filename).resolve()
+    try:
+        target.relative_to(destination)
+    except ValueError as error:
+        raise CommandError("Unsafe path found in swissBOUNDARIES3D ZIP.") from error
+    return target
+
+
+def is_zip_member_symlink(member: zipfile.ZipInfo) -> bool:
+    """Return whether a ZIP member is a Unix symlink entry.
+
+    Args:
+        member: ZIP member metadata.
+
+    Returns:
+        True when the member declares a symlink file type.
+    """
+    file_type = (member.external_attr >> 16) & UNIX_FILE_TYPE_MASK
+    return file_type == UNIX_SYMLINK_TYPE
 
 
 def add_canton_abbreviations(canton_gdf):
