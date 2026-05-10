@@ -1266,6 +1266,144 @@ class ImportStatpopPopulationCommandTests(TestCase):
                 )
 
 
+class SetupGeodataCommandTests(TestCase):
+    """Tests for the complete official geodata setup command."""
+
+    def create_imported_dataset(
+        self,
+        *,
+        municipality_population: int | None = None,
+    ) -> Municipality:
+        """Create an official dataset as if the boundary import had run.
+
+        Args:
+            municipality_population: Optional population value for the municipality.
+
+        Returns:
+            Created municipality.
+        """
+        dataset_version = GeoDatasetVersion.objects.create(
+            name=OFFICIAL_BOUNDARIES_DATASET_NAME,
+            version_label="2026-01-01",
+        )
+        canton = Canton.objects.create(
+            dataset_version=dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+        return Municipality.objects.create(
+            dataset_version=dataset_version,
+            bfs_number=261,
+            name="Zurich",
+            canton=canton,
+            population=municipality_population,
+            geom=make_test_geometry(),
+        )
+
+    def test_command_imports_boundaries_then_population(self) -> None:
+        """Setup command imports boundaries, imports population, and validates output."""
+        output = StringIO()
+        command_names = []
+
+        def run_inner_command(command_name, *args, **kwargs):
+            """Simulate the setup command's inner imports.
+
+            Args:
+                command_name: Name of the inner management command.
+                *args: Positional command arguments.
+                **kwargs: Keyword command options.
+            """
+            command_names.append(command_name)
+            if command_name == "import_swissboundaries3d":
+                self.create_imported_dataset()
+            elif command_name == "import_statpop_population":
+                Municipality.objects.update(population=443000)
+
+        with mock.patch(
+            "geo.management.commands.setup_geodata.call_command",
+            side_effect=run_inner_command,
+        ) as inner_call_command:
+            call_command(
+                "setup_geodata",
+                "--dataset-version",
+                "2026-01-01",
+                "--statpop-year",
+                "2024",
+                stdout=output,
+            )
+
+        self.assertEqual(
+            command_names,
+            ["import_swissboundaries3d", "import_statpop_population"],
+        )
+        boundary_call = inner_call_command.call_args_list[0]
+        population_call = inner_call_command.call_args_list[1]
+        self.assertEqual(boundary_call.kwargs["dataset_version"], "2026-01-01")
+        self.assertEqual(population_call.kwargs["dataset_version"], "2026-01-01")
+        self.assertEqual(population_call.kwargs["year"], "2024")
+        self.assertIn("Geodata setup complete", output.getvalue())
+        self.assertIn("1 municipalities", output.getvalue())
+
+    def test_command_rejects_missing_population_after_setup(self) -> None:
+        """Setup command fails when imported municipalities still lack population."""
+        def run_inner_command(command_name, *args, **kwargs):
+            """Simulate imports while leaving population empty.
+
+            Args:
+                command_name: Name of the inner management command.
+                *args: Positional command arguments.
+                **kwargs: Keyword command options.
+            """
+            if command_name == "import_swissboundaries3d":
+                self.create_imported_dataset()
+
+        with mock.patch(
+            "geo.management.commands.setup_geodata.call_command",
+            side_effect=run_inner_command,
+        ):
+            with self.assertRaisesMessage(
+                CommandError,
+                "without population values",
+            ):
+                call_command(
+                    "setup_geodata",
+                    "--dataset-version",
+                    "2026-01-01",
+                    stdout=StringIO(),
+                )
+
+    def test_command_can_allow_incomplete_population(self) -> None:
+        """Setup command can finish with explicit incomplete-population allowance."""
+        output = StringIO()
+
+        def run_inner_command(command_name, *args, **kwargs):
+            """Simulate imports while leaving population empty.
+
+            Args:
+                command_name: Name of the inner management command.
+                *args: Positional command arguments.
+                **kwargs: Keyword command options.
+            """
+            if command_name == "import_swissboundaries3d":
+                self.create_imported_dataset()
+
+        with mock.patch(
+            "geo.management.commands.setup_geodata.call_command",
+            side_effect=run_inner_command,
+        ):
+            call_command(
+                "setup_geodata",
+                "--dataset-version",
+                "2026-01-01",
+                "--allow-incomplete-population",
+                stdout=output,
+            )
+
+        self.assertIn("1 municipalities, 1 without population", output.getvalue())
+
+
 class SeedDevGeodataCommandTests(TestCase):
     """Tests for local development geodata seeding."""
 
