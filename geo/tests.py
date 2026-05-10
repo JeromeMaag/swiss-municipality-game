@@ -42,7 +42,14 @@ from .management.commands.import_swissboundaries3d import (
     safe_extract_zip,
 )
 from .models import Canton, GeoDatasetVersion, Municipality
-from .selectors import get_current_dataset_version
+from .selectors import (
+    get_cantons_for_dataset,
+    get_current_cantons,
+    get_current_dataset_version,
+    get_current_municipalities,
+    get_municipality_labels_for_dataset,
+    get_municipalities_for_dataset,
+)
 
 
 class GeoModelTests(TestCase):
@@ -1637,3 +1644,107 @@ class SeedDevGeodataCommandTests(TestCase):
         call_command("seed_dev_geodata", stdout=StringIO())
 
         self.assertEqual(get_current_dataset_version().name, DATASET_NAME)
+
+
+class GeoSelectorTests(TestCase):
+    """Tests for geodata query helpers."""
+
+    def setUp(self) -> None:
+        """Create multiple dataset versions for selector coverage."""
+        self.older_dataset = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2025-01-01",
+        )
+        self.current_dataset = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2026-01-01",
+        )
+        self.older_canton = Canton.objects.create(
+            dataset_version=self.older_dataset,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+        self.current_canton_b = Canton.objects.create(
+            dataset_version=self.current_dataset,
+            bfs_number=2,
+            abbreviation="BE",
+            name="Bern",
+            geom=make_test_geometry(),
+        )
+        self.current_canton_z = Canton.objects.create(
+            dataset_version=self.current_dataset,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+        Municipality.objects.create(
+            dataset_version=self.older_dataset,
+            bfs_number=261,
+            name="Old Zurich",
+            canton=self.older_canton,
+            geom=make_test_geometry(),
+            is_active=True,
+            label_point=Point(8.05, 47.05, srid=4326),
+        )
+        self.current_active_with_label = Municipality.objects.create(
+            dataset_version=self.current_dataset,
+            bfs_number=351,
+            name="Bern",
+            canton=self.current_canton_b,
+            geom=make_test_geometry(),
+            is_active=True,
+            label_point=Point(7.45, 46.95, srid=4326),
+        )
+        self.current_active_without_label = Municipality.objects.create(
+            dataset_version=self.current_dataset,
+            bfs_number=352,
+            name="Ittigen",
+            canton=self.current_canton_b,
+            geom=make_test_geometry(),
+            is_active=True,
+        )
+        self.current_inactive_with_label = Municipality.objects.create(
+            dataset_version=self.current_dataset,
+            bfs_number=353,
+            name="Inactive",
+            canton=self.current_canton_z,
+            geom=make_test_geometry(),
+            is_active=False,
+            label_point=Point(8.55, 47.37, srid=4326),
+        )
+
+    def test_get_current_dataset_version_returns_newest_import(self) -> None:
+        """Current dataset selector returns the newest imported version."""
+        self.assertEqual(get_current_dataset_version(), self.current_dataset)
+
+    def test_get_current_cantons_returns_ordered_current_dataset(self) -> None:
+        """Current canton selector uses the newest dataset and abbreviation order."""
+        self.assertEqual(
+            list(get_current_cantons()),
+            [self.current_canton_b, self.current_canton_z],
+        )
+        self.assertEqual(
+            list(get_cantons_for_dataset(self.older_dataset)),
+            [self.older_canton],
+        )
+
+    def test_get_current_municipalities_filters_to_active_current_rows(self) -> None:
+        """Current municipality selector excludes inactive and older datasets."""
+        self.assertEqual(
+            list(get_current_municipalities()),
+            [self.current_active_with_label, self.current_active_without_label],
+        )
+        self.assertEqual(
+            list(get_municipalities_for_dataset(self.current_dataset)),
+            [self.current_active_with_label, self.current_active_without_label],
+        )
+
+    def test_get_municipality_labels_for_dataset_requires_active_labels(self) -> None:
+        """Label selector only returns active municipalities with label points."""
+        self.assertEqual(
+            list(get_municipality_labels_for_dataset(self.current_dataset)),
+            [self.current_active_with_label],
+        )

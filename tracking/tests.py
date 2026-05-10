@@ -10,6 +10,7 @@ from geo.models import Canton, GeoDatasetVersion, Municipality
 from tests.utils import make_test_geometry
 
 from .models import GameEvent
+from .services import track_event
 
 
 class GameEventModelTests(TestCase):
@@ -99,3 +100,71 @@ class GameEventModelTests(TestCase):
 
         with self.assertRaises(ValidationError):
             event.full_clean()
+
+
+class TrackingServiceTests(TestCase):
+    """Tests for tracking event persistence helpers."""
+
+    def setUp(self) -> None:
+        """Create shared fixtures for tracking service tests."""
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(username="player", password="test")
+        self.other_user = user_model.objects.create_user(
+            username="other",
+            password="test",
+        )
+        self.dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2026-01-01",
+        )
+        self.canton = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+        self.municipality = Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=261,
+            name="Zurich",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+        self.game = Game.objects.create(user=self.user)
+        self.turn = Turn.objects.create(
+            game=self.game,
+            turn_number=1,
+            target=self.municipality,
+        )
+
+    def test_track_event_persists_default_payload(self) -> None:
+        """Tracking helper stores an empty payload when none is provided."""
+        event = track_event(
+            user=self.user,
+            game=self.game,
+            turn=self.turn,
+            event_type=GameEvent.Type.TURN_STARTED,
+        )
+
+        self.assertEqual(event.payload, {})
+        self.assertTrue(
+            GameEvent.objects.filter(
+                user=self.user,
+                game=self.game,
+                turn=self.turn,
+                event_type=GameEvent.Type.TURN_STARTED,
+            ).exists()
+        )
+
+    def test_track_event_validates_relationships_before_saving(self) -> None:
+        """Tracking helper rejects invalid relationships without persisting data."""
+        with self.assertRaises(ValidationError):
+            track_event(
+                user=self.other_user,
+                game=self.game,
+                turn=self.turn,
+                event_type=GameEvent.Type.TURN_STARTED,
+            )
+
+        self.assertEqual(GameEvent.objects.count(), 0)
