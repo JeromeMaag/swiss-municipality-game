@@ -74,8 +74,9 @@ python manage.py test
 
 ## Database
 
-PostgreSQL data is stored in the Docker volume
-`swiss-municipality-guess_postgres_data`.
+PostgreSQL data is stored in the Docker volume created by Compose for the `db`
+service, typically `<compose-project>_postgres_data`. Use `docker volume ls` to
+confirm the exact name in your environment.
 
 Stop the database:
 
