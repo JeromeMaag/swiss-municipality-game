@@ -22,6 +22,9 @@ from .services import (
     GuessSubmissionError,
     InvalidGuessCoordinatesError,
     NotEnoughMunicipalitiesError,
+    _calculate_guess_distances,
+    _normalize_coordinate,
+    _normalize_turn_id,
     start_game,
     submit_guess,
 )
@@ -42,6 +45,10 @@ class ScoringTests(TestCase):
         self.assertEqual(calculate_score(25_000), 368)
         self.assertEqual(calculate_score(100_000), 18)
 
+    def test_calculate_score_never_returns_negative_values(self) -> None:
+        """Extremely large valid distances are clamped to zero."""
+        self.assertEqual(calculate_score(1_000_000_000), 0)
+
     def test_calculate_score_rejects_negative_distance(self) -> None:
         """Negative distances are invalid."""
         with self.assertRaises(ValueError):
@@ -53,6 +60,48 @@ class ScoringTests(TestCase):
             with self.subTest(distance=distance):
                 with self.assertRaises(ValueError):
                     calculate_score(distance)
+
+
+class GameServiceHelperTests(TestCase):
+    """Tests for low-level game service validation helpers."""
+
+    def test_normalize_coordinate_accepts_bounds(self) -> None:
+        """Coordinate normalization accepts inclusive boundary values."""
+        self.assertEqual(
+            _normalize_coordinate("-90", name="Latitude", minimum=-90, maximum=90),
+            -90,
+        )
+        self.assertEqual(
+            _normalize_coordinate("180", name="Longitude", minimum=-180, maximum=180),
+            180,
+        )
+
+    def test_normalize_coordinate_rejects_out_of_range_values(self) -> None:
+        """Coordinate normalization rejects values outside allowed bounds."""
+        with self.assertRaisesMessage(
+            InvalidGuessCoordinatesError,
+            "Latitude must be between -90 and 90.",
+        ):
+            _normalize_coordinate("90.1", name="Latitude", minimum=-90, maximum=90)
+
+    def test_normalize_turn_id_accepts_positive_integer_strings(self) -> None:
+        """Turn identifier normalization accepts positive integer strings."""
+        self.assertEqual(_normalize_turn_id("12"), 12)
+
+    def test_normalize_turn_id_rejects_zero_and_non_integer_values(self) -> None:
+        """Turn identifier normalization rejects invalid primary keys."""
+        for value in ("0", "not-a-number", None):
+            with self.subTest(value=value):
+                with self.assertRaises(GuessSubmissionError):
+                    _normalize_turn_id(value)
+
+    def test_calculate_guess_distances_rejects_missing_targets(self) -> None:
+        """Distance calculation fails clearly for missing municipality targets."""
+        with self.assertRaisesMessage(
+            GuessSubmissionError,
+            "Target municipality does not exist.",
+        ):
+            _calculate_guess_distances(point=Point(8.0, 47.0, srid=4326), target_id=0)
 
 
 class GameModelTests(TestCase):

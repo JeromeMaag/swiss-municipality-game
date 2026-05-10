@@ -4,7 +4,9 @@ from datetime import UTC, datetime
 import json
 from io import StringIO
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import mock
+import zipfile
 
 import geopandas as gpd
 from django.contrib.auth import get_user_model
@@ -23,13 +25,35 @@ from geo.constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
 from game.models import Game, Turn
 from tests.utils import make_test_geometry
 
-from .management.commands.import_boundaries import simplify_geometry, to_float, to_int
-from .management.commands.import_population import read_csv_rows
+from .management.commands.import_boundaries import (
+    list_available_layers,
+    resolve_data_source,
+    simplify_geometry,
+    to_float,
+    to_int,
+)
+from .management.commands.import_population import (
+    format_bfs_numbers,
+    parse_whole_number,
+    read_csv_rows,
+    resolve_csv_path,
+    resolve_dataset_version,
+)
 from .management.commands.import_statpop_population import (
     apply_population_aggregation,
+    build_statpop_query,
+    decode_statpop_response,
+    metadata_variable,
+    parse_municipality_bfs_number,
+    parse_population_value,
     parse_statpop_population_csv,
+    population_rows_for_dataset,
+    select_statpop_year,
 )
-from .management.commands.setup_geodata import validate_setup_result
+from .management.commands.setup_geodata import (
+    resolve_setup_dataset_version,
+    validate_setup_result,
+)
 from .management.commands.seed_dev_geodata import (
     DATASET_NAME,
     DATASET_VERSION,
@@ -37,11 +61,16 @@ from .management.commands.seed_dev_geodata import (
 )
 from .management.commands.import_swissboundaries3d import (
     DATASET_NAME as OFFICIAL_BOUNDARIES_DATASET_NAME,
+    dataset_version_label,
     download_asset,
+    extract_single_geopackage,
     load_stac_items,
     safe_extract_zip,
+    select_geopackage_asset,
+    select_stac_item,
 )
 from .models import Canton, GeoDatasetVersion, Municipality
+from .serializers import feature_collection, get_display_geometry
 from .selectors import (
     get_cantons_for_dataset,
     get_current_cantons,
@@ -205,6 +234,53 @@ class GeoModelTests(TestCase):
 
         with self.assertRaises(ValidationError):
             municipality.full_clean()
+
+
+class GeoSerializerTests(TestCase):
+    """Tests for GeoJSON serializer helpers."""
+
+    def setUp(self) -> None:
+        """Create shared serializer fixtures."""
+        self.dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2026-01-01",
+        )
+        self.canton = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+            geom_simplified=make_test_geometry(),
+        )
+
+    def test_feature_collection_skips_objects_without_geometry(self) -> None:
+        """Feature collection serialization omits objects with no geometry."""
+        data = json.loads(
+            feature_collection(
+                [self.canton],
+                lambda _canton: None,
+                lambda canton: {"id": canton.id},
+            )
+        )
+
+        self.assertEqual(data, {"type": "FeatureCollection", "features": []})
+
+    def test_feature_collection_rejects_non_json_numbers(self) -> None:
+        """Feature properties reject invalid JSON values such as NaN."""
+        with self.assertRaises(ValueError):
+            feature_collection(
+                [self.canton],
+                lambda canton: canton.geom,
+                lambda canton: {"value": float("nan")},
+            )
+
+    def test_get_display_geometry_prefers_simplified_geometry(self) -> None:
+        """Display geometry uses simplified geometry when it exists."""
+        self.assertEqual(get_display_geometry(self.canton), self.canton.geom_simplified)
+        self.canton.geom_simplified = None
+
+        self.assertEqual(get_display_geometry(self.canton), self.canton.geom)
 
 
 class GeoJSONEndpointTests(TestCase):
@@ -417,6 +493,20 @@ class GeoJSONEndpointTests(TestCase):
         self.assertEqual(cached_response.status_code, 304)
         self.assertEqual(cached_response["ETag"], etag)
 
+    def test_boundary_conditional_get_accepts_etag_lists_and_wildcards(self) -> None:
+        """Boundary endpoints handle common If-None-Match header formats."""
+        response = self.client.get(reverse("geo:municipality_boundaries_geojson"))
+        etag = response["ETag"]
+
+        for header_value in (f'"stale", {etag}', "*"):
+            with self.subTest(header_value=header_value):
+                cached_response = self.client.get(
+                    reverse("geo:municipality_boundaries_geojson"),
+                    HTTP_IF_NONE_MATCH=header_value,
+                )
+                self.assertEqual(cached_response.status_code, 304)
+                self.assertEqual(cached_response["ETag"], etag)
+
     def test_boundary_cache_changes_when_current_dataset_changes(self) -> None:
         """Boundary cache keys change when a newer dataset becomes current."""
         first_response = self.client.get(reverse("geo:municipality_boundaries_geojson"))
@@ -548,6 +638,53 @@ class ImportBoundariesCommandTests(TestCase):
         self.assertIn("Available layers:", output.getvalue())
         self.assertIn("municipalities", output.getvalue())
         self.assertEqual(GeoDatasetVersion.objects.count(), 0)
+
+    def test_command_rejects_when_only_one_layer_name_is_provided(self) -> None:
+        """Command requires both layer names when one explicit layer is passed."""
+        source = Path("boundaries.gpkg")
+        with mock.patch(
+            "geo.management.commands.import_boundaries.resolve_data_source",
+            return_value=source,
+        ):
+            with mock.patch("pyogrio.list_layers", return_value=[("cantons",)]):
+                with self.assertRaisesMessage(
+                    CommandError,
+                    "Both --municipality-layer and --canton-layer are required for import.",
+                ):
+                    call_command(
+                        "import_boundaries",
+                        str(source),
+                        "--dataset-version",
+                        "2026-01-01",
+                        "--canton-layer",
+                        "cantons",
+                        stdout=StringIO(),
+                    )
+
+    def test_resolve_data_source_rejects_missing_path(self) -> None:
+        """Datasource resolution rejects missing source paths."""
+        with self.assertRaisesMessage(CommandError, "Datasource does not exist"):
+            resolve_data_source("missing-boundaries-source")
+
+    def test_resolve_data_source_rejects_multiple_candidates(self) -> None:
+        """Datasource resolution rejects ambiguous folders with multiple vectors."""
+        with TemporaryDirectory() as tmp_dir:
+            source_dir = Path(tmp_dir)
+            (source_dir / "a.gpkg").write_text("", encoding="utf-8")
+            (source_dir / "b.geojson").write_text("{}", encoding="utf-8")
+            with self.assertRaisesMessage(
+                CommandError,
+                "Multiple vector datasources found. Pass one explicitly:",
+            ):
+                resolve_data_source(str(source_dir))
+
+    def test_list_available_layers_supports_non_sequence_entries(self) -> None:
+        """Layer listing handles non-sequence entries from pyogrio."""
+        output = StringIO()
+        with mock.patch("pyogrio.list_layers", return_value=[123]):
+            list_available_layers(Path("boundaries.gpkg"), output)
+
+        self.assertIn("- 123", output.getvalue())
 
     def test_command_imports_cantons_and_municipalities(self) -> None:
         """Command imports boundaries and can rerun without duplicates."""
@@ -715,6 +852,45 @@ class ImportSwissBoundaries3DCommandTests(TestCase):
                 "file:///tmp/items.json",
                 stdout=StringIO(),
             )
+
+    def test_stac_item_selection_supports_latest_and_explicit_versions(self) -> None:
+        """STAC item selection chooses explicit versions or newest items."""
+        old_item = {"id": "swissboundaries3d_2025-01-01", "properties": {}}
+        new_item = {
+            "id": "ignored",
+            "properties": {"datetime": "2026-01-01T00:00:00Z"},
+        }
+        items = {"features": [old_item, new_item]}
+
+        self.assertEqual(select_stac_item(items), new_item)
+        self.assertEqual(select_stac_item(items, "2025-01-01"), old_item)
+        self.assertEqual(dataset_version_label(old_item), "2025-01-01")
+
+        with self.assertRaisesMessage(CommandError, "No swissBOUNDARIES3D item found"):
+            select_stac_item(items, "2027-01-01")
+
+    def test_geopackage_asset_selection_requires_matching_asset(self) -> None:
+        """GeoPackage asset selection finds valid assets and rejects missing ones."""
+        asset = {"href": "https://example.test/data.gpkg.zip", "type": ""}
+        item = {"id": "item", "assets": {"download": asset}}
+
+        self.assertEqual(select_geopackage_asset(item), asset)
+
+        with self.assertRaisesMessage(CommandError, "No GeoPackage asset found"):
+            select_geopackage_asset(
+                {"id": "item", "assets": {"txt": {"href": "readme.txt"}}}
+            )
+
+    def test_extract_single_geopackage_requires_exactly_one_gpkg(self) -> None:
+        """ZIP extraction rejects archives without exactly one GeoPackage."""
+        with TemporaryDirectory() as tmp_dir:
+            destination = Path(tmp_dir)
+            archive_path = destination / "empty.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("readme.txt", "not a geopackage")
+
+            with self.assertRaisesMessage(CommandError, "Expected one GeoPackage"):
+                extract_single_geopackage(archive_path, destination)
 
     def test_load_stac_items_rejects_unsupported_redirect_scheme(self) -> None:
         """STAC requests reject redirects to non-HTTP URLs."""
@@ -961,6 +1137,45 @@ class ImportPopulationCommandTests(TestCase):
             updated_at=old_updated_at
         )
         return old_updated_at
+
+    def test_resolve_csv_path_requires_existing_file(self) -> None:
+        """CSV path resolution rejects missing paths and directories."""
+        with TemporaryDirectory() as tmp_dir:
+            source_dir = Path(tmp_dir)
+
+            with self.assertRaisesMessage(CommandError, "is not a file"):
+                resolve_csv_path(str(source_dir))
+
+            with self.assertRaisesMessage(CommandError, "does not exist"):
+                resolve_csv_path(str(source_dir / "missing.csv"))
+
+    def test_resolve_dataset_version_requires_available_dataset(self) -> None:
+        """Dataset resolution fails clearly when no target dataset exists."""
+        Municipality.objects.all().delete()
+        Canton.objects.all().delete()
+        GeoDatasetVersion.objects.all().delete()
+
+        with self.assertRaisesMessage(CommandError, "No dataset version found"):
+            resolve_dataset_version("swissBOUNDARIES3D", None)
+
+        with self.assertRaisesMessage(CommandError, "Dataset version not found"):
+            resolve_dataset_version("swissBOUNDARIES3D", "missing")
+
+    def test_parse_whole_number_handles_required_and_empty_values(self) -> None:
+        """Whole-number parser distinguishes required and optional empty cells."""
+        self.assertIsNone(
+            parse_whole_number("", "population", 2, allow_empty=True)
+        )
+
+        with self.assertRaisesMessage(CommandError, "Row 2: bfs_number is required"):
+            parse_whole_number("", "bfs_number", 2, allow_empty=False)
+
+    def test_format_bfs_numbers_truncates_long_lists(self) -> None:
+        """Missing BFS number formatting remains compact for long lists."""
+        formatted = format_bfs_numbers(list(range(1, 23)))
+
+        self.assertIn("1, 2, 3", formatted)
+        self.assertIn("... (2 more)", formatted)
 
     def test_read_csv_rows_reads_header_and_rows(self) -> None:
         """CSV reader returns field names and row dictionaries."""
@@ -1263,6 +1478,54 @@ class ImportStatpopPopulationCommandTests(TestCase):
 
         self.assertEqual(population_by_bfs, {261: 443000})
 
+    def test_parse_statpop_population_csv_rejects_bad_structure_and_duplicates(
+        self,
+    ) -> None:
+        """STATPOP parser rejects missing columns and duplicate municipalities."""
+        with self.assertRaisesMessage(CommandError, "missing required columns"):
+            parse_statpop_population_csv('"Year","Age - total"\n"2024","1"\n')
+
+        duplicate_csv = "\n".join(
+            [
+                (
+                    '"Canton (-) / District (>>) / Commune (......)",'
+                    '"Age - total"'
+                ),
+                '"......0261 Zurich","443000"',
+                '"......0261 Zurich","443001"',
+            ]
+        )
+        with self.assertRaisesMessage(CommandError, "duplicate BFS number 261"):
+            parse_statpop_population_csv(duplicate_csv)
+
+    def test_statpop_value_parsers_handle_labels_and_grouped_numbers(self) -> None:
+        """STATPOP value helpers parse municipality labels and grouped numbers."""
+        self.assertEqual(parse_municipality_bfs_number("......0261 Zurich"), 261)
+        self.assertIsNone(parse_municipality_bfs_number("- Zurich"))
+        self.assertEqual(parse_population_value("443'000", 2), 443000)
+        self.assertEqual(parse_population_value("443 000", 2), 443000)
+
+        with self.assertRaisesMessage(CommandError, "population value is required"):
+            parse_population_value("", 2)
+
+    def test_statpop_metadata_year_selection_and_query_shape(self) -> None:
+        """STATPOP metadata helpers select years and build the expected query."""
+        metadata = {"variables": [{"code": "Jahr", "values": ["2022", "2024"]}]}
+
+        self.assertEqual(select_statpop_year(metadata, "latest"), "2024")
+        self.assertEqual(select_statpop_year(metadata, "2022"), "2022")
+        self.assertEqual(metadata_variable(metadata, "Jahr")["values"], ["2022", "2024"])
+        self.assertEqual(build_statpop_query("2024")["query"][0]["selection"]["values"], ["2024"])
+
+        with self.assertRaisesMessage(CommandError, "year is not available"):
+            select_statpop_year(metadata, "2023")
+        with self.assertRaisesMessage(CommandError, "missing variable"):
+            metadata_variable(metadata, "missing")
+
+    def test_decode_statpop_response_falls_back_to_cp1252(self) -> None:
+        """STATPOP response decoding supports legacy encoded CSV responses."""
+        self.assertEqual(decode_statpop_response("Zürich".encode("cp1252")), "Zürich")
+
     def test_apply_population_aggregation_adds_successor_municipalities(self) -> None:
         """Known municipality mutations are aggregated onto successor BFS numbers."""
         population_by_bfs = apply_population_aggregation(
@@ -1280,6 +1543,24 @@ class ImportStatpopPopulationCommandTests(TestCase):
         self.assertEqual(population_by_bfs[2056], 1200)
         self.assertEqual(population_by_bfs[5395], 1500)
         self.assertEqual(apply_population_aggregation({1065: 6500})[1065], 6500)
+
+    def test_apply_population_aggregation_rejects_partial_source_sets(self) -> None:
+        """Known municipality mutations must have complete source data."""
+        with self.assertRaisesMessage(CommandError, "Cannot aggregate STATPOP mutation"):
+            apply_population_aggregation({1057: 500})
+
+    def test_population_rows_for_dataset_only_reports_active_missing_values(self) -> None:
+        """Population row preparation ignores inactive municipalities."""
+        self.create_municipality(261, "Zurich")
+        self.create_municipality(9999, "Inactive", is_active=False)
+
+        rows, missing_bfs_numbers = population_rows_for_dataset(
+            self.dataset_version,
+            {261: 443000},
+        )
+
+        self.assertEqual(rows, [{"bfs_number": "261", "population": "443000"}])
+        self.assertEqual(missing_bfs_numbers, [])
 
     def test_command_imports_latest_statpop_population(self) -> None:
         """Command imports the latest STATPOP data into the target dataset."""
@@ -1589,6 +1870,36 @@ class SetupGeodataCommandTests(TestCase):
             )
 
         self.assertIn("1 municipalities, 1 without population", output.getvalue())
+
+    def test_resolve_setup_dataset_version_rejects_missing_requested_version(self) -> None:
+        """Dataset-version resolution fails when requested imported version is absent."""
+        with self.assertRaisesMessage(
+            CommandError,
+            "Dataset version not found after boundary import:",
+        ):
+            resolve_setup_dataset_version("2029-01-01")
+
+    def test_validate_setup_result_rejects_missing_cantons(self) -> None:
+        """Setup validation requires at least one canton for a dataset version."""
+        dataset_version = GeoDatasetVersion.objects.create(
+            name=OFFICIAL_BOUNDARIES_DATASET_NAME,
+            version_label="2026-01-01",
+        )
+
+        with self.assertRaisesMessage(CommandError, "has no cantons."):
+            validate_setup_result(dataset_version, allow_incomplete_population=False)
+
+    def test_validate_setup_result_rejects_missing_active_municipalities(self) -> None:
+        """Setup validation requires at least one active municipality."""
+        municipality = self.create_imported_dataset(municipality_population=443000)
+        municipality.is_active = False
+        municipality.save(update_fields=["is_active"])
+
+        with self.assertRaisesMessage(CommandError, "has no municipalities."):
+            validate_setup_result(
+                municipality.dataset_version,
+                allow_incomplete_population=False,
+            )
 
 
 class SeedDevGeodataCommandTests(TestCase):
