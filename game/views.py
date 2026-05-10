@@ -271,6 +271,8 @@ def get_tracking_request_body(request) -> bytes:
             declared_length = int(content_length)
         except ValueError:
             raise ValueError("Tracking content length is invalid.") from None
+        if declared_length < 0:
+            raise ValueError("Tracking content length is invalid.")
         if declared_length > MAX_TRACKING_REQUEST_BYTES:
             raise ValueError("Tracking payload is too large.")
     return request.body
