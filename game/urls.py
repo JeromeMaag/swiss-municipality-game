@@ -11,4 +11,5 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("start/", views.start, name="start"),
     path("guess/", views.guess, name="guess"),
+    path("summary/<int:game_id>/", views.summary, name="summary"),
 ]

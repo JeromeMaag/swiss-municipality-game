@@ -1,13 +1,14 @@
 """Views for game pages."""
 
 from django.contrib.auth.decorators import login_required
+from django.http import Http404
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET, require_POST
 
 from geo.models import Municipality
 
 from .models import Game, Guess
-from .selectors import get_active_game
+from .selectors import get_active_game, get_finished_game_summary
 from .services import (
     TURN_COUNT,
     GuessSubmissionError,
@@ -92,6 +93,27 @@ def guess(request):
         )
     request.session["last_guess_id"] = result.guess.id
     return redirect("game:index")
+
+
+@login_required
+@require_GET
+def summary(request, game_id: int):
+    """Render the summary for a finished game owned by the current user.
+
+    Args:
+        request: The incoming HTTP request.
+        game_id: Finished game primary key.
+
+    Returns:
+        A rendered summary page for the finished game.
+
+    Raises:
+        Http404: If the game is not finished or does not belong to the user.
+    """
+    game = get_finished_game_summary(request.user, game_id)
+    if game is None:
+        raise Http404("Game summary not found.")
+    return render(request, "game/summary.html", {"game": game})
 
 
 def get_last_guess_result(request) -> Guess | None:

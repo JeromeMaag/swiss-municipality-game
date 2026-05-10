@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Game summary - GemeindeGuess CH{% endblock %}
+
+{% block content %}
+  <section class="game-panel">
+    <h1>Game summary</h1>
+    <p class="muted">Finished game</p>
+
+    <section class="turn-panel" aria-labelledby="summary-score-heading">
+      <h2 id="summary-score-heading">Total score</h2>
+      <p>{{ game.total_score }}</p>
+    </section>
+
+    <ol class="turn-list">
+      {% for turn in game.turns.all %}
+        <li>
+          <strong>Turn {{ turn.turn_number }}</strong>
+          <div>{{ turn.target.name }} ({{ turn.target.canton.abbreviation }})</div>
+          {% if turn.target.population %}
+            <div>Population: {{ turn.target.population }}</div>
+          {% endif %}
+          <div>Score: {{ turn.guess.score }}</div>
+          <div>
+            Distance to municipality:
+            {{ turn.guess.distance_to_municipality_m|floatformat:0 }} m
+          </div>
+          <div>
+            Distance to boundary:
+            {{ turn.guess.distance_to_boundary_m|floatformat:0 }} m
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+
+    <a class="button-link" href="{% url 'game:index' %}">Back to game</a>
+  </section>
+{% endblock %}
