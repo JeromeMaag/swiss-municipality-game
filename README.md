@@ -54,6 +54,10 @@ docker compose up -d db
 python manage.py migrate
 ```
 
+The included `docker-compose.yml` is for local development only. It uses default
+database credentials and exposes Postgres on your machine; do not use it as a
+production deployment file.
+
 ## Data
 
 For real local gameplay, import official boundaries and population data:
