@@ -1146,6 +1146,7 @@ class GameStartTests(TestCase):
         self.assertContains(response, f'data-reveal-target-id="{first_turn.target.id}"')
         self.assertContains(response, 'data-reveal-lat="47.050000"')
         self.assertContains(response, 'data-reveal-lng="8.050000"')
+        self.assertContains(response, 'data-reveal-distance="0.000000"')
         self.assertNotContains(response, "2/5")
         self.assertNotContains(response, "data-guess-form")
 
@@ -1219,6 +1220,7 @@ class GameStartTests(TestCase):
         self.assertContains(response, f'data-reveal-target-id="{municipality.id}"')
         self.assertContains(response, 'data-reveal-lat="47.050000"')
         self.assertContains(response, 'data-reveal-lng="8.050000"')
+        self.assertContains(response, 'data-reveal-distance="0.000000"')
         self.assertNotContains(response, "No active game yet.")
         self.assertNotContains(response, "Start new game")
         self.assertNotContains(response, "data-guess-form")

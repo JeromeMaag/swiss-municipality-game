@@ -48,6 +48,7 @@
                 data-reveal-target-id="{{ last_guess.turn.target.id }}"
                 data-reveal-lat="{{ reveal_guess_lat }}"
                 data-reveal-lng="{{ reveal_guess_lng }}"
+                data-reveal-distance="{{ last_guess.distance_to_municipality_m|floatformat:6 }}"
               {% endif %}
             ></div>
           {% else %}

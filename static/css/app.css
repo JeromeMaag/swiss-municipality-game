@@ -509,6 +509,11 @@ a {
   --marker-fill: #ffe05c;
 }
 
+.reveal-distance-line {
+  filter: drop-shadow(0 0.18rem 0.2rem rgba(0, 0, 0, 0.42));
+  stroke-linecap: round;
+}
+
 .leaflet-div-icon.municipality-label-marker {
   background: transparent;
   border: 0;
