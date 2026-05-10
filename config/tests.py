@@ -66,24 +66,31 @@ class SettingsHelperTests(SimpleTestCase):
         """Project settings default to non-debug mode."""
         self.assertFalse(settings.DEBUG)
 
-    def test_placeholder_secret_key_is_rejected_at_startup(self) -> None:
-        """Settings reject the public development placeholder secret key."""
-        command = (
-            "import os;"
-            "os.environ['SECRET_KEY']='dev-change-me';"
-            "os.environ.pop('DEBUG', None);"
-            "import config.settings"
+    def test_placeholder_secret_keys_are_rejected_at_startup(self) -> None:
+        """Settings reject public placeholder secret keys."""
+        placeholder_values = (
+            "dev-change-me",
+            "replace-this-with-a-local-secret-key",
         )
 
-        result = subprocess.run(
-            [sys.executable, "-c", command],
-            capture_output=True,
-            check=False,
-            text=True,
-        )
+        for placeholder in placeholder_values:
+            command = (
+                "import os;"
+                f"os.environ['SECRET_KEY']='{placeholder}';"
+                "os.environ.pop('DEBUG', None);"
+                "import config.settings"
+            )
 
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("SECRET_KEY must be configured", result.stderr)
+            result = subprocess.run(
+                [sys.executable, "-c", command],
+                capture_output=True,
+                check=False,
+                text=True,
+            )
+
+            with self.subTest(placeholder=placeholder):
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("SECRET_KEY must be configured", result.stderr)
 
 
 class HomeViewTests(SimpleTestCase):

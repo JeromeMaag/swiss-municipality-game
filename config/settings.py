@@ -44,12 +44,15 @@ def get_list_env(name: str, default: list[str] | None = None) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
-SECRET_KEY_PLACEHOLDER = "dev-change-me"
+SECRET_KEY_PLACEHOLDERS = {
+    "dev-change-me",
+    "replace-this-with-a-local-secret-key",
+}
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 
 DEBUG = get_bool_env("DEBUG", default=False)
 
-if not SECRET_KEY or SECRET_KEY == SECRET_KEY_PLACEHOLDER:
+if not SECRET_KEY or SECRET_KEY in SECRET_KEY_PLACEHOLDERS:
     raise ValueError("SECRET_KEY must be configured with a non-placeholder value.")
 
 ALLOWED_HOSTS = get_list_env("ALLOWED_HOSTS", ["localhost", "127.0.0.1"])
