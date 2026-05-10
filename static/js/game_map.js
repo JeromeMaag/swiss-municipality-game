@@ -107,52 +107,78 @@
     }
   }
 
-  function addLabelLayer(map, url, minZoom) {
+  function buildLabelLayer(data) {
+    return window.L.geoJSON(data, {
+      interactive: false,
+      pointToLayer: function (feature, latlng) {
+        const properties = feature.properties || {};
+        return window.L.marker(latlng, {
+          icon: window.L.divIcon({
+            className: "leaflet-div-icon municipality-label-marker",
+            html: (
+              '<span class="municipality-label">' +
+              escapeHtml(properties.name) +
+              "</span>"
+            ),
+          }),
+          interactive: false,
+        });
+      },
+    });
+  }
+
+  function initializeLabelLayer(map, url, minZoom) {
     if (!url) {
-      return Promise.resolve(null);
+      return;
     }
 
-    return window.fetch(url, {
-      credentials: "same-origin",
-      headers: {
-        Accept: "application/geo+json, application/json",
-      },
-    })
-      .then(function (response) {
-        if (!response.ok) {
-          throw new Error("Label request failed with status " + response.status);
-        }
-        return response.json();
-      })
-      .then(function (data) {
-        const layer = window.L.geoJSON(data, {
-          interactive: false,
-          pointToLayer: function (feature, latlng) {
-            const properties = feature.properties || {};
-            return window.L.marker(latlng, {
-              icon: window.L.divIcon({
-                className: "leaflet-div-icon municipality-label-marker",
-                html: (
-                  '<span class="municipality-label">' +
-                  escapeHtml(properties.name) +
-                  "</span>"
-                ),
-              }),
-              interactive: false,
-            });
-          },
-        });
+    let labelLayer = null;
+    let labelRequest = null;
 
-        updateLayerVisibility(map, layer, minZoom);
-        map.on("zoomend", function () {
-          updateLayerVisibility(map, layer, minZoom);
-        });
-        return layer;
+    function loadLabels() {
+      if (labelRequest !== null) {
+        return labelRequest;
+      }
+
+      labelRequest = window.fetch(url, {
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/geo+json, application/json",
+        },
       })
-      .catch(function () {
-        showMapStatus(map, "Municipality labels could not be loaded.");
-        return null;
-      });
+        .then(function (response) {
+          if (!response.ok) {
+            throw new Error("Label request failed with status " + response.status);
+          }
+          return response.json();
+        })
+        .then(function (data) {
+          labelLayer = buildLabelLayer(data);
+          updateLayerVisibility(map, labelLayer, minZoom);
+          return labelLayer;
+        })
+        .catch(function () {
+          showMapStatus(map, "Municipality labels could not be loaded.");
+          return null;
+        });
+      return labelRequest;
+    }
+
+    function syncLabelLayer() {
+      if (map.getZoom() < minZoom) {
+        updateLayerVisibility(map, labelLayer, minZoom);
+        return;
+      }
+
+      if (labelLayer === null) {
+        loadLabels();
+        return;
+      }
+      updateLayerVisibility(map, labelLayer, minZoom);
+    }
+
+    map.on("zoomend", syncLabelLayer);
+    syncLabelLayer();
   }
 
   function showMapStatus(map, message) {
@@ -367,7 +393,7 @@
     const latitude = readNumber(mapElement, "centerLat", 46.8182);
     const longitude = readNumber(mapElement, "centerLng", 8.2275);
     const zoom = readNumber(mapElement, "zoom", 8);
-    const labelMinZoom = readNumber(mapElement, "labelMinZoom", 12);
+    const labelMinZoom = readNumber(mapElement, "labelMinZoom", 11);
     const revealState = readRevealState(mapElement);
     const map = window.L.map(mapElement, {
       attributionControl: true,
@@ -408,7 +434,7 @@
       });
     }).then(function () {
       if (revealState) {
-        return addLabelLayer(
+        initializeLabelLayer(
           map,
           mapElement.dataset.municipalityLabelsUrl,
           labelMinZoom

@@ -334,7 +334,7 @@ class GeoJSONEndpointTests(TestCase):
         self.assertEqual(feature["geometry"]["type"], "Point")
         self.assertEqual(feature["properties"]["id"], self.municipality.id)
         self.assertEqual(feature["properties"]["name"], "Zurich")
-        self.assertEqual(feature["properties"]["canton_abbreviation"], "ZH")
+        self.assertNotIn("canton_abbreviation", feature["properties"])
 
     def test_municipality_labels_skip_missing_label_points(self) -> None:
         """Municipality label endpoint omits municipalities without label points."""

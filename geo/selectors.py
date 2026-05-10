@@ -87,13 +87,10 @@ def get_municipality_labels_for_dataset(
             is_active=True,
             label_point__isnull=False,
         )
-        .select_related("canton")
         .only(
             "id",
             "name",
             "label_point",
-            "canton__id",
-            "canton__abbreviation",
         )
         .order_by("id")
     )

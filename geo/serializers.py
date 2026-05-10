@@ -128,6 +128,5 @@ def serialize_municipality_labels(municipalities: Iterable[Municipality]) -> str
         lambda municipality: {
             "id": municipality.id,
             "name": municipality.name,
-            "canton_abbreviation": municipality.canton.abbreviation,
         },
     )
