@@ -355,9 +355,11 @@ body {
   box-shadow: 0 0 0 2px #5c3d00, 0 0.35rem 1rem rgba(23, 32, 42, 0.34);
 }
 
-.municipality-label-marker {
+.leaflet-div-icon.municipality-label-marker {
   background: transparent;
   border: 0;
+  box-shadow: none;
+  margin: 0;
   pointer-events: none;
 }
 

@@ -347,6 +347,17 @@ class GeoJSONEndpointTests(TestCase):
 
         self.assertEqual(data["features"], [])
 
+    def test_municipality_labels_are_not_browser_cacheable(self) -> None:
+        """Municipality label responses force browsers to recheck access."""
+        turn = self.grant_label_access()
+
+        response = self.client.get(self.municipality_labels_url(turn))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("no-store", response["Cache-Control"])
+        self.assertNotIn("max-age=3600", response["Cache-Control"])
+        self.assertNotIn("ETag", response)
+
     def test_municipality_labels_require_revealed_turn_access(self) -> None:
         """Municipality labels are unavailable without a current reveal grant."""
         response = self.client.get(reverse("geo:municipality_labels_geojson"))

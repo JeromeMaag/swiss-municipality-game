@@ -58,6 +58,20 @@ def geojson_response(data: str, etag: str = "") -> HttpResponse:
     return response
 
 
+def no_store_geojson_response(data: str) -> HttpResponse:
+    """Return a GeoJSON response that browsers must not cache.
+
+    Args:
+        data: Serialized GeoJSON response data.
+
+    Returns:
+        A response with no-store browser cache metadata.
+    """
+    response = HttpResponse(data, content_type=GEOJSON_CONTENT_TYPE)
+    patch_cache_control(response, no_store=True, max_age=0)
+    return response
+
+
 def cache_key_for_boundaries(name: str, dataset_version: GeoDatasetVersion | None) -> str:
     """Build a cache key for the current boundary dataset.
 
@@ -135,6 +149,30 @@ def cached_geojson_response(request, name: str, data_builder) -> HttpResponse:
     return geojson_response(data, etag=etag)
 
 
+def server_cached_geojson_response(name: str, data_builder) -> HttpResponse:
+    """Return server-cached GeoJSON without browser caching.
+
+    Args:
+        name: Response name for the server cache key.
+        data_builder: Callable receiving the current dataset version and returning
+            serialized GeoJSON.
+
+    Returns:
+        A no-store GeoJSON response.
+    """
+    dataset_version = get_current_dataset_version()
+    cache_key = cache_key_for_boundaries(name, dataset_version)
+    data = cache.get(cache_key)
+    if data is None:
+        data = (
+            EMPTY_FEATURE_COLLECTION
+            if dataset_version is None
+            else data_builder(dataset_version)
+        )
+        cache.set(cache_key, data, GEOJSON_CACHE_SECONDS)
+    return no_store_geojson_response(data)
+
+
 @login_required
 @require_GET
 def canton_boundaries(request):
@@ -187,8 +225,7 @@ def municipality_labels(request):
         A GeoJSON FeatureCollection response with municipality names.
     """
     require_municipality_label_access(request)
-    return cached_geojson_response(
-        request,
+    return server_cached_geojson_response(
         "municipality-labels",
         lambda dataset_version: serialize_municipality_labels(
             get_municipality_labels_for_dataset(dataset_version)

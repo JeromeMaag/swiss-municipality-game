@@ -131,7 +131,7 @@
             const properties = feature.properties || {};
             return window.L.marker(latlng, {
               icon: window.L.divIcon({
-                className: "municipality-label-marker",
+                className: "leaflet-div-icon municipality-label-marker",
                 html: (
                   '<span class="municipality-label">' +
                   escapeHtml(properties.name) +
