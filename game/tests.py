@@ -1052,6 +1052,8 @@ class GameStartTests(TestCase):
         self.client.force_login(self.user)
         game = start_game(self.user)
         first_turn = game.turns.select_related("target").order_by("turn_number").first()
+        first_turn.target.population = 12_345
+        first_turn.target.save(update_fields=["population"])
 
         response = self.client.post(
             reverse("game:guess"),
@@ -1067,6 +1069,10 @@ class GameStartTests(TestCase):
         self.assertContains(response, first_turn.target.name)
         self.assertContains(response, "Score")
         self.assertContains(response, "1000")
+        self.assertContains(response, "Canton")
+        self.assertContains(response, "Zurich (ZH)")
+        self.assertContains(response, "Population")
+        self.assertContains(response, "12345")
         self.assertContains(response, "Distance to municipality")
         self.assertContains(response, "0 m")
         self.assertContains(response, "Next turn")
@@ -1085,6 +1091,28 @@ class GameStartTests(TestCase):
         response = self.client.get(reverse("game:index"))
         self.assertNotContains(response, "Result")
         self.assertContains(response, "Turn 2 of 5")
+
+    def test_guess_view_shows_zero_population_when_present(self) -> None:
+        """Game index distinguishes a zero population value from missing data."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+        game = start_game(self.user)
+        first_turn = game.turns.select_related("target").order_by("turn_number").first()
+        first_turn.target.population = 0
+        first_turn.target.save(update_fields=["population"])
+
+        response = self.client.post(
+            reverse("game:guess"),
+            {
+                "turn_id": first_turn.id,
+                "latitude": "47.05",
+                "longitude": "8.05",
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "Population")
+        self.assertContains(response, "<dd>0</dd>", html=True)
 
     def test_guess_view_shows_final_result_for_finished_game(self) -> None:
         """Final-turn submissions render the finished game result."""
@@ -1111,6 +1139,8 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Game finished")
         self.assertContains(response, "Result")
         self.assertContains(response, "Total score")
+        self.assertContains(response, "Canton")
+        self.assertContains(response, "Zurich (ZH)")
         self.assertContains(response, "View summary")
         self.assertContains(response, reverse("game:summary", args=[game.id]))
         self.assertContains(response, 'id="game-map"')

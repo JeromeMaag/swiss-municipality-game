@@ -45,6 +45,16 @@
                   <dd>{{ last_guess.score }}</dd>
                 </div>
                 <div>
+                  <dt>Canton</dt>
+                  <dd>{{ last_guess.turn.target.canton.name }} ({{ last_guess.turn.target.canton.abbreviation }})</dd>
+                </div>
+                {% if last_guess.turn.target.population is not None %}
+                  <div>
+                    <dt>Population</dt>
+                    <dd>{{ last_guess.turn.target.population }}</dd>
+                  </div>
+                {% endif %}
+                <div>
                   <dt>Distance to municipality</dt>
                   <dd>{{ last_guess.distance_to_municipality_m|floatformat:0 }} m</dd>
                 </div>

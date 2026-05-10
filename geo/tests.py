@@ -22,6 +22,11 @@ from tests.utils import make_test_geometry
 
 from .management.commands.import_boundaries import simplify_geometry, to_float, to_int
 from .management.commands.import_population import read_csv_rows
+from .management.commands.import_statpop_population import (
+    apply_population_aggregation,
+    parse_statpop_population_csv,
+)
+from .management.commands.setup_geodata import validate_setup_result
 from .management.commands.seed_dev_geodata import (
     DATASET_NAME,
     DATASET_VERSION,
@@ -1076,6 +1081,404 @@ class ImportPopulationCommandTests(TestCase):
             ):
                 with self.assertRaises(CommandError):
                     call_command("import_population", "population.csv", stdout=StringIO())
+
+
+class ImportStatpopPopulationCommandTests(TestCase):
+    """Tests for the official BFS STATPOP population import command."""
+
+    def setUp(self) -> None:
+        """Create shared geodata fixtures for STATPOP import tests."""
+        self.dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2026-01-01",
+        )
+        self.canton = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+
+    def create_municipality(
+        self,
+        bfs_number: int,
+        name: str,
+        *,
+        is_active: bool = True,
+    ) -> Municipality:
+        """Create one municipality in the shared dataset version.
+
+        Args:
+            bfs_number: Municipality BFS number.
+            name: Municipality display name.
+            is_active: Whether the municipality is current.
+
+        Returns:
+            Created municipality.
+        """
+        return Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=bfs_number,
+            name=name,
+            canton=self.canton,
+            is_active=is_active,
+            geom=make_test_geometry(),
+        )
+
+    def test_parse_statpop_population_csv_extracts_municipality_rows(self) -> None:
+        """STATPOP parser extracts municipality rows and skips aggregate rows."""
+        statpop_csv = "\n".join(
+            [
+                (
+                    '"Year","Canton (-) / District (>>) / Commune (......)",'
+                    '"Population type","Domicile 1 year ago","Sex","Age - total"'
+                ),
+                (
+                    '"2024","Switzerland","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",9051029'
+                ),
+                (
+                    '"2024","- Zurich","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",1620020'
+                ),
+                (
+                    '"2024","......0261 Zurich","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",443000'
+                ),
+            ]
+        )
+
+        population_by_bfs = parse_statpop_population_csv(statpop_csv)
+
+        self.assertEqual(population_by_bfs, {261: 443000})
+
+    def test_apply_population_aggregation_adds_successor_municipalities(self) -> None:
+        """Known municipality mutations are aggregated onto successor BFS numbers."""
+        population_by_bfs = apply_population_aggregation(
+            {
+                2016: 550,
+                2027: 650,
+                5146: 100,
+                5149: 200,
+                5181: 300,
+                5200: 400,
+                5207: 500,
+            }
+        )
+
+        self.assertEqual(population_by_bfs[2056], 1200)
+        self.assertEqual(population_by_bfs[5395], 1500)
+        self.assertEqual(apply_population_aggregation({1065: 6500})[1065], 6500)
+
+    def test_command_imports_latest_statpop_population(self) -> None:
+        """Command imports the latest STATPOP data into the target dataset."""
+        zurich = self.create_municipality(261, "Zurich")
+        root = self.create_municipality(1065, "Root")
+        fetigny_menieres = self.create_municipality(2056, "Fetigny-Menieres")
+        statpop_csv = "\n".join(
+            [
+                (
+                    '"Year","Canton (-) / District (>>) / Commune (......)",'
+                    '"Population type","Domicile 1 year ago","Sex","Age - total"'
+                ),
+                (
+                    '"2024","......0261 Zurich","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",443000'
+                ),
+                (
+                    '"2024","......1065 Root","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",6000'
+                ),
+                (
+                    '"2024","......1057 Honau","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",500'
+                ),
+                (
+                    '"2024","......2016 Fetigny","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",700'
+                ),
+                (
+                    '"2024","......2027 Menieres","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",800'
+                ),
+            ]
+        )
+        output = StringIO()
+
+        with (
+            mock.patch(
+                "geo.management.commands.import_statpop_population."
+                "fetch_statpop_metadata",
+                return_value={
+                    "variables": [{"code": "Jahr", "values": ["2023", "2024"]}]
+                },
+            ),
+            mock.patch(
+                "geo.management.commands.import_statpop_population.fetch_statpop_csv",
+                return_value=statpop_csv,
+            ) as fetch_statpop_csv,
+        ):
+            call_command(
+                "import_statpop_population",
+                "--dataset-version",
+                "2026-01-01",
+                stdout=output,
+            )
+
+        zurich.refresh_from_db()
+        root.refresh_from_db()
+        fetigny_menieres.refresh_from_db()
+        self.assertEqual(zurich.population, 443000)
+        self.assertEqual(root.population, 6500)
+        self.assertEqual(fetigny_menieres.population, 1500)
+        fetch_statpop_csv.assert_called_once_with(mock.ANY, "2024")
+        self.assertIn("Updated 3 municipalities", output.getvalue())
+        self.assertIn("BFS STATPOP 2024", output.getvalue())
+
+    def test_command_ignores_inactive_municipalities_for_missing_values(self) -> None:
+        """Command only requires STATPOP values for active municipalities."""
+        zurich = self.create_municipality(261, "Zurich")
+        inactive = self.create_municipality(
+            9999,
+            "Inactive Municipality",
+            is_active=False,
+        )
+        statpop_csv = "\n".join(
+            [
+                (
+                    '"Year","Canton (-) / District (>>) / Commune (......)",'
+                    '"Population type","Domicile 1 year ago","Sex","Age - total"'
+                ),
+                (
+                    '"2024","......0261 Zurich","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",443000'
+                ),
+            ]
+        )
+        output = StringIO()
+
+        with (
+            mock.patch(
+                "geo.management.commands.import_statpop_population."
+                "fetch_statpop_metadata",
+                return_value={"variables": [{"code": "Jahr", "values": ["2024"]}]},
+            ),
+            mock.patch(
+                "geo.management.commands.import_statpop_population.fetch_statpop_csv",
+                return_value=statpop_csv,
+            ),
+        ):
+            call_command(
+                "import_statpop_population",
+                "--dataset-version",
+                "2026-01-01",
+                stdout=output,
+            )
+
+        zurich.refresh_from_db()
+        inactive.refresh_from_db()
+        self.assertEqual(zurich.population, 443000)
+        self.assertIsNone(inactive.population)
+        self.assertIn("Updated 1 municipalities", output.getvalue())
+
+    def test_command_rejects_missing_current_municipality_population(self) -> None:
+        """Command fails when current municipalities have no STATPOP value."""
+        self.create_municipality(9999, "Missing Municipality")
+        statpop_csv = "\n".join(
+            [
+                (
+                    '"Year","Canton (-) / District (>>) / Commune (......)",'
+                    '"Population type","Domicile 1 year ago","Sex","Age - total"'
+                ),
+                (
+                    '"2024","......0261 Zurich","Permanent resident population",'
+                    '"Domicile 1 year ago - total","Sex - total",443000'
+                ),
+            ]
+        )
+
+        with (
+            mock.patch(
+                "geo.management.commands.import_statpop_population."
+                "fetch_statpop_metadata",
+                return_value={"variables": [{"code": "Jahr", "values": ["2024"]}]},
+            ),
+            mock.patch(
+                "geo.management.commands.import_statpop_population.fetch_statpop_csv",
+                return_value=statpop_csv,
+            ),
+        ):
+            with self.assertRaisesMessage(
+                CommandError,
+                "Missing STATPOP population values",
+            ):
+                call_command(
+                    "import_statpop_population",
+                    "--dataset-version",
+                    "2026-01-01",
+                    stdout=StringIO(),
+                )
+
+
+class SetupGeodataCommandTests(TestCase):
+    """Tests for the complete official geodata setup command."""
+
+    def create_imported_dataset(
+        self,
+        *,
+        municipality_population: int | None = None,
+    ) -> Municipality:
+        """Create an official dataset as if the boundary import had run.
+
+        Args:
+            municipality_population: Optional population value for the municipality.
+
+        Returns:
+            Created municipality.
+        """
+        dataset_version = GeoDatasetVersion.objects.create(
+            name=OFFICIAL_BOUNDARIES_DATASET_NAME,
+            version_label="2026-01-01",
+        )
+        canton = Canton.objects.create(
+            dataset_version=dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+        return Municipality.objects.create(
+            dataset_version=dataset_version,
+            bfs_number=261,
+            name="Zurich",
+            canton=canton,
+            population=municipality_population,
+            geom=make_test_geometry(),
+        )
+
+    def test_command_imports_boundaries_then_population(self) -> None:
+        """Setup command imports boundaries, imports population, and validates output."""
+        output = StringIO()
+        command_names = []
+
+        def run_inner_command(command_name, *args, **kwargs):
+            """Simulate the setup command's inner imports.
+
+            Args:
+                command_name: Name of the inner management command.
+                *args: Positional command arguments.
+                **kwargs: Keyword command options.
+            """
+            command_names.append(command_name)
+            if command_name == "import_swissboundaries3d":
+                self.create_imported_dataset()
+            elif command_name == "import_statpop_population":
+                Municipality.objects.update(population=443000)
+
+        with mock.patch(
+            "geo.management.commands.setup_geodata.call_command",
+            side_effect=run_inner_command,
+        ) as inner_call_command:
+            call_command(
+                "setup_geodata",
+                "--dataset-version",
+                "2026-01-01",
+                "--statpop-year",
+                "2024",
+                stdout=output,
+            )
+
+        self.assertEqual(
+            command_names,
+            ["import_swissboundaries3d", "import_statpop_population"],
+        )
+        boundary_call = inner_call_command.call_args_list[0]
+        population_call = inner_call_command.call_args_list[1]
+        self.assertEqual(boundary_call.kwargs["dataset_version"], "2026-01-01")
+        self.assertEqual(population_call.kwargs["dataset_version"], "2026-01-01")
+        self.assertEqual(population_call.kwargs["year"], "2024")
+        self.assertIn("Geodata setup complete", output.getvalue())
+        self.assertIn("1 municipalities", output.getvalue())
+
+    def test_command_rejects_missing_population_after_setup(self) -> None:
+        """Setup command fails when imported municipalities still lack population."""
+        def run_inner_command(command_name, *args, **kwargs):
+            """Simulate imports while leaving population empty.
+
+            Args:
+                command_name: Name of the inner management command.
+                *args: Positional command arguments.
+                **kwargs: Keyword command options.
+            """
+            if command_name == "import_swissboundaries3d":
+                self.create_imported_dataset()
+
+        with mock.patch(
+            "geo.management.commands.setup_geodata.call_command",
+            side_effect=run_inner_command,
+        ):
+            with self.assertRaisesMessage(
+                CommandError,
+                "without population values",
+            ):
+                call_command(
+                    "setup_geodata",
+                    "--dataset-version",
+                    "2026-01-01",
+                    stdout=StringIO(),
+                )
+
+    def test_setup_validation_ignores_inactive_municipality_population(self) -> None:
+        """Setup validation only requires population for active municipalities."""
+        active_municipality = self.create_imported_dataset(
+            municipality_population=443000
+        )
+        Municipality.objects.create(
+            dataset_version=active_municipality.dataset_version,
+            bfs_number=9999,
+            name="Inactive Municipality",
+            canton=active_municipality.canton,
+            is_active=False,
+            geom=make_test_geometry(),
+        )
+
+        municipality_count, missing_population_count = validate_setup_result(
+            active_municipality.dataset_version,
+            allow_incomplete_population=False,
+        )
+
+        self.assertEqual(municipality_count, 1)
+        self.assertEqual(missing_population_count, 0)
+
+    def test_command_can_allow_incomplete_population(self) -> None:
+        """Setup command can finish with explicit incomplete-population allowance."""
+        output = StringIO()
+
+        def run_inner_command(command_name, *args, **kwargs):
+            """Simulate imports while leaving population empty.
+
+            Args:
+                command_name: Name of the inner management command.
+                *args: Positional command arguments.
+                **kwargs: Keyword command options.
+            """
+            if command_name == "import_swissboundaries3d":
+                self.create_imported_dataset()
+
+        with mock.patch(
+            "geo.management.commands.setup_geodata.call_command",
+            side_effect=run_inner_command,
+        ):
+            call_command(
+                "setup_geodata",
+                "--dataset-version",
+                "2026-01-01",
+                "--allow-incomplete-population",
+                stdout=output,
+            )
+
+        self.assertIn("1 municipalities, 1 without population", output.getvalue())
 
 
 class SeedDevGeodataCommandTests(TestCase):
