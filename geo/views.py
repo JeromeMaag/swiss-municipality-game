@@ -28,19 +28,6 @@ GEOJSON_CACHE_SECONDS = 60 * 60
 EMPTY_FEATURE_COLLECTION = '{"type":"FeatureCollection","features":[]}'
 
 
-@require_GET
-def index(request):
-    """Render a temporary geodata page placeholder.
-
-    Args:
-        request: The incoming HTTP request.
-
-    Returns:
-        A plain HTTP response while the geodata page UI is pending.
-    """
-    return HttpResponse("Geodata API endpoints are available; page UI is pending.")
-
-
 def geojson_response(data: str, etag: str = "") -> HttpResponse:
     """Return a GeoJSON response.
 
@@ -54,7 +41,7 @@ def geojson_response(data: str, etag: str = "") -> HttpResponse:
     response = HttpResponse(data, content_type=GEOJSON_CONTENT_TYPE)
     if etag:
         response["ETag"] = etag
-    patch_cache_control(response, private=True, max_age=GEOJSON_CACHE_SECONDS)
+    patch_cache_control(response, private=True, no_cache=True, max_age=0)
     return response
 
 
@@ -135,7 +122,7 @@ def cached_geojson_response(request, name: str, data_builder) -> HttpResponse:
     etag = etag_for_cache_key(cache_key)
     if request_etag_matches(request, etag):
         response = HttpResponseNotModified(headers={"ETag": etag})
-        patch_cache_control(response, private=True, max_age=GEOJSON_CACHE_SECONDS)
+        patch_cache_control(response, private=True, no_cache=True, max_age=0)
         return response
 
     data = cache.get(cache_key)

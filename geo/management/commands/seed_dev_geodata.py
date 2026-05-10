@@ -7,10 +7,11 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
+from geo.constants import DEV_GEODATA_DATASET_NAME
 from geo.models import Canton, GeoDatasetVersion, Municipality
 
 
-DATASET_NAME = "dev-seed"
+DATASET_NAME = DEV_GEODATA_DATASET_NAME
 DATASET_VERSION = "local"
 
 

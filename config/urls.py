@@ -3,11 +3,21 @@
 from django.contrib import admin
 from django.urls import include, path
 
+from geo.admin_views import geodata_setup
+
 from .views import home
+
+
+admin.site.index_template = "admin/geodata_index.html"
 
 
 urlpatterns = [
     path("", home, name="home"),
+    path(
+        "admin/geodata/setup/",
+        admin.site.admin_view(geodata_setup),
+        name="admin_geodata_setup",
+    ),
     path("admin/", admin.site.urls),
     path("accounts/", include("accounts.urls")),
     path("geo/", include("geo.urls")),

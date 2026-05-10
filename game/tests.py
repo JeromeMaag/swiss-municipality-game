@@ -22,10 +22,14 @@ from .services import (
     GuessSubmissionError,
     InvalidGuessCoordinatesError,
     NotEnoughMunicipalitiesError,
+    _calculate_guess_distances,
+    _normalize_coordinate,
+    _normalize_turn_id,
     start_game,
     submit_guess,
 )
-from .views import parse_tracking_request
+from .selectors import get_active_game, get_current_turn, get_finished_game_summary
+from .views import get_last_guess_result, parse_tracking_request
 
 
 class ScoringTests(TestCase):
@@ -41,6 +45,10 @@ class ScoringTests(TestCase):
         self.assertEqual(calculate_score(25_000), 368)
         self.assertEqual(calculate_score(100_000), 18)
 
+    def test_calculate_score_never_returns_negative_values(self) -> None:
+        """Extremely large valid distances are clamped to zero."""
+        self.assertEqual(calculate_score(1_000_000_000), 0)
+
     def test_calculate_score_rejects_negative_distance(self) -> None:
         """Negative distances are invalid."""
         with self.assertRaises(ValueError):
@@ -52,6 +60,48 @@ class ScoringTests(TestCase):
             with self.subTest(distance=distance):
                 with self.assertRaises(ValueError):
                     calculate_score(distance)
+
+
+class GameServiceHelperTests(TestCase):
+    """Tests for low-level game service validation helpers."""
+
+    def test_normalize_coordinate_accepts_bounds(self) -> None:
+        """Coordinate normalization accepts inclusive boundary values."""
+        self.assertEqual(
+            _normalize_coordinate("-90", name="Latitude", minimum=-90, maximum=90),
+            -90,
+        )
+        self.assertEqual(
+            _normalize_coordinate("180", name="Longitude", minimum=-180, maximum=180),
+            180,
+        )
+
+    def test_normalize_coordinate_rejects_out_of_range_values(self) -> None:
+        """Coordinate normalization rejects values outside allowed bounds."""
+        with self.assertRaisesMessage(
+            InvalidGuessCoordinatesError,
+            "Latitude must be between -90 and 90.",
+        ):
+            _normalize_coordinate("90.1", name="Latitude", minimum=-90, maximum=90)
+
+    def test_normalize_turn_id_accepts_positive_integer_strings(self) -> None:
+        """Turn identifier normalization accepts positive integer strings."""
+        self.assertEqual(_normalize_turn_id("12"), 12)
+
+    def test_normalize_turn_id_rejects_zero_and_non_integer_values(self) -> None:
+        """Turn identifier normalization rejects invalid primary keys."""
+        for value in ("0", "not-a-number", None):
+            with self.subTest(value=value):
+                with self.assertRaises(GuessSubmissionError):
+                    _normalize_turn_id(value)
+
+    def test_calculate_guess_distances_rejects_missing_targets(self) -> None:
+        """Distance calculation fails clearly for missing municipality targets."""
+        with self.assertRaisesMessage(
+            GuessSubmissionError,
+            "Target municipality does not exist.",
+        ):
+            _calculate_guess_distances(point=Point(8.0, 47.0, srid=4326), target_id=0)
 
 
 class GameModelTests(TestCase):
@@ -1421,3 +1471,198 @@ class GameSummaryTests(TestCase):
         response = self.client.get(reverse("game:summary", args=[game.id]))
 
         self.assertEqual(response.status_code, 404)
+
+
+class GameSelectorTests(TestCase):
+    """Tests for game query helpers used by views."""
+
+    def setUp(self) -> None:
+        """Create shared fixtures for selector tests."""
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(username="player", password="test")
+        self.other_user = user_model.objects.create_user(
+            username="other",
+            password="test",
+        )
+        self.dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2026-01-01",
+        )
+        self.canton = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+
+    def create_municipality(self, bfs_number: int, name: str) -> Municipality:
+        """Create a municipality fixture for selector tests."""
+        return Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=bfs_number,
+            name=name,
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+    def test_get_active_game_returns_current_active_game(self) -> None:
+        """Active game selector returns the user's active game and ignores finished ones."""
+        Game.objects.create(
+            user=self.user,
+            status=Game.Status.FINISHED,
+            finished_at=timezone.now(),
+        )
+        active_game = Game.objects.create(user=self.user)
+        Game.objects.create(user=self.other_user)
+
+        self.assertEqual(get_active_game(self.user), active_game)
+        self.assertIsNotNone(get_active_game(self.other_user))
+
+    def test_get_current_turn_returns_first_unrevealed_turn(self) -> None:
+        """Current-turn selector chooses the earliest unrevealed turn."""
+        game = Game.objects.create(user=self.user)
+        first_target = self.create_municipality(261, "Zurich")
+        second_target = self.create_municipality(262, "Winterthur")
+        Turn.objects.create(
+            game=game,
+            turn_number=1,
+            target=first_target,
+            revealed_at=timezone.now(),
+        )
+        second_turn = Turn.objects.create(
+            game=game,
+            turn_number=2,
+            target=second_target,
+        )
+
+        self.assertEqual(get_current_turn(game), second_turn)
+        self.assertIsNone(get_current_turn(None))
+
+    def test_get_finished_game_summary_returns_ordered_finished_game(self) -> None:
+        """Finished-game selector returns ordered turns for the requesting owner."""
+        first_target = self.create_municipality(261, "Zurich")
+        second_target = self.create_municipality(262, "Winterthur")
+        finished_game = Game.objects.create(
+            user=self.user,
+            status=Game.Status.FINISHED,
+            finished_at=timezone.now(),
+        )
+        second_turn = Turn.objects.create(
+            game=finished_game,
+            turn_number=2,
+            target=second_target,
+            revealed_at=timezone.now(),
+        )
+        Guess.objects.create(
+            turn=second_turn,
+            user=self.user,
+            point=Point(8.1, 47.1, srid=4326),
+            distance_to_municipality_m=10,
+            score=990,
+        )
+        first_turn = Turn.objects.create(
+            game=finished_game,
+            turn_number=1,
+            target=first_target,
+            revealed_at=timezone.now(),
+        )
+        Guess.objects.create(
+            turn=first_turn,
+            user=self.user,
+            point=Point(8.05, 47.05, srid=4326),
+            distance_to_municipality_m=0,
+            score=1000,
+        )
+
+        summary = get_finished_game_summary(self.user, finished_game.id)
+
+        self.assertIsNotNone(summary)
+        self.assertEqual(
+            [turn.turn_number for turn in summary.turns.all()],
+            [1, 2],
+        )
+        self.assertEqual(summary.turns.all()[0].guess.score, 1000)
+        self.assertIsNone(get_finished_game_summary(self.other_user, finished_game.id))
+
+
+class GameViewHelperTests(TestCase):
+    """Tests for small game view helpers."""
+
+    def setUp(self) -> None:
+        """Create shared fixtures for view helper tests."""
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(username="player", password="test")
+        self.other_user = user_model.objects.create_user(
+            username="other",
+            password="test",
+        )
+        self.dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2026-01-01",
+        )
+        self.canton = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+        municipality = Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=261,
+            name="Zurich",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+        self.game = Game.objects.create(user=self.user)
+        self.turn = Turn.objects.create(
+            game=self.game,
+            turn_number=1,
+            target=municipality,
+            revealed_at=timezone.now(),
+        )
+        self.guess = Guess.objects.create(
+            turn=self.turn,
+            user=self.user,
+            point=Point(8.05, 47.05, srid=4326),
+            distance_to_municipality_m=0,
+            score=1000,
+        )
+
+    def test_get_last_guess_result_returns_guess_once(self) -> None:
+        """Last-guess helper loads the stored guess and clears the session key."""
+        request = RequestFactory().get(reverse("game:index"))
+        request.user = self.user
+        request.session = {"last_guess_id": str(self.guess.id)}
+
+        result = get_last_guess_result(request)
+
+        self.assertEqual(result, self.guess)
+        self.assertNotIn("last_guess_id", request.session)
+
+    def test_get_last_guess_result_ignores_invalid_or_foreign_ids(self) -> None:
+        """Last-guess helper ignores invalid ids and guesses owned by others."""
+        other_game = Game.objects.create(user=self.other_user)
+        other_turn = Turn.objects.create(
+            game=other_game,
+            turn_number=1,
+            target=self.turn.target,
+            revealed_at=timezone.now(),
+        )
+        other_guess = Guess.objects.create(
+            turn=other_turn,
+            user=self.other_user,
+            point=Point(8.06, 47.06, srid=4326),
+            distance_to_municipality_m=10,
+            score=990,
+        )
+
+        for stored_value in ("not-a-number", "0", str(other_guess.id)):
+            request = RequestFactory().get(reverse("game:index"))
+            request.user = self.user
+            request.session = {"last_guess_id": stored_value}
+
+            with self.subTest(stored_value=stored_value):
+                self.assertIsNone(get_last_guess_result(request))
+                self.assertNotIn("last_guess_id", request.session)

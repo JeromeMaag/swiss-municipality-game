@@ -1,0 +1,130 @@
+{% extends "admin/base_site.html" %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a>
+    &rsaquo; Geodata setup
+  </div>
+{% endblock %}
+
+{% block content %}
+  <div id="content-main">
+    <div class="module">
+      <h2>Current geodata</h2>
+      {% if status.dataset_version %}
+        <table>
+          <tbody>
+            <tr>
+              <th scope="row">Dataset</th>
+              <td>{{ status.dataset_version }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Imported at</th>
+              <td>{{ status.dataset_version.imported_at }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Cantons</th>
+              <td>{{ status.canton_count }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Municipalities</th>
+              <td>{{ status.municipality_count }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Active municipalities</th>
+              <td>{{ status.active_municipality_count }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Inactive municipalities</th>
+              <td>{{ status.inactive_municipality_count }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Active municipalities without population</th>
+              <td>{{ status.missing_population_count }}</td>
+            </tr>
+          </tbody>
+        </table>
+      {% else %}
+        <p>No geodata has been imported yet.</p>
+      {% endif %}
+    </div>
+
+    <div class="module">
+      <h2>Update geodata</h2>
+      <p>
+        Official geodata setup downloads swissBOUNDARIES3D boundaries and BFS
+        STATPOP population data. It can take a while and should not be interrupted.
+      </p>
+      <form method="post" data-geodata-update-form>
+        {% csrf_token %}
+        <input type="hidden" data-geodata-action>
+        <div class="submit-row">
+          <button type="submit" name="action" value="setup_geodata" class="default">
+            Update official geodata
+          </button>
+          <button type="submit" name="action" value="seed_dev_geodata">
+            Load development geodata
+          </button>
+        </div>
+        <div data-geodata-loading hidden>
+          <p>
+            Geodata update is running. This can take several minutes.
+          </p>
+          <progress aria-label="Geodata update progress"></progress>
+        </div>
+      </form>
+    </div>
+  </div>
+{% endblock %}
+
+{% block extrabody %}
+  {{ block.super }}
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      var form = document.querySelector("[data-geodata-update-form]");
+      if (!form) {
+        return;
+      }
+
+      var loading = form.querySelector("[data-geodata-loading]");
+      var actionInput = form.querySelector("[data-geodata-action]");
+      var buttons = form.querySelectorAll("button[type='submit']");
+      var isSubmitting = false;
+      var clickedAction = "";
+
+      buttons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          clickedAction = button.value;
+        });
+      });
+
+      form.addEventListener("submit", function (event) {
+        if (isSubmitting) {
+          event.preventDefault();
+          return;
+        }
+
+        event.preventDefault();
+        if (actionInput) {
+          actionInput.name = "action";
+          actionInput.value = clickedAction || (
+            event.submitter ? event.submitter.value : ""
+          );
+        }
+        buttons.forEach(function (button) {
+          button.disabled = true;
+        });
+        if (loading) {
+          loading.hidden = false;
+        }
+
+        isSubmitting = true;
+        window.requestAnimationFrame(function () {
+          window.requestAnimationFrame(function () {
+            form.submit();
+          });
+        });
+      });
+    });
+  </script>
+{% endblock extrabody %}

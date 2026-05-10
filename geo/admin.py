@@ -9,6 +9,7 @@ from .models import Canton, GeoDatasetVersion, Municipality
 class GeoDatasetVersionAdmin(admin.ModelAdmin):
     """Admin configuration for geodata dataset versions."""
 
+    change_list_template = "admin/geo/geodatasetversion/change_list.html"
     list_display = ("name", "version_label", "imported_at")
     search_fields = ("name", "version_label", "source_url")
     readonly_fields = ("imported_at",)

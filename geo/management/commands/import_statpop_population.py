@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from geo.management.commands._http import open_url_with_validated_redirects
 from geo.management.commands.import_population import (
     format_bfs_numbers,
     import_population_rows,
@@ -25,7 +26,8 @@ STATPOP_PXWEB_URL = (
     "px-x-0103030000_102/px-x-0103030000_102.px"
 )
 DEFAULT_DATASET_NAME = "swissBOUNDARIES3D"
-ALLOWED_URL_SCHEMES = {"http", "https"}
+ALLOWED_URL_SCHEMES = {"https"}
+ALLOWED_URL_HOSTS = {"www.pxweb.bfs.admin.ch"}
 
 YEAR_VARIABLE = "Jahr"
 SPATIAL_VARIABLE = "Kanton (-) / Bezirk (>>) / Gemeinde (......)"
@@ -159,11 +161,13 @@ def fetch_statpop_metadata(url: str) -> dict[str, Any]:
     Raises:
         CommandError: If the request fails or returns invalid JSON.
     """
-    validate_url_scheme(url)
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            validate_url_scheme(response.geturl())
+        with open_url_with_validated_redirects(
+            request,
+            timeout=60,
+            validate_url=validate_url_scheme,
+        ) as response:
             return json.load(response)
     except (OSError, json.JSONDecodeError) as error:
         raise CommandError(f"Could not load BFS STATPOP metadata: {error}") from error
@@ -182,7 +186,6 @@ def fetch_statpop_csv(url: str, year: str) -> str:
     Raises:
         CommandError: If the request fails.
     """
-    validate_url_scheme(url)
     request = urllib.request.Request(
         url,
         data=json.dumps(build_statpop_query(year)).encode("utf-8"),
@@ -192,8 +195,11 @@ def fetch_statpop_csv(url: str, year: str) -> str:
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
-            validate_url_scheme(response.geturl())
+        with open_url_with_validated_redirects(
+            request,
+            timeout=120,
+            validate_url=validate_url_scheme,
+        ) as response:
             return decode_statpop_response(response.read())
     except OSError as error:
         raise CommandError(
@@ -460,16 +466,18 @@ def population_rows_for_dataset(
 
 
 def validate_url_scheme(url: str) -> None:
-    """Validate that a URL uses an allowed remote scheme.
+    """Validate that a URL uses an allowed remote origin.
 
     Args:
         url: URL to validate.
 
     Raises:
-        CommandError: If the URL scheme is not allowed.
+        CommandError: If the URL scheme or host is not allowed.
     """
-    scheme = urlparse(url).scheme.lower()
+    parsed_url = urlparse(url)
+    scheme = parsed_url.scheme.lower()
     if scheme not in ALLOWED_URL_SCHEMES:
-        raise CommandError(
-            f"URL scheme '{scheme}' is not allowed. Use http or https."
-        )
+        raise CommandError(f"URL scheme '{scheme}' is not allowed. Use https.")
+    host = parsed_url.hostname or ""
+    if host.lower() not in ALLOWED_URL_HOSTS:
+        raise CommandError(f"URL host '{host}' is not allowed.")

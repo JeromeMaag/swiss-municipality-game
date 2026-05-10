@@ -12,8 +12,10 @@ from urllib.parse import urlparse
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.models.deletion import ProtectedError
 from django.utils import timezone
 
+from geo.management.commands._http import open_url_with_validated_redirects
 from geo.management.commands.import_boundaries import (
     import_cantons,
     import_municipalities,
@@ -32,7 +34,8 @@ MUNICIPALITY_LAYER = "tlm_hoheitsgebiet"
 CANTON_ABBREVIATION_FIELD = "_canton_abbreviation"
 MUNICIPALITY_OBJECT_TYPE_FIELD = "objektart"
 MUNICIPALITY_OBJECT_TYPE = "Gemeindegebiet"
-ALLOWED_URL_SCHEMES = {"http", "https"}
+ALLOWED_URL_SCHEMES = {"https"}
+ALLOWED_URL_HOSTS = {"data.geo.admin.ch"}
 UNIX_FILE_TYPE_MASK = 0o170000
 UNIX_SYMLINK_TYPE = 0o120000
 
@@ -148,12 +151,18 @@ def load_stac_items(url: str) -> dict[str, Any]:
     Returns:
         Parsed STAC FeatureCollection.
     """
-    validate_url_scheme(url)
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            validate_url_scheme(response.geturl())
+        with open_url_with_validated_redirects(
+            request,
+            timeout=60,
+            validate_url=validate_url_scheme,
+        ) as response:
             return json.load(response)
+    except json.JSONDecodeError as error:
+        raise CommandError(
+            f"Could not parse STAC items response as JSON: {error}"
+        ) from error
     except OSError as error:
         raise CommandError(f"Could not load STAC items: {error}") from error
 
@@ -229,11 +238,13 @@ def download_asset(url: str, destination: Path) -> None:
         url: Asset URL.
         destination: Destination file path.
     """
-    validate_url_scheme(url)
     request = urllib.request.Request(url)
     try:
-        with urllib.request.urlopen(request, timeout=300) as response:
-            validate_url_scheme(response.geturl())
+        with open_url_with_validated_redirects(
+            request,
+            timeout=300,
+            validate_url=validate_url_scheme,
+        ) as response:
             with destination.open("wb") as output:
                 shutil.copyfileobj(response, output)
     except OSError as error:
@@ -241,19 +252,21 @@ def download_asset(url: str, destination: Path) -> None:
 
 
 def validate_url_scheme(url: str) -> None:
-    """Validate that a URL uses an allowed remote scheme.
+    """Validate that a URL uses an allowed remote origin.
 
     Args:
         url: URL to validate.
 
     Raises:
-        CommandError: If the URL scheme is not allowed.
+        CommandError: If the URL scheme or host is not allowed.
     """
-    scheme = urlparse(url).scheme.lower()
+    parsed_url = urlparse(url)
+    scheme = parsed_url.scheme.lower()
     if scheme not in ALLOWED_URL_SCHEMES:
-        raise CommandError(
-            f"URL scheme '{scheme}' is not allowed. Use http or https."
-        )
+        raise CommandError(f"URL scheme '{scheme}' is not allowed. Use https.")
+    host = parsed_url.hostname or ""
+    if host.lower() not in ALLOWED_URL_HOSTS:
+        raise CommandError(f"URL host '{host}' is not allowed.")
 
 
 def extract_single_geopackage(archive_path: Path, destination: Path) -> Path:
@@ -446,8 +459,14 @@ def import_dataset(
             },
         )
         if not keep_existing:
-            Municipality.objects.filter(dataset_version=dataset_version).delete()
-            Canton.objects.filter(dataset_version=dataset_version).delete()
+            try:
+                Municipality.objects.filter(dataset_version=dataset_version).delete()
+                Canton.objects.filter(dataset_version=dataset_version).delete()
+            except ProtectedError as error:
+                raise CommandError(
+                    "Existing games reference municipalities in this dataset. "
+                    "Re-run with --keep-existing or import a newer dataset version."
+                ) from error
 
         cantons = import_cantons(canton_gdf, dataset_version, import_options)
         municipalities = import_municipalities(
