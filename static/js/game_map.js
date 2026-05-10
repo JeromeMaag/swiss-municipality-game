@@ -125,6 +125,7 @@
     const zoom = readNumber(mapElement, "zoom", 8);
     const map = window.L.map(mapElement, {
       attributionControl: true,
+      preferCanvas: true,
       zoomControl: true,
     });
 

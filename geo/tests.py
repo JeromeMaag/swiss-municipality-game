@@ -9,6 +9,7 @@ from unittest import mock
 import geopandas as gpd
 from django.contrib.auth import get_user_model
 from django.contrib.gis.geos import Point
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -194,6 +195,7 @@ class GeoJSONEndpointTests(TestCase):
 
     def setUp(self) -> None:
         """Create shared geodata fixtures and authenticate a user."""
+        cache.clear()
         user_model = get_user_model()
         self.user = user_model.objects.create_user(
             username="player",
@@ -274,6 +276,28 @@ class GeoJSONEndpointTests(TestCase):
         self.assertNotIn("name", properties)
         self.assertNotIn("canton", properties)
         self.assertNotIn("canton_abbreviation", properties)
+
+    def test_boundary_responses_are_cacheable_per_browser(self) -> None:
+        """Boundary endpoints expose private browser cache metadata."""
+        response = self.client.get(reverse("geo:municipality_boundaries_geojson"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("private", response["Cache-Control"])
+        self.assertIn("max-age=3600", response["Cache-Control"])
+        self.assertIn("ETag", response)
+
+    def test_boundary_responses_support_conditional_gets(self) -> None:
+        """Boundary endpoints return 304 when the client cache is current."""
+        response = self.client.get(reverse("geo:municipality_boundaries_geojson"))
+        etag = response["ETag"]
+
+        cached_response = self.client.get(
+            reverse("geo:municipality_boundaries_geojson"),
+            HTTP_IF_NONE_MATCH=etag,
+        )
+
+        self.assertEqual(cached_response.status_code, 304)
+        self.assertEqual(cached_response["ETag"], etag)
 
     def test_municipality_boundaries_are_not_ordered_by_name(self) -> None:
         """Municipality boundary endpoint avoids name-based feature ordering."""
