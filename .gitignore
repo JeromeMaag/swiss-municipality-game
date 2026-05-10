@@ -149,8 +149,10 @@ activemq-data/
 
 # Environments
 .env
+.env.*
+!.env.example
 .envrc
-.venv
+.venv/
 env/
 venv/
 ENV/
@@ -223,3 +225,15 @@ data/raw/*
 !data/raw/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+
+# Local geodata/database artifacts
+*.zip
+*.gpkg
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+
+# Local planning/scratch files
+gemeinde_guess_ch_codex_plan.md
+=5.2

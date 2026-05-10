@@ -19,44 +19,52 @@ and the total score.
 
 Create and activate a virtual environment, then install the dependencies:
 
-```cmd
+```powershell
 python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
-Copy the example environment file and set a local secret key:
+Copy the example environment file:
 
-```cmd
-copy .env.example .env
+```powershell
+Copy-Item .env.example .env
+```
+
+Then open `.env` and replace `SECRET_KEY` with a real local value. You can
+generate one with:
+
+```powershell
+python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+```
+
+The app refuses to start with the example placeholder key.
+
+On Windows, set the GeoDjango library paths before running Django commands:
+
+```powershell
+$env:GDAL_LIBRARY_PATH = (Get-ChildItem .\.venv\Lib\site-packages\pyogrio.libs -Filter "gdal*.dll" | Select-Object -First 1 -ExpandProperty FullName)
+$env:GEOS_LIBRARY_PATH = (Get-ChildItem .\.venv\Lib\site-packages\shapely.libs -Filter "geos_c*.dll" | Select-Object -First 1 -ExpandProperty FullName)
 ```
 
 Start the local PostGIS database and apply migrations:
 
-```cmd
+```powershell
 docker compose up -d db
 python manage.py migrate
-```
-
-On Windows, GeoDjango may need explicit GDAL/GEOS paths before running Django
-commands:
-
-```cmd
-for /f "delims=" %i in ('dir /b /s .venv\Lib\site-packages\pyogrio.libs\gdal*.dll') do set "GDAL_LIBRARY_PATH=%i"
-for /f "delims=" %i in ('dir /b /s .venv\Lib\site-packages\shapely.libs\geos_c*.dll') do set "GEOS_LIBRARY_PATH=%i"
 ```
 
 ## Data
 
 For real local gameplay, import official boundaries and population data:
 
-```cmd
+```powershell
 python manage.py setup_geodata
 ```
 
 For a quick smoke test without downloading official data:
 
-```cmd
+```powershell
 python manage.py seed_dev_geodata
 ```
 
@@ -64,7 +72,7 @@ python manage.py seed_dev_geodata
 
 Create a user and start the development server:
 
-```cmd
+```powershell
 python manage.py createsuperuser
 python manage.py runserver
 ```
@@ -73,7 +81,7 @@ Open `http://127.0.0.1:8000/`.
 
 ## Checks
 
-```cmd
+```powershell
 python manage.py check
 python manage.py test
 ```
@@ -86,13 +94,13 @@ confirm the exact name in your environment.
 
 Stop the database:
 
-```cmd
+```powershell
 docker compose down
 ```
 
 Delete the local database data:
 
-```cmd
+```powershell
 docker compose down -v
 ```
 
