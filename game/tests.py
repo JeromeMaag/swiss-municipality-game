@@ -706,12 +706,14 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Game finished")
         self.assertContains(response, "Result")
         self.assertContains(response, "Total score")
-        self.assertContains(response, "Start new game")
+        self.assertContains(response, "View summary")
+        self.assertContains(response, reverse("game:summary", args=[game.id]))
         self.assertContains(response, 'id="game-map"')
         self.assertContains(response, f'data-reveal-target-id="{municipality.id}"')
         self.assertContains(response, 'data-reveal-lat="47.050000"')
         self.assertContains(response, 'data-reveal-lng="8.050000"')
         self.assertNotContains(response, "No active game yet.")
+        self.assertNotContains(response, "Start new game")
         self.assertNotContains(response, "data-guess-form")
 
     def test_guess_view_returns_error_for_invalid_guess(self) -> None:
@@ -822,3 +824,137 @@ class GameStartTests(TestCase):
         )
         self.assertContains(response, 'role="alert"', status_code=400)
         self.assertContains(response, 'aria-live="assertive"', status_code=400)
+
+
+class GameSummaryTests(TestCase):
+    """Tests for finished game summary pages."""
+
+    def setUp(self) -> None:
+        """Create shared game summary fixtures."""
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(
+            username="player",
+            password="StrongPass123!",
+        )
+        self.other_user = user_model.objects.create_user(
+            username="other",
+            password="StrongPass123!",
+        )
+        self.dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2026-01-01",
+        )
+        self.canton = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+
+    def create_finished_game(self, user=None) -> Game:
+        """Create a finished game with five guessed turns.
+
+        Args:
+            user: Optional owner for the game.
+
+        Returns:
+            A finished game with five turns and guesses.
+        """
+        game_user = user or self.user
+        total_score = 0
+        game = Game.objects.create(
+            user=game_user,
+            status=Game.Status.FINISHED,
+            finished_at=timezone.now(),
+        )
+        for index in range(5):
+            score = 1000 - (index * 100)
+            total_score += score
+            municipality = Municipality.objects.create(
+                dataset_version=self.dataset_version,
+                bfs_number=9000 + index,
+                name=f"Summary Municipality {index + 1}",
+                canton=self.canton,
+                population=10_000 + index,
+                geom=make_test_geometry(),
+            )
+            turn = Turn.objects.create(
+                game=game,
+                turn_number=index + 1,
+                target=municipality,
+                revealed_at=timezone.now(),
+            )
+            Guess.objects.create(
+                turn=turn,
+                user=game_user,
+                point=Point(8.05, 47.05, srid=4326),
+                distance_to_municipality_m=index * 1000,
+                distance_to_boundary_m=500 + index,
+                score=score,
+            )
+        game.total_score = total_score
+        game.save(update_fields=["total_score"])
+        return game
+
+    def test_summary_requires_login(self) -> None:
+        """Anonymous users cannot view game summaries."""
+        game = self.create_finished_game()
+        summary_url = reverse("game:summary", args=[game.id])
+
+        response = self.client.get(summary_url)
+
+        self.assertRedirects(
+            response,
+            f"{reverse('accounts:login')}?next={summary_url}",
+        )
+
+    def test_summary_shows_finished_game_results(self) -> None:
+        """Summary page shows all turns for a finished owned game."""
+        game = self.create_finished_game()
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("game:summary", args=[game.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "game/summary.html")
+        self.assertContains(response, "Game summary")
+        self.assertContains(response, str(game.total_score))
+        self.assertContains(response, "Summary Municipality 1")
+        self.assertContains(response, "Start new game")
+        self.assertContains(response, reverse("game:start"))
+        self.assertContains(response, 'method="post"')
+        self.assertContains(response, "Canton")
+        self.assertContains(response, "ZH")
+        self.assertContains(response, "Population")
+        self.assertContains(response, "10000")
+        self.assertContains(response, "Score")
+        self.assertContains(response, "1000")
+        self.assertContains(response, "Distance to municipality")
+        self.assertContains(response, "Turn 5")
+
+    def test_summary_rejects_other_users_game(self) -> None:
+        """Users cannot view another user's game summary."""
+        game = self.create_finished_game(user=self.other_user)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("game:summary", args=[game.id]))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_summary_rejects_active_game(self) -> None:
+        """Active game summaries are unavailable to avoid leaking future targets."""
+        game = Game.objects.create(user=self.user)
+        municipality = Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=9900,
+            name="Hidden Active Target",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+        Turn.objects.create(game=game, turn_number=1, target=municipality)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("game:summary", args=[game.id]))
+
+        self.assertEqual(response.status_code, 404)
