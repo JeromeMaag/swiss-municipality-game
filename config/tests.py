@@ -1,8 +1,11 @@
 """Tests for project-level helpers and views."""
 
 import os
+import subprocess
+import sys
 from unittest import mock
 
+from django.conf import settings
 from django.test import SimpleTestCase
 from django.urls import reverse
 
@@ -58,6 +61,29 @@ class SettingsHelperTests(SimpleTestCase):
                 get_list_env("ALLOWED_HOSTS"),
                 ["localhost", "example.test", "127.0.0.1"],
             )
+
+    def test_debug_defaults_to_false(self) -> None:
+        """Project settings default to non-debug mode."""
+        self.assertFalse(settings.DEBUG)
+
+    def test_placeholder_secret_key_is_rejected_at_startup(self) -> None:
+        """Settings reject the public development placeholder secret key."""
+        command = (
+            "import os;"
+            "os.environ['SECRET_KEY']='dev-change-me';"
+            "os.environ.pop('DEBUG', None);"
+            "import config.settings"
+        )
+
+        result = subprocess.run(
+            [sys.executable, "-c", command],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("SECRET_KEY must be configured", result.stderr)
 
 
 class HomeViewTests(SimpleTestCase):

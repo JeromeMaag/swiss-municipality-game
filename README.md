@@ -25,6 +25,12 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+Copy the example environment file and set a local secret key:
+
+```cmd
+copy .env.example .env
+```
+
 Start the local PostGIS database and apply migrations:
 
 ```cmd
