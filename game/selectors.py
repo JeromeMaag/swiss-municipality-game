@@ -46,8 +46,18 @@ def get_finished_game_summary(user, game_id: int) -> Game | None:
         The finished game with ordered turns, targets, cantons, and guesses, or
         None when the game does not exist or is not available for summaries.
     """
-    turns = Turn.objects.select_related("target__canton", "guess").order_by(
-        "turn_number"
+    turns = (
+        Turn.objects.select_related("target__canton", "guess")
+        .defer(
+            "target__geom",
+            "target__geom_simplified",
+            "target__label_point",
+            "target__canton__geom",
+            "target__canton__geom_simplified",
+            "target__canton__label_point",
+            "guess__point",
+        )
+        .order_by("turn_number")
     )
     return (
         Game.objects.filter(user=user, status=Game.Status.FINISHED, pk=game_id)
