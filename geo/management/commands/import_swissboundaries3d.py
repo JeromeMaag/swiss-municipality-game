@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.models.deletion import ProtectedError
 from django.utils import timezone
 
 from geo.management.commands._http import open_url_with_validated_redirects
@@ -454,8 +455,14 @@ def import_dataset(
             },
         )
         if not keep_existing:
-            Municipality.objects.filter(dataset_version=dataset_version).delete()
-            Canton.objects.filter(dataset_version=dataset_version).delete()
+            try:
+                Municipality.objects.filter(dataset_version=dataset_version).delete()
+                Canton.objects.filter(dataset_version=dataset_version).delete()
+            except ProtectedError as error:
+                raise CommandError(
+                    "Existing games reference municipalities in this dataset. "
+                    "Re-run with --keep-existing or import a newer dataset version."
+                ) from error
 
         cantons = import_cantons(canton_gdf, dataset_version, import_options)
         municipalities = import_municipalities(

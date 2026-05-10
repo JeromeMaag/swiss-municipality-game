@@ -1993,6 +1993,143 @@ class SeedDevGeodataCommandTests(TestCase):
         self.assertEqual(get_current_dataset_version().name, DATASET_NAME)
 
 
+class GeodataAdminSetupTests(TestCase):
+    """Tests for the geodata setup admin page."""
+
+    def setUp(self) -> None:
+        """Create an admin user and a small imported geodata status fixture."""
+        user_model = get_user_model()
+        self.admin_user = user_model.objects.create_superuser(
+            username="geo-admin",
+            password="test",
+        )
+        self.client.force_login(self.admin_user)
+        self.dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2026-01-01",
+        )
+        canton = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+        Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=261,
+            name="Zurich",
+            canton=canton,
+            population=443000,
+            geom=make_test_geometry(),
+            is_active=True,
+        )
+        Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=262,
+            name="Missing Population",
+            canton=canton,
+            geom=make_test_geometry(),
+            is_active=True,
+        )
+        Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=263,
+            name="Inactive",
+            canton=canton,
+            geom=make_test_geometry(),
+            is_active=False,
+        )
+
+    def test_admin_setup_page_shows_current_geodata_status(self) -> None:
+        """Admin setup page renders dataset status counts."""
+        response = self.client.get(reverse("admin_geodata_setup"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Geodata setup")
+        self.assertContains(response, "swissBOUNDARIES3D 2026-01-01")
+        self.assertContains(response, "Active municipalities")
+        self.assertContains(response, "Active municipalities without population")
+        self.assertContains(response, "data-geodata-update-form")
+        self.assertContains(response, "data-geodata-action")
+        self.assertContains(response, "data-geodata-loading")
+        self.assertContains(response, "Geodata update is running")
+        self.assertContains(response, "Geodata update progress")
+        self.assertContains(response, "requestAnimationFrame")
+        self.assertContains(response, ">2<", html=False)
+        self.assertContains(response, ">1<", html=False)
+
+    def test_admin_index_shows_geodata_status_link(self) -> None:
+        """Admin index exposes a compact geodata setup entry point."""
+        response = self.client.get(reverse("admin:index"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Geodata")
+        self.assertContains(response, "swissBOUNDARIES3D 2026-01-01")
+        self.assertContains(response, "2 active municipalities")
+        self.assertContains(response, "1 without population")
+        self.assertContains(response, reverse("admin_geodata_setup"))
+
+    def test_dataset_version_changelist_links_to_setup_page(self) -> None:
+        """Dataset version admin changelist exposes the setup page link."""
+        response = self.client.get(reverse("admin:geo_geodatasetversion_changelist"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("admin_geodata_setup"))
+        self.assertContains(response, "Geodata setup")
+
+    def test_admin_setup_requires_staff_access(self) -> None:
+        """Anonymous users cannot access the admin setup page."""
+        self.client.logout()
+
+        response = self.client.get(reverse("admin_geodata_setup"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/admin/login/", response["Location"])
+
+    def test_admin_setup_can_run_development_seed_action(self) -> None:
+        """Development setup action runs only the seed command."""
+        with mock.patch("geo.admin_views.call_command") as call_command:
+            response = self.client.post(
+                reverse("admin_geodata_setup"),
+                {"action": "seed_dev_geodata"},
+                follow=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        call_command.assert_called_once()
+        self.assertEqual(call_command.call_args.args[0], "seed_dev_geodata")
+        self.assertContains(response, "Development geodata update completed.")
+
+    def test_admin_setup_can_run_official_setup_action(self) -> None:
+        """Official setup action runs the combined geodata setup command."""
+        with mock.patch("geo.admin_views.call_command") as call_command:
+            response = self.client.post(
+                reverse("admin_geodata_setup"),
+                {"action": "setup_geodata"},
+                follow=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        call_command.assert_called_once()
+        self.assertEqual(call_command.call_args.args[0], "setup_geodata")
+        self.assertIs(call_command.call_args.kwargs["keep_existing"], True)
+        self.assertContains(response, "Official geodata update completed.")
+
+    def test_admin_setup_rejects_unknown_actions(self) -> None:
+        """Unknown admin setup actions do not execute management commands."""
+        with mock.patch("geo.admin_views.call_command") as call_command:
+            response = self.client.post(
+                reverse("admin_geodata_setup"),
+                {"action": "unknown"},
+                follow=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        call_command.assert_not_called()
+        self.assertContains(response, "Unknown geodata action.")
+
+
 class GeoSelectorTests(TestCase):
     """Tests for geodata query helpers."""
 

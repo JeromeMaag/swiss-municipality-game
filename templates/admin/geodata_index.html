@@ -1,0 +1,26 @@
+{% extends "admin/index.html" %}
+{% load geodata_admin %}
+
+{% block content %}
+<div id="content-main">
+  {% geodata_status as geodata %}
+  <div class="module">
+    <h2>Geodata</h2>
+    {% if geodata.dataset_version %}
+      <p>
+        Current dataset: <strong>{{ geodata.dataset_version }}</strong>
+        - {{ geodata.active_municipality_count }} active municipalities
+        - {{ geodata.missing_population_count }} without population
+      </p>
+    {% else %}
+      <p>No geodata has been imported yet.</p>
+    {% endif %}
+    <p>
+      <a href="{% url 'admin_geodata_setup' %}" class="button">
+        Open geodata setup
+      </a>
+    </p>
+  </div>
+  {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
+</div>
+{% endblock %}
