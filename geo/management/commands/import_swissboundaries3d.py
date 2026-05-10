@@ -32,7 +32,8 @@ MUNICIPALITY_LAYER = "tlm_hoheitsgebiet"
 CANTON_ABBREVIATION_FIELD = "_canton_abbreviation"
 MUNICIPALITY_OBJECT_TYPE_FIELD = "objektart"
 MUNICIPALITY_OBJECT_TYPE = "Gemeindegebiet"
-ALLOWED_URL_SCHEMES = {"http", "https"}
+ALLOWED_URL_SCHEMES = {"https"}
+ALLOWED_URL_HOSTS = {"data.geo.admin.ch"}
 UNIX_FILE_TYPE_MASK = 0o170000
 UNIX_SYMLINK_TYPE = 0o120000
 
@@ -241,19 +242,21 @@ def download_asset(url: str, destination: Path) -> None:
 
 
 def validate_url_scheme(url: str) -> None:
-    """Validate that a URL uses an allowed remote scheme.
+    """Validate that a URL uses an allowed remote origin.
 
     Args:
         url: URL to validate.
 
     Raises:
-        CommandError: If the URL scheme is not allowed.
+        CommandError: If the URL scheme or host is not allowed.
     """
-    scheme = urlparse(url).scheme.lower()
+    parsed_url = urlparse(url)
+    scheme = parsed_url.scheme.lower()
     if scheme not in ALLOWED_URL_SCHEMES:
-        raise CommandError(
-            f"URL scheme '{scheme}' is not allowed. Use http or https."
-        )
+        raise CommandError(f"URL scheme '{scheme}' is not allowed. Use https.")
+    host = parsed_url.hostname or ""
+    if host.lower() not in ALLOWED_URL_HOSTS:
+        raise CommandError(f"URL host '{host}' is not allowed.")
 
 
 def extract_single_geopackage(archive_path: Path, destination: Path) -> Path:

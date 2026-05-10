@@ -43,6 +43,8 @@ from .management.commands.import_statpop_population import (
     apply_population_aggregation,
     build_statpop_query,
     decode_statpop_response,
+    fetch_statpop_csv,
+    fetch_statpop_metadata,
     metadata_variable,
     parse_municipality_bfs_number,
     parse_population_value,
@@ -841,7 +843,7 @@ class ImportSwissBoundaries3DCommandTests(TestCase):
             return self.content
 
     def test_command_rejects_unsupported_stac_url_scheme(self) -> None:
-        """Command rejects non-HTTP STAC item URLs."""
+        """Command rejects non-HTTPS STAC item URLs."""
         with self.assertRaisesMessage(
             CommandError,
             "URL scheme 'file' is not allowed.",
@@ -893,17 +895,22 @@ class ImportSwissBoundaries3DCommandTests(TestCase):
                 extract_single_geopackage(archive_path, destination)
 
     def test_load_stac_items_rejects_unsupported_redirect_scheme(self) -> None:
-        """STAC requests reject redirects to non-HTTP URLs."""
+        """STAC requests reject redirects to non-HTTPS URLs."""
         response = self.RedirectResponse("file:///tmp/items.json")
         with mock.patch("urllib.request.urlopen", return_value=response):
             with self.assertRaisesMessage(
                 CommandError,
                 "URL scheme 'file' is not allowed.",
             ):
-                load_stac_items("https://example.test/items.json")
+                load_stac_items("https://data.geo.admin.ch/items.json")
+
+    def test_load_stac_items_rejects_untrusted_hosts(self) -> None:
+        """STAC requests reject hosts outside the swisstopo allowlist."""
+        with self.assertRaisesMessage(CommandError, "URL host 'example.test'"):
+            load_stac_items("https://example.test/items.json")
 
     def test_download_asset_rejects_unsupported_url_scheme(self) -> None:
-        """Asset downloads reject non-HTTP URLs."""
+        """Asset downloads reject non-HTTPS URLs."""
         with self.assertRaisesMessage(
             CommandError,
             "URL scheme 'file' is not allowed.",
@@ -911,14 +918,22 @@ class ImportSwissBoundaries3DCommandTests(TestCase):
             download_asset("file:///tmp/boundaries.gpkg.zip", Path("asset.zip"))
 
     def test_download_asset_rejects_unsupported_redirect_scheme(self) -> None:
-        """Asset downloads reject redirects to non-HTTP URLs."""
+        """Asset downloads reject redirects to non-HTTPS URLs."""
         response = self.RedirectResponse("file:///tmp/boundaries.gpkg.zip")
         with mock.patch("urllib.request.urlopen", return_value=response):
             with self.assertRaisesMessage(
                 CommandError,
                 "URL scheme 'file' is not allowed.",
             ):
-                download_asset("https://example.test/boundaries.gpkg.zip", Path("asset.zip"))
+                download_asset(
+                    "https://data.geo.admin.ch/boundaries.gpkg.zip",
+                    Path("asset.zip"),
+                )
+
+    def test_download_asset_rejects_untrusted_hosts(self) -> None:
+        """Asset downloads reject hosts outside the swisstopo allowlist."""
+        with self.assertRaisesMessage(CommandError, "URL host 'example.test'"):
+            download_asset("https://example.test/boundaries.gpkg.zip", Path("asset.zip"))
 
     def test_safe_extract_zip_rejects_path_traversal(self) -> None:
         """ZIP extraction rejects archive members outside the destination."""
@@ -954,7 +969,7 @@ class ImportSwissBoundaries3DCommandTests(TestCase):
     def test_command_imports_latest_geopackage_asset(self) -> None:
         """Command downloads the newest official GeoPackage and imports boundaries."""
         output = StringIO()
-        asset_url = "https://example.test/swissboundaries3d_2026-01.gpkg.zip"
+        asset_url = "https://data.geo.admin.ch/swissboundaries3d_2026-01.gpkg.zip"
         stac_items = {
             "features": [
                 {
@@ -962,7 +977,7 @@ class ImportSwissBoundaries3DCommandTests(TestCase):
                     "properties": {"datetime": "2025-01-01T00:00:00Z"},
                     "assets": {
                         "old.gpkg.zip": {
-                            "href": "https://example.test/old.gpkg.zip",
+                            "href": "https://data.geo.admin.ch/old.gpkg.zip",
                             "type": "application/x.geopackage+zip",
                         },
                     },
@@ -1525,6 +1540,21 @@ class ImportStatpopPopulationCommandTests(TestCase):
     def test_decode_statpop_response_falls_back_to_cp1252(self) -> None:
         """STATPOP response decoding supports legacy encoded CSV responses."""
         self.assertEqual(decode_statpop_response("Zürich".encode("cp1252")), "Zürich")
+
+    def test_statpop_requests_reject_untrusted_urls_and_redirects(self) -> None:
+        """STATPOP HTTP helpers only allow the trusted BFS HTTPS host."""
+        with self.assertRaisesMessage(CommandError, "URL scheme 'http' is not allowed"):
+            fetch_statpop_metadata("http://www.pxweb.bfs.admin.ch/table.px")
+        with self.assertRaisesMessage(CommandError, "URL host 'example.test'"):
+            fetch_statpop_csv("https://example.test/table.px", "2024")
+
+        response = ImportSwissBoundaries3DCommandTests.RedirectResponse(
+            "https://example.test/table.px",
+            b"{}",
+        )
+        with mock.patch("urllib.request.urlopen", return_value=response):
+            with self.assertRaisesMessage(CommandError, "URL host 'example.test'"):
+                fetch_statpop_metadata("https://www.pxweb.bfs.admin.ch/table.px")
 
     def test_apply_population_aggregation_adds_successor_municipalities(self) -> None:
         """Known municipality mutations are aggregated onto successor BFS numbers."""

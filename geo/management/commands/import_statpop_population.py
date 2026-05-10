@@ -25,7 +25,8 @@ STATPOP_PXWEB_URL = (
     "px-x-0103030000_102/px-x-0103030000_102.px"
 )
 DEFAULT_DATASET_NAME = "swissBOUNDARIES3D"
-ALLOWED_URL_SCHEMES = {"http", "https"}
+ALLOWED_URL_SCHEMES = {"https"}
+ALLOWED_URL_HOSTS = {"www.pxweb.bfs.admin.ch"}
 
 YEAR_VARIABLE = "Jahr"
 SPATIAL_VARIABLE = "Kanton (-) / Bezirk (>>) / Gemeinde (......)"
@@ -460,16 +461,18 @@ def population_rows_for_dataset(
 
 
 def validate_url_scheme(url: str) -> None:
-    """Validate that a URL uses an allowed remote scheme.
+    """Validate that a URL uses an allowed remote origin.
 
     Args:
         url: URL to validate.
 
     Raises:
-        CommandError: If the URL scheme is not allowed.
+        CommandError: If the URL scheme or host is not allowed.
     """
-    scheme = urlparse(url).scheme.lower()
+    parsed_url = urlparse(url)
+    scheme = parsed_url.scheme.lower()
     if scheme not in ALLOWED_URL_SCHEMES:
-        raise CommandError(
-            f"URL scheme '{scheme}' is not allowed. Use http or https."
-        )
+        raise CommandError(f"URL scheme '{scheme}' is not allowed. Use https.")
+    host = parsed_url.hostname or ""
+    if host.lower() not in ALLOWED_URL_HOSTS:
+        raise CommandError(f"URL host '{host}' is not allowed.")
