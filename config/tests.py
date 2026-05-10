@@ -5,7 +5,6 @@ import subprocess
 import sys
 from unittest import mock
 
-from django.conf import settings
 from django.test import SimpleTestCase
 from django.urls import reverse
 
@@ -63,8 +62,25 @@ class SettingsHelperTests(SimpleTestCase):
             )
 
     def test_debug_defaults_to_false(self) -> None:
-        """Project settings default to non-debug mode."""
-        self.assertFalse(settings.DEBUG)
+        """Project settings default to non-debug mode when DEBUG is unset."""
+        command = (
+            "import os, dotenv;"
+            "os.environ['SECRET_KEY']='valid-test-secret-key';"
+            "os.environ.pop('DEBUG', None);"
+            "dotenv.load_dotenv=lambda *args, **kwargs: False;"
+            "import config.settings;"
+            "print(config.settings.DEBUG)"
+        )
+
+        result = subprocess.run(
+            [sys.executable, "-c", command],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout.strip(), "False")
 
     def test_placeholder_secret_keys_are_rejected_at_startup(self) -> None:
         """Settings reject public placeholder secret keys."""
