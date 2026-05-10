@@ -2,10 +2,11 @@
 
 from django.db.models import QuerySet
 
+from .constants import DEV_GEODATA_DATASET_NAME
 from .models import Canton, GeoDatasetVersion, Municipality
 
 
-DEVELOPMENT_DATASET_NAMES = frozenset({"dev-seed"})
+DEVELOPMENT_DATASET_NAMES = frozenset({DEV_GEODATA_DATASET_NAME})
 
 
 def get_current_dataset_version() -> GeoDatasetVersion | None:
