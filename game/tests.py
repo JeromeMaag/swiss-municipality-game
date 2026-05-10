@@ -706,12 +706,14 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Game finished")
         self.assertContains(response, "Result")
         self.assertContains(response, "Total score")
-        self.assertContains(response, "Start new game")
+        self.assertContains(response, "View summary")
+        self.assertContains(response, reverse("game:summary", args=[game.id]))
         self.assertContains(response, 'id="game-map"')
         self.assertContains(response, f'data-reveal-target-id="{municipality.id}"')
         self.assertContains(response, 'data-reveal-lat="47.050000"')
         self.assertContains(response, 'data-reveal-lng="8.050000"')
         self.assertNotContains(response, "No active game yet.")
+        self.assertNotContains(response, "Start new game")
         self.assertNotContains(response, "data-guess-form")
 
     def test_guess_view_returns_error_for_invalid_guess(self) -> None:

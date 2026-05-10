@@ -66,7 +66,9 @@
                 <h2 id="game-finished-heading">Game finished</h2>
                 <p>Total score: {{ active_game.total_score }}</p>
               </section>
-              <a class="button-link" href="{% url 'game:index' %}">Start new game</a>
+              <a class="button-link" href="{% url 'game:summary' active_game.id %}">
+                View summary
+              </a>
             {% else %}
               <a class="button-link" href="{% url 'game:index' %}">Next turn</a>
             {% endif %}
