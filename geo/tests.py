@@ -29,6 +29,7 @@ from .management.commands.seed_dev_geodata import (
 )
 from .management.commands.import_swissboundaries3d import (
     DATASET_NAME as OFFICIAL_BOUNDARIES_DATASET_NAME,
+    download_asset,
     safe_extract_zip,
 )
 from .models import Canton, GeoDatasetVersion, Municipality
@@ -503,6 +504,27 @@ class ImportBoundariesCommandTests(TestCase):
 
 class ImportSwissBoundaries3DCommandTests(TestCase):
     """Tests for the official swissBOUNDARIES3D import command."""
+
+    def test_command_rejects_unsupported_stac_url_scheme(self) -> None:
+        """Command rejects non-HTTP STAC item URLs."""
+        with self.assertRaisesMessage(
+            CommandError,
+            "URL scheme 'file' is not allowed.",
+        ):
+            call_command(
+                "import_swissboundaries3d",
+                "--stac-items-url",
+                "file:///tmp/items.json",
+                stdout=StringIO(),
+            )
+
+    def test_download_asset_rejects_unsupported_url_scheme(self) -> None:
+        """Asset downloads reject non-HTTP URLs."""
+        with self.assertRaisesMessage(
+            CommandError,
+            "URL scheme 'file' is not allowed.",
+        ):
+            download_asset("file:///tmp/boundaries.gpkg.zip", Path("asset.zip"))
 
     def test_safe_extract_zip_rejects_path_traversal(self) -> None:
         """ZIP extraction rejects archive members outside the destination."""

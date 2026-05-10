@@ -211,6 +211,23 @@ body {
   outline-offset: -2px;
 }
 
+.map-status {
+  background: #fff1f1;
+  border: 1px solid #d68b8b;
+  color: #8d1f1f;
+  left: 1rem;
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  position: absolute;
+  right: 1rem;
+  top: 1rem;
+  z-index: 900;
+}
+
+.map-status:empty {
+  display: none;
+}
+
 /* Leaflet's structural CSS is kept local so tile layout does not depend on CDN CSS. */
 .leaflet-container {
   overflow: hidden;

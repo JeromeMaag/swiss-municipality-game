@@ -374,8 +374,19 @@ class GameStartTests(TestCase):
         self.assertContains(response, first_turn.target.name)
         self.assertContains(response, 'id="game-map"')
         self.assertContains(response, "leaflet@1.9.4")
+        self.assertContains(
+            response,
+            "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=",
+        )
+        self.assertContains(
+            response,
+            "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=",
+        )
+        self.assertContains(response, 'crossorigin="anonymous"')
         self.assertContains(response, "/static/js/game_map.js")
         self.assertContains(response, 'data-center-lat="46.8182"')
+        self.assertContains(response, 'data-map-status')
+        self.assertContains(response, 'aria-live="polite"')
         self.assertContains(response, "wmts.geo.admin.ch")
         self.assertContains(response, "ch.swisstopo.swissimage")
         self.assertContains(response, "No point selected")

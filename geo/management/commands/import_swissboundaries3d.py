@@ -7,6 +7,7 @@ import uuid
 import zipfile
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
@@ -31,6 +32,7 @@ MUNICIPALITY_LAYER = "tlm_hoheitsgebiet"
 CANTON_ABBREVIATION_FIELD = "_canton_abbreviation"
 MUNICIPALITY_OBJECT_TYPE_FIELD = "objektart"
 MUNICIPALITY_OBJECT_TYPE = "Gemeindegebiet"
+ALLOWED_URL_SCHEMES = {"http", "https"}
 
 CANTON_ABBREVIATIONS = {
     1: "ZH",
@@ -144,6 +146,7 @@ def load_stac_items(url: str) -> dict[str, Any]:
     Returns:
         Parsed STAC FeatureCollection.
     """
+    validate_url_scheme(url)
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
@@ -223,10 +226,27 @@ def download_asset(url: str, destination: Path) -> None:
         url: Asset URL.
         destination: Destination file path.
     """
+    validate_url_scheme(url)
     try:
         urllib.request.urlretrieve(url, destination)
     except OSError as error:
         raise CommandError(f"Could not download swissBOUNDARIES3D asset: {error}") from error
+
+
+def validate_url_scheme(url: str) -> None:
+    """Validate that a URL uses an allowed remote scheme.
+
+    Args:
+        url: URL to validate.
+
+    Raises:
+        CommandError: If the URL scheme is not allowed.
+    """
+    scheme = urlparse(url).scheme.lower()
+    if scheme not in ALLOWED_URL_SCHEMES:
+        raise CommandError(
+            f"URL scheme '{scheme}' is not allowed. Use http or https."
+        )
 
 
 def extract_single_geopackage(archive_path: Path, destination: Path) -> Path:

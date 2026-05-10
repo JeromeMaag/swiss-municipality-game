@@ -40,8 +40,18 @@
       })
       .catch(function () {
         map.getContainer().classList.add("game-map--boundary-error");
+        showMapStatus(map, options.errorMessage);
         return null;
       });
+  }
+
+  function showMapStatus(map, message) {
+    const statusElement = map.getContainer().parentElement.querySelector(
+      "[data-map-status]"
+    );
+    if (statusElement) {
+      statusElement.textContent = message;
+    }
   }
 
   function addBaseMapLayer(map, url) {
@@ -142,6 +152,7 @@
     initializeGuessInteraction(map);
     mapElement.dataset.initialized = "true";
     addBoundaryLayer(map, mapElement.dataset.municipalityBoundariesUrl, {
+      errorMessage: "Municipality boundaries could not be loaded.",
       fitBounds: true,
       style: {
         color: "#ffffff",
@@ -151,6 +162,7 @@
       },
     }).then(function () {
       return addBoundaryLayer(map, mapElement.dataset.cantonBoundariesUrl, {
+        errorMessage: "Canton boundaries could not be loaded.",
         fitBounds: false,
         style: {
           color: "#ffcf4a",
