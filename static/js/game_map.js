@@ -120,11 +120,18 @@
       return;
     }
 
+    const switzerlandBounds = window.L.latLngBounds(
+      [45.55, 5.5],
+      [48.15, 10.9]
+    );
     const latitude = readNumber(mapElement, "centerLat", 46.8182);
     const longitude = readNumber(mapElement, "centerLng", 8.2275);
     const zoom = readNumber(mapElement, "zoom", 8);
     const map = window.L.map(mapElement, {
       attributionControl: true,
+      maxBounds: switzerlandBounds,
+      maxBoundsViscosity: 1,
+      minZoom: 8,
       preferCanvas: true,
       zoomControl: true,
     });
