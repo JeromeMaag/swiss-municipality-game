@@ -1125,8 +1125,8 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Zurich (ZH)")
         self.assertContains(response, "Population")
         self.assertContains(response, "12345")
-        self.assertContains(response, "Municipality")
-        self.assertContains(response, "Boundary")
+        self.assertContains(response, "Distance")
+        self.assertNotContains(response, "Boundary")
         self.assertContains(response, "0 m")
         self.assertContains(response, "Next")
         self.assertContains(response, "data-next-turn-link")
@@ -1448,7 +1448,9 @@ class GameSummaryTests(TestCase):
         self.assertContains(response, "10000")
         self.assertContains(response, "Score")
         self.assertContains(response, "1000")
-        self.assertContains(response, "Distance to municipality")
+        self.assertContains(response, "Distance")
+        self.assertNotContains(response, "Distance to municipality")
+        self.assertNotContains(response, "Distance to boundary")
         self.assertContains(response, "Turn 5")
 
     def test_summary_rejects_other_users_game(self) -> None:
