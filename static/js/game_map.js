@@ -213,6 +213,10 @@
     const marker = document.createElement("div");
     marker.className = "guess-marker";
     marker.setAttribute("aria-hidden", "true");
+    marker.innerHTML = (
+      '<span class="guess-marker-head"></span>' +
+      '<span class="guess-marker-stem"></span>'
+    );
     map.getContainer().appendChild(marker);
     return marker;
   }
@@ -226,7 +230,7 @@
   function positionGuessMarker(map, marker, latlng) {
     const point = map.latLngToContainerPoint(latlng);
     marker.style.transform = (
-      "translate(" + point.x + "px, " + point.y + "px) translate(-50%, -50%)"
+      "translate(" + point.x + "px, " + point.y + "px) translate(-50%, -100%)"
     );
   }
 
