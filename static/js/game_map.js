@@ -81,6 +81,107 @@
       });
   }
 
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function updateLayerVisibility(map, layer, minZoom) {
+    if (!layer) {
+      return;
+    }
+
+    if (map.getZoom() >= minZoom) {
+      if (!map.hasLayer(layer)) {
+        layer.addTo(map);
+      }
+      return;
+    }
+
+    if (map.hasLayer(layer)) {
+      map.removeLayer(layer);
+    }
+  }
+
+  function buildLabelLayer(data) {
+    return window.L.geoJSON(data, {
+      interactive: false,
+      pointToLayer: function (feature, latlng) {
+        const properties = feature.properties || {};
+        return window.L.marker(latlng, {
+          icon: window.L.divIcon({
+            className: "leaflet-div-icon municipality-label-marker",
+            html: (
+              '<span class="municipality-label">' +
+              escapeHtml(properties.name) +
+              "</span>"
+            ),
+          }),
+          interactive: false,
+        });
+      },
+    });
+  }
+
+  function initializeLabelLayer(map, url, minZoom) {
+    if (!url) {
+      return;
+    }
+
+    let labelLayer = null;
+    let labelRequest = null;
+
+    function loadLabels() {
+      if (labelRequest !== null) {
+        return labelRequest;
+      }
+
+      labelRequest = window.fetch(url, {
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/geo+json, application/json",
+        },
+      })
+        .then(function (response) {
+          if (!response.ok) {
+            throw new Error("Label request failed with status " + response.status);
+          }
+          return response.json();
+        })
+        .then(function (data) {
+          labelLayer = buildLabelLayer(data);
+          updateLayerVisibility(map, labelLayer, minZoom);
+          return labelLayer;
+        })
+        .catch(function () {
+          labelRequest = null;
+          showMapStatus(map, "Municipality labels could not be loaded.");
+          return null;
+        });
+      return labelRequest;
+    }
+
+    function syncLabelLayer() {
+      if (map.getZoom() < minZoom) {
+        updateLayerVisibility(map, labelLayer, minZoom);
+        return;
+      }
+
+      if (labelLayer === null) {
+        loadLabels();
+        return;
+      }
+      updateLayerVisibility(map, labelLayer, minZoom);
+    }
+
+    map.on("zoomend", syncLabelLayer);
+    syncLabelLayer();
+  }
+
   function showMapStatus(map, message) {
     const statusElement = map.getContainer().parentElement.querySelector(
       "[data-map-status]"
@@ -293,6 +394,7 @@
     const latitude = readNumber(mapElement, "centerLat", 46.8182);
     const longitude = readNumber(mapElement, "centerLng", 8.2275);
     const zoom = readNumber(mapElement, "zoom", 8);
+    const labelMinZoom = readNumber(mapElement, "labelMinZoom", 11);
     const revealState = readRevealState(mapElement);
     const map = window.L.map(mapElement, {
       attributionControl: true,
@@ -331,6 +433,15 @@
           weight: 1.4,
         },
       });
+    }).then(function () {
+      if (revealState) {
+        initializeLabelLayer(
+          map,
+          mapElement.dataset.municipalityLabelsUrl,
+          labelMinZoom
+        );
+      }
+      return null;
     });
 
     window.setTimeout(function () {

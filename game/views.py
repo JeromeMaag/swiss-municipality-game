@@ -8,6 +8,7 @@ from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET, require_POST
 
+from geo.constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
 from geo.models import Municipality
 from tracking.models import GameEvent
 from tracking.services import track_event
@@ -391,6 +392,9 @@ def render_game_index(
     if last_guess is not None:
         reveal_guess_lat = f"{last_guess.point.y:.6f}"
         reveal_guess_lng = f"{last_guess.point.x:.6f}"
+        request.session[MUNICIPALITY_LABEL_ACCESS_SESSION_KEY] = last_guess.turn_id
+    else:
+        request.session.pop(MUNICIPALITY_LABEL_ACCESS_SESSION_KEY, None)
     return render(
         request,
         "game/index.html",

@@ -15,4 +15,9 @@ urlpatterns = [
         views.municipality_boundaries,
         name="municipality_boundaries_geojson",
     ),
+    path(
+        "api/municipality-labels.geojson/",
+        views.municipality_labels,
+        name="municipality_labels_geojson",
+    ),
 ]
