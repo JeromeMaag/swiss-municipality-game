@@ -16,7 +16,13 @@ from tracking.models import GameEvent
 
 from .models import Game, Guess, Turn
 from .scoring import calculate_score
-from .services import NotEnoughMunicipalitiesError, start_game
+from .services import (
+    GuessSubmissionError,
+    InvalidGuessCoordinatesError,
+    NotEnoughMunicipalitiesError,
+    start_game,
+    submit_guess,
+)
 
 
 class ScoringTests(TestCase):
@@ -191,6 +197,193 @@ class GameModelTests(TestCase):
 
         with self.assertRaises(ValidationError):
             guess.full_clean()
+
+
+class GuessSubmissionServiceTests(TestCase):
+    """Tests for server-side guess submission behavior."""
+
+    def setUp(self) -> None:
+        """Create shared guess submission fixtures."""
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(username="player", password="test")
+        self.other_user = user_model.objects.create_user(
+            username="other",
+            password="test",
+        )
+        self.dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2026-01-01",
+        )
+        self.canton = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+
+    def create_game_with_turns(
+        self,
+        turn_count: int = 1,
+        status: str = Game.Status.ACTIVE,
+    ) -> tuple[Game, list[Turn]]:
+        """Create a game with unique target municipalities.
+
+        Args:
+            turn_count: Number of turns to create.
+            status: Initial game status.
+
+        Returns:
+            A tuple of the created game and ordered turns.
+        """
+        finished_at = timezone.now() if status == Game.Status.FINISHED else None
+        game = Game.objects.create(
+            user=self.user,
+            status=status,
+            finished_at=finished_at,
+        )
+        turns = []
+        for index in range(turn_count):
+            municipality = Municipality.objects.create(
+                dataset_version=self.dataset_version,
+                bfs_number=260 + index,
+                name=f"Municipality {index + 1}",
+                canton=self.canton,
+                geom=make_test_geometry(),
+            )
+            turns.append(
+                Turn.objects.create(
+                    game=game,
+                    turn_number=index + 1,
+                    target=municipality,
+                )
+            )
+        return game, turns
+
+    def test_submit_guess_persists_exact_hit_and_starts_next_turn(self) -> None:
+        """Submitting an exact hit creates a guess and starts the next turn."""
+        game, turns = self.create_game_with_turns(turn_count=2)
+
+        result = submit_guess(self.user, turns[0].id, 47.05, 8.05)
+
+        result.guess.refresh_from_db()
+        game.refresh_from_db()
+        turns[0].refresh_from_db()
+        self.assertEqual(result.game.pk, game.pk)
+        self.assertEqual(result.turn.pk, turns[0].pk)
+        self.assertEqual(result.guess.user, self.user)
+        self.assertEqual(result.guess.point.x, 8.05)
+        self.assertEqual(result.guess.point.y, 47.05)
+        self.assertAlmostEqual(result.guess.distance_to_municipality_m, 0, places=3)
+        self.assertGreater(result.guess.distance_to_boundary_m, 0)
+        self.assertEqual(result.guess.score, 1000)
+        self.assertIsNotNone(turns[0].revealed_at)
+        self.assertEqual(game.total_score, 1000)
+        self.assertEqual(game.status, Game.Status.ACTIVE)
+        self.assertTrue(
+            GameEvent.objects.filter(
+                user=self.user,
+                game=game,
+                turn=turns[0],
+                event_type=GameEvent.Type.GUESS_CONFIRMED,
+                payload__score=1000,
+            ).exists()
+        )
+        self.assertTrue(
+            GameEvent.objects.filter(
+                user=self.user,
+                game=game,
+                turn=turns[1],
+                event_type=GameEvent.Type.TURN_STARTED,
+                payload={"turn_number": 2},
+            ).exists()
+        )
+
+    def test_submit_guess_scores_outside_polygon_distance(self) -> None:
+        """Submitting outside the target polygon stores positive distances."""
+        game, turns = self.create_game_with_turns()
+
+        result = submit_guess(self.user, turns[0].id, 47.05, 8.2)
+
+        result.guess.refresh_from_db()
+        game.refresh_from_db()
+        self.assertGreater(result.guess.distance_to_municipality_m, 0)
+        self.assertGreater(result.guess.distance_to_boundary_m, 0)
+        self.assertLess(result.guess.score, 1000)
+        self.assertGreaterEqual(result.guess.score, 0)
+        self.assertEqual(game.total_score, result.guess.score)
+
+    def test_submit_guess_finishes_game_after_final_turn(self) -> None:
+        """Submitting the final turn marks the game as finished."""
+        game, turns = self.create_game_with_turns()
+
+        submit_guess(self.user, turns[0].id, 47.05, 8.05)
+
+        game.refresh_from_db()
+        self.assertEqual(game.status, Game.Status.FINISHED)
+        self.assertIsNotNone(game.finished_at)
+        self.assertTrue(
+            GameEvent.objects.filter(
+                user=self.user,
+                game=game,
+                event_type=GameEvent.Type.GAME_FINISHED,
+                payload={"total_score": 1000},
+            ).exists()
+        )
+
+    def test_submit_guess_rejects_invalid_coordinates(self) -> None:
+        """Invalid coordinate values are rejected before persistence."""
+        _game, turns = self.create_game_with_turns()
+
+        invalid_coordinates = [
+            (91, 8.05),
+            (47.05, 181),
+            ("invalid", 8.05),
+            (float("nan"), 8.05),
+        ]
+        for latitude, longitude in invalid_coordinates:
+            with self.subTest(latitude=latitude, longitude=longitude):
+                with self.assertRaises(InvalidGuessCoordinatesError):
+                    submit_guess(self.user, turns[0].id, latitude, longitude)
+
+        self.assertFalse(Guess.objects.exists())
+
+    def test_submit_guess_rejects_wrong_user(self) -> None:
+        """Users cannot guess turns owned by another user."""
+        _game, turns = self.create_game_with_turns()
+
+        with self.assertRaises(GuessSubmissionError):
+            submit_guess(self.other_user, turns[0].id, 47.05, 8.05)
+
+        self.assertFalse(Guess.objects.exists())
+
+    def test_submit_guess_rejects_non_current_turn(self) -> None:
+        """Only the first unrevealed turn can be guessed."""
+        _game, turns = self.create_game_with_turns(turn_count=2)
+
+        with self.assertRaises(GuessSubmissionError):
+            submit_guess(self.user, turns[1].id, 47.05, 8.05)
+
+        self.assertFalse(Guess.objects.exists())
+
+    def test_submit_guess_rejects_already_guessed_turn(self) -> None:
+        """A revealed turn cannot receive another guess."""
+        _game, turns = self.create_game_with_turns(turn_count=2)
+        submit_guess(self.user, turns[0].id, 47.05, 8.05)
+
+        with self.assertRaises(GuessSubmissionError):
+            submit_guess(self.user, turns[0].id, 47.05, 8.05)
+
+        self.assertEqual(Guess.objects.count(), 1)
+
+    def test_submit_guess_rejects_finished_game(self) -> None:
+        """Finished games cannot receive new guesses."""
+        _game, turns = self.create_game_with_turns(status=Game.Status.FINISHED)
+
+        with self.assertRaises(GuessSubmissionError):
+            submit_guess(self.user, turns[0].id, 47.05, 8.05)
+
+        self.assertFalse(Guess.objects.exists())
 
 
 class GameStartTests(TestCase):
