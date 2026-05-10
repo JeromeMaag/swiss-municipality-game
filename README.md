@@ -1,93 +1,79 @@
 # GemeindeGuess CH
 
-Local Django project for guessing Swiss municipalities.
+A small Django game for guessing Swiss municipalities on a map.
 
-## Local Setup
-GeoDjango needs native GDAL and GEOS libraries. On Windows, Django may not find
-the DLLs automatically. Set them for the current terminal session before running
-Django commands:
+The app uses GeoDjango, PostGIS, Leaflet, official swisstopo municipality
+boundaries, and BFS STATPOP population data.
+
+## Setup
+
+Create and activate a virtual environment, then install the dependencies:
+
+```cmd
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+Start the local PostGIS database and apply migrations:
+
+```cmd
+docker compose up -d db
+python manage.py migrate
+```
+
+On Windows, GeoDjango may need explicit GDAL/GEOS paths before running Django
+commands:
 
 ```cmd
 for /f "delims=" %i in ('dir /b /s .venv\Lib\site-packages\pyogrio.libs\gdal*.dll') do set "GDAL_LIBRARY_PATH=%i"
 for /f "delims=" %i in ('dir /b /s .venv\Lib\site-packages\shapely.libs\geos_c*.dll') do set "GEOS_LIBRARY_PATH=%i"
 ```
 
-## Common Commands
+## Data
 
-Start the local PostGIS database:
-
-```cmd
-docker compose up -d db
-```
-
-Create or update database tables:
-
-```cmd
-python manage.py migrate
-```
-
-Download official municipality boundaries and population data:
+For real local gameplay, import official boundaries and population data:
 
 ```cmd
 python manage.py setup_geodata
 ```
 
-Create an admin user:
-
-```cmd
-python manage.py createsuperuser
-```
-
-Seed five dummy municipalities for local development:
+For a quick smoke test without downloading official data:
 
 ```cmd
 python manage.py seed_dev_geodata
 ```
 
-Import only the latest official swissBOUNDARIES3D canton and municipality boundaries:
+## Run
+
+Create a user and start the development server:
 
 ```cmd
-python manage.py import_swissboundaries3d
-```
-
-Import only official BFS STATPOP population values for existing municipalities:
-
-```cmd
-python manage.py import_statpop_population
-```
-
-Start the development server:
-
-```cmd
+python manage.py createsuperuser
 python manage.py runserver
 ```
 
-Run Django configuration checks:
+Open `http://127.0.0.1:8000/`.
+
+## Checks
 
 ```cmd
 python manage.py check
-```
-
-Run the test suite:
-
-```cmd
 python manage.py test
 ```
 
-The app is available at `http://127.0.0.1:8000/`.
-
-## Local Database
+## Database
 
 PostgreSQL data is stored in the Docker volume
 `swiss-municipality-guess_postgres_data`.
 
-Stop the database while keeping its data:
+Stop the database:
 
 ```cmd
 docker compose down
 ```
 
-Stop the database and delete all local data:
+Delete the local database data:
 
 ```cmd
 docker compose down -v
