@@ -141,6 +141,7 @@ def track_turn_event(request, turn_id: int):
         raise Http404("Turn not found.") from error
 
     try:
+        validate_tracking_event_state(event_type=event_type, turn=turn)
         track_event(
             user=request.user,
             game=turn.game,
@@ -148,11 +149,39 @@ def track_turn_event(request, turn_id: int):
             event_type=event_type,
             payload=payload,
         )
+    except ValueError as error:
+        return JsonResponse({"error": str(error)}, status=400)
     except ValidationError as error:
         error_detail = getattr(error, "message_dict", {"errors": error.messages})
         return JsonResponse({"error": error_detail}, status=400)
 
     return HttpResponse(status=204)
+
+
+def validate_tracking_event_state(*, event_type: str, turn: Turn) -> None:
+    """Validate that a client event matches the current turn state.
+
+    Args:
+        event_type: Client-side tracking event type.
+        turn: Turn associated with the event.
+
+    Raises:
+        ValueError: If the event is not valid for the turn's current state.
+    """
+    if event_type in (GameEvent.Type.MAP_CLICKED, GameEvent.Type.PIN_MOVED):
+        current_turn_id = (
+            turn.game.turns.filter(revealed_at__isnull=True)
+            .order_by("turn_number")
+            .values_list("id", flat=True)
+            .first()
+        )
+        if turn.game.status != Game.Status.ACTIVE or current_turn_id != turn.id:
+            raise ValueError("Tracking event is not valid for this turn state.")
+        return
+
+    if event_type in (GameEvent.Type.REVEAL_SHOWN, GameEvent.Type.NEXT_TURN_CLICKED):
+        if turn.revealed_at is None:
+            raise ValueError("Tracking event is not valid for this turn state.")
 
 
 @login_required
@@ -189,6 +218,8 @@ def parse_tracking_request(request) -> tuple[str, dict]:
         ValueError: If the request body is invalid or the event type is not
             allowed for client-side tracking.
     """
+    if request_body_exceeds_tracking_limit(request):
+        raise ValueError("Tracking payload is too large.")
     if len(request.body) > MAX_TRACKING_REQUEST_BYTES:
         raise ValueError("Tracking payload is too large.")
 
@@ -209,6 +240,24 @@ def parse_tracking_request(request) -> tuple[str, dict]:
         raise ValueError("Tracking event payload must be a JSON object.")
 
     return event_type, payload
+
+
+def request_body_exceeds_tracking_limit(request) -> bool:
+    """Return whether the declared tracking request body is too large.
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        True when the request declares a body larger than the tracking limit.
+    """
+    content_length = request.META.get("CONTENT_LENGTH")
+    if not content_length:
+        return False
+    try:
+        return int(content_length) > MAX_TRACKING_REQUEST_BYTES
+    except ValueError:
+        return False
 
 
 def get_last_guess_result(request) -> Guess | None:

@@ -690,13 +690,15 @@ class GameStartTests(TestCase):
         game = start_game(self.user)
         turn = game.turns.order_by("turn_number").first()
 
-        event_types = [
+        active_event_types = [
             GameEvent.Type.MAP_CLICKED,
             GameEvent.Type.PIN_MOVED,
+        ]
+        revealed_event_types = [
             GameEvent.Type.REVEAL_SHOWN,
             GameEvent.Type.NEXT_TURN_CLICKED,
         ]
-        for index, event_type in enumerate(event_types, start=1):
+        for index, event_type in enumerate(active_event_types, start=1):
             with self.subTest(event_type=event_type):
                 response = self.post_tracking_event(
                     turn,
@@ -719,6 +721,57 @@ class GameStartTests(TestCase):
                         payload__event_index=index,
                     ).exists()
                 )
+
+        submit_guess(self.user, turn.id, 47.05, 8.05)
+        turn.refresh_from_db()
+        for index, event_type in enumerate(revealed_event_types, start=3):
+            with self.subTest(event_type=event_type):
+                response = self.post_tracking_event(
+                    turn,
+                    event_type=event_type,
+                    payload={
+                        "event_index": index,
+                        "latitude": 47.05,
+                        "longitude": 8.05,
+                        "zoom": 8,
+                    },
+                )
+
+                self.assertEqual(response.status_code, 204)
+                self.assertTrue(
+                    GameEvent.objects.filter(
+                        user=self.user,
+                        game=game,
+                        turn=turn,
+                        event_type=event_type,
+                        payload__event_index=index,
+                    ).exists()
+                )
+
+    def test_tracking_event_rejects_wrong_turn_state(self) -> None:
+        """Tracking endpoint rejects events that do not match turn state."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+        game = start_game(self.user)
+        turns = list(game.turns.order_by("turn_number"))
+
+        future_turn_response = self.post_tracking_event(turns[1])
+        unrevealed_reveal_response = self.post_tracking_event(
+            turns[0],
+            event_type=GameEvent.Type.REVEAL_SHOWN,
+        )
+
+        self.assertEqual(future_turn_response.status_code, 400)
+        self.assertEqual(unrevealed_reveal_response.status_code, 400)
+        self.assertFalse(
+            GameEvent.objects.filter(
+                game=game,
+                event_type__in=[
+                    GameEvent.Type.MAP_CLICKED,
+                    GameEvent.Type.REVEAL_SHOWN,
+                ],
+            ).exists()
+        )
 
     def test_tracking_event_rejects_non_client_event_type(self) -> None:
         """Tracking endpoint rejects server-only event types."""
