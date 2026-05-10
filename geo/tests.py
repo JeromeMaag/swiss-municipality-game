@@ -6,6 +6,7 @@ from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
+from urllib.error import HTTPError
 import zipfile
 
 import geopandas as gpd
@@ -81,6 +82,19 @@ from .selectors import (
     get_municipality_labels_for_dataset,
     get_municipalities_for_dataset,
 )
+
+
+def make_redirect_error(url: str, location: str) -> HTTPError:
+    """Build a mocked HTTP redirect error.
+
+    Args:
+        url: URL that returned the redirect.
+        location: Redirect Location header value.
+
+    Returns:
+        HTTPError representing a redirect response.
+    """
+    return HTTPError(url, 302, "Found", {"Location": location}, None)
 
 
 class GeoModelTests(TestCase):
@@ -802,46 +816,6 @@ class ImportBoundariesCommandTests(TestCase):
 class ImportSwissBoundaries3DCommandTests(TestCase):
     """Tests for the official swissBOUNDARIES3D import command."""
 
-    class RedirectResponse:
-        """Minimal context manager for mocked URL responses."""
-
-        def __init__(self, url: str, content: bytes = b"{}") -> None:
-            """Store mocked response data.
-
-            Args:
-                url: Final response URL.
-                content: Response body bytes.
-            """
-            self.url = url
-            self.content = content
-
-        def __enter__(self):
-            """Return the mocked response object.
-
-            Returns:
-                The response object.
-            """
-            return self
-
-        def __exit__(self, *_args) -> None:
-            """Close the mocked response context."""
-
-        def geturl(self) -> str:
-            """Return the final response URL.
-
-            Returns:
-                The mocked final URL.
-            """
-            return self.url
-
-        def read(self) -> bytes:
-            """Read mocked response content.
-
-            Returns:
-                Response content bytes.
-            """
-            return self.content
-
     def test_command_rejects_unsupported_stac_url_scheme(self) -> None:
         """Command rejects non-HTTPS STAC item URLs."""
         with self.assertRaisesMessage(
@@ -896,13 +870,21 @@ class ImportSwissBoundaries3DCommandTests(TestCase):
 
     def test_load_stac_items_rejects_unsupported_redirect_scheme(self) -> None:
         """STAC requests reject redirects to non-HTTPS URLs."""
-        response = self.RedirectResponse("file:///tmp/items.json")
-        with mock.patch("urllib.request.urlopen", return_value=response):
+        opener = mock.Mock()
+        opener.open.side_effect = [
+            make_redirect_error(
+                "https://data.geo.admin.ch/items.json",
+                "file:///tmp/items.json",
+            )
+        ]
+
+        with mock.patch("urllib.request.build_opener", return_value=opener):
             with self.assertRaisesMessage(
                 CommandError,
                 "URL scheme 'file' is not allowed.",
             ):
                 load_stac_items("https://data.geo.admin.ch/items.json")
+        self.assertEqual(opener.open.call_count, 1)
 
     def test_load_stac_items_rejects_untrusted_hosts(self) -> None:
         """STAC requests reject hosts outside the swisstopo allowlist."""
@@ -919,8 +901,15 @@ class ImportSwissBoundaries3DCommandTests(TestCase):
 
     def test_download_asset_rejects_unsupported_redirect_scheme(self) -> None:
         """Asset downloads reject redirects to non-HTTPS URLs."""
-        response = self.RedirectResponse("file:///tmp/boundaries.gpkg.zip")
-        with mock.patch("urllib.request.urlopen", return_value=response):
+        opener = mock.Mock()
+        opener.open.side_effect = [
+            make_redirect_error(
+                "https://data.geo.admin.ch/boundaries.gpkg.zip",
+                "file:///tmp/boundaries.gpkg.zip",
+            )
+        ]
+
+        with mock.patch("urllib.request.build_opener", return_value=opener):
             with self.assertRaisesMessage(
                 CommandError,
                 "URL scheme 'file' is not allowed.",
@@ -929,6 +918,7 @@ class ImportSwissBoundaries3DCommandTests(TestCase):
                     "https://data.geo.admin.ch/boundaries.gpkg.zip",
                     Path("asset.zip"),
                 )
+        self.assertEqual(opener.open.call_count, 1)
 
     def test_download_asset_rejects_untrusted_hosts(self) -> None:
         """Asset downloads reject hosts outside the swisstopo allowlist."""
@@ -1548,13 +1538,29 @@ class ImportStatpopPopulationCommandTests(TestCase):
         with self.assertRaisesMessage(CommandError, "URL host 'example.test'"):
             fetch_statpop_csv("https://example.test/table.px", "2024")
 
-        response = ImportSwissBoundaries3DCommandTests.RedirectResponse(
-            "https://example.test/table.px",
-            b"{}",
-        )
-        with mock.patch("urllib.request.urlopen", return_value=response):
+        opener = mock.Mock()
+        opener.open.side_effect = [
+            make_redirect_error(
+                "https://www.pxweb.bfs.admin.ch/table.px",
+                "https://example.test/table.px",
+            )
+        ]
+        with mock.patch("urllib.request.build_opener", return_value=opener):
             with self.assertRaisesMessage(CommandError, "URL host 'example.test'"):
                 fetch_statpop_metadata("https://www.pxweb.bfs.admin.ch/table.px")
+        self.assertEqual(opener.open.call_count, 1)
+
+        opener = mock.Mock()
+        opener.open.side_effect = [
+            make_redirect_error(
+                "https://www.pxweb.bfs.admin.ch/table.px",
+                "https://example.test/table.px",
+            )
+        ]
+        with mock.patch("urllib.request.build_opener", return_value=opener):
+            with self.assertRaisesMessage(CommandError, "URL host 'example.test'"):
+                fetch_statpop_csv("https://www.pxweb.bfs.admin.ch/table.px", "2024")
+        self.assertEqual(opener.open.call_count, 1)
 
     def test_apply_population_aggregation_adds_successor_municipalities(self) -> None:
         """Known municipality mutations are aggregated onto successor BFS numbers."""

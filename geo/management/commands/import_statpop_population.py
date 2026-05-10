@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from geo.management.commands._http import open_url_with_validated_redirects
 from geo.management.commands.import_population import (
     format_bfs_numbers,
     import_population_rows,
@@ -160,11 +161,13 @@ def fetch_statpop_metadata(url: str) -> dict[str, Any]:
     Raises:
         CommandError: If the request fails or returns invalid JSON.
     """
-    validate_url_scheme(url)
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            validate_url_scheme(response.geturl())
+        with open_url_with_validated_redirects(
+            request,
+            timeout=60,
+            validate_url=validate_url_scheme,
+        ) as response:
             return json.load(response)
     except (OSError, json.JSONDecodeError) as error:
         raise CommandError(f"Could not load BFS STATPOP metadata: {error}") from error
@@ -183,7 +186,6 @@ def fetch_statpop_csv(url: str, year: str) -> str:
     Raises:
         CommandError: If the request fails.
     """
-    validate_url_scheme(url)
     request = urllib.request.Request(
         url,
         data=json.dumps(build_statpop_query(year)).encode("utf-8"),
@@ -193,8 +195,11 @@ def fetch_statpop_csv(url: str, year: str) -> str:
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
-            validate_url_scheme(response.geturl())
+        with open_url_with_validated_redirects(
+            request,
+            timeout=120,
+            validate_url=validate_url_scheme,
+        ) as response:
             return decode_statpop_response(response.read())
     except OSError as error:
         raise CommandError(

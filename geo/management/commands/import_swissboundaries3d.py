@@ -14,6 +14,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
+from geo.management.commands._http import open_url_with_validated_redirects
 from geo.management.commands.import_boundaries import (
     import_cantons,
     import_municipalities,
@@ -149,11 +150,13 @@ def load_stac_items(url: str) -> dict[str, Any]:
     Returns:
         Parsed STAC FeatureCollection.
     """
-    validate_url_scheme(url)
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            validate_url_scheme(response.geturl())
+        with open_url_with_validated_redirects(
+            request,
+            timeout=60,
+            validate_url=validate_url_scheme,
+        ) as response:
             return json.load(response)
     except OSError as error:
         raise CommandError(f"Could not load STAC items: {error}") from error
@@ -230,11 +233,13 @@ def download_asset(url: str, destination: Path) -> None:
         url: Asset URL.
         destination: Destination file path.
     """
-    validate_url_scheme(url)
     request = urllib.request.Request(url)
     try:
-        with urllib.request.urlopen(request, timeout=300) as response:
-            validate_url_scheme(response.geturl())
+        with open_url_with_validated_redirects(
+            request,
+            timeout=300,
+            validate_url=validate_url_scheme,
+        ) as response:
             with destination.open("wb") as output:
                 shutil.copyfileobj(response, output)
     except OSError as error:
