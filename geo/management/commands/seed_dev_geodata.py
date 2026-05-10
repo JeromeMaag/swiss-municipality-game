@@ -138,10 +138,14 @@ class Command(BaseCommand):
                 version_label=DATASET_VERSION,
                 defaults={
                     "source_url": "",
-                    "imported_at": timezone.now(),
                     "notes": "Local dummy geodata for development only.",
                 },
             )
+            imported_at = timezone.now()
+            GeoDatasetVersion.objects.filter(pk=dataset_version.pk).update(
+                imported_at=imported_at
+            )
+            dataset_version.imported_at = imported_at
             canton_geom = make_multipolygon(
                 (
                     (7.35, 46.85),

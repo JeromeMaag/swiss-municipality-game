@@ -198,6 +198,7 @@ class GeoJSONEndpointTests(TestCase):
     def setUp(self) -> None:
         """Create shared geodata fixtures and authenticate a user."""
         cache.clear()
+        self.addCleanup(cache.clear)
         user_model = get_user_model()
         self.user = user_model.objects.create_user(
             username="player",
@@ -633,6 +634,8 @@ class ImportSwissBoundaries3DCommandTests(TestCase):
         archive = mock.Mock()
         member = mock.Mock()
         member.filename = "../outside.gpkg"
+        member.external_attr = 0
+        member.is_dir.return_value = False
         archive.infolist.return_value = [member]
 
         with self.assertRaises(CommandError):
@@ -1097,7 +1100,10 @@ class SeedDevGeodataCommandTests(TestCase):
             dataset_version.municipalities.filter(is_active=True).count(),
             len(DEV_MUNICIPALITIES),
         )
-        self.assertIn("Seeded 5 development municipalities.", output.getvalue())
+        self.assertIn(
+            f"Seeded {len(DEV_MUNICIPALITIES)} development municipalities.",
+            output.getvalue(),
+        )
 
     def test_command_is_idempotent(self) -> None:
         """Running the seed command twice does not duplicate records."""
