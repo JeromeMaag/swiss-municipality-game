@@ -158,6 +158,7 @@
           return labelLayer;
         })
         .catch(function () {
+          labelRequest = null;
           showMapStatus(map, "Municipality labels could not be loaded.");
           return null;
         });
