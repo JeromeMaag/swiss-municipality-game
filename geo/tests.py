@@ -301,6 +301,47 @@ class GeoJSONEndpointTests(TestCase):
         self.assertEqual(cached_response.status_code, 304)
         self.assertEqual(cached_response["ETag"], etag)
 
+    def test_boundary_cache_changes_when_current_dataset_changes(self) -> None:
+        """Boundary cache keys change when a newer dataset becomes current."""
+        first_response = self.client.get(reverse("geo:municipality_boundaries_geojson"))
+        first_etag = first_response["ETag"]
+        first_data = self.assert_geojson_response(first_response)
+        first_feature_id = first_data["features"][0]["properties"]["id"]
+        other_dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2027-01-01",
+        )
+        other_canton = Canton.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=2,
+            abbreviation="BE",
+            name="Bern",
+            geom=make_test_geometry(),
+        )
+        other_municipality = Municipality.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=351,
+            name="Bern",
+            canton=other_canton,
+            geom=make_test_geometry(),
+        )
+
+        second_response = self.client.get(
+            reverse("geo:municipality_boundaries_geojson"),
+            HTTP_IF_NONE_MATCH=first_etag,
+        )
+        second_data = self.assert_geojson_response(second_response)
+
+        self.assertNotEqual(second_response["ETag"], first_etag)
+        self.assertNotEqual(
+            second_data["features"][0]["properties"]["id"],
+            first_feature_id,
+        )
+        self.assertEqual(
+            second_data["features"][0]["properties"]["id"],
+            other_municipality.id,
+        )
+
     def test_municipality_boundaries_are_not_ordered_by_name(self) -> None:
         """Municipality boundary endpoint avoids name-based feature ordering."""
         other_municipality = Municipality.objects.create(
@@ -723,7 +764,11 @@ class ImportSwissBoundaries3DCommandTests(TestCase):
             Returns:
                 The matching fake GeoDataFrame.
             """
-            return canton_gdf if layer == "tlm_kantonsgebiet" else municipality_gdf
+            if layer == "tlm_kantonsgebiet":
+                return canton_gdf
+            if layer == "tlm_hoheitsgebiet":
+                return municipality_gdf
+            raise AssertionError(f"Unexpected layer requested: {layer}")
 
         with (
             mock.patch(
@@ -752,7 +797,7 @@ class ImportSwissBoundaries3DCommandTests(TestCase):
         canton = Canton.objects.get()
         municipality = Municipality.objects.get()
 
-        download_asset.assert_called_once()
+        download_asset.assert_called_once_with(asset_url, mock.ANY)
         self.assertEqual(dataset_version.source_url, asset_url)
         self.assertEqual(canton.abbreviation, "ZH")
         self.assertEqual(canton.bfs_number, 1)
