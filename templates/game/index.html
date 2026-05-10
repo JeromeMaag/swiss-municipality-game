@@ -70,7 +70,9 @@
                 View summary
               </a>
             {% else %}
-              <a class="button-link" href="{% url 'game:index' %}">Next turn</a>
+              <a class="button-link" href="{% url 'game:index' %}" data-next-turn-link>
+                Next turn
+              </a>
             {% endif %}
           {% elif current_turn %}
             <section class="turn-panel" aria-labelledby="current-turn-heading">
@@ -131,6 +133,12 @@
               data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
               data-canton-boundaries-url="{% url 'geo:cantons_geojson' %}"
               data-municipality-boundaries-url="{% url 'geo:municipality_boundaries_geojson' %}"
+              data-csrf-token="{{ csrf_token }}"
+              {% if last_guess %}
+                data-tracking-url="{% url 'game:track_turn_event' last_guess.turn.id %}"
+              {% elif current_turn %}
+                data-tracking-url="{% url 'game:track_turn_event' current_turn.id %}"
+              {% endif %}
               {% if last_guess %}
                 data-reveal-target-id="{{ last_guess.turn.target.id }}"
                 data-reveal-lat="{{ reveal_guess_lat }}"

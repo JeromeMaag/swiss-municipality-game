@@ -1,5 +1,6 @@
 """Tests for the game app."""
 
+import json
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -451,6 +452,37 @@ class GameStartTests(TestCase):
             )
         return municipalities
 
+    def post_tracking_event(
+        self,
+        turn: Turn,
+        *,
+        client=None,
+        event_type: str = GameEvent.Type.MAP_CLICKED,
+        payload: dict | None = None,
+    ):
+        """Post a JSON tracking event to the turn event endpoint.
+
+        Args:
+            turn: Turn receiving the tracking event.
+            client: Optional test client.
+            event_type: Event type value.
+            payload: Optional event payload.
+
+        Returns:
+            The endpoint response.
+        """
+        event_client = client or self.client
+        return event_client.post(
+            reverse("game:track_turn_event", args=[turn.id]),
+            data=json.dumps(
+                {
+                    "event_type": event_type,
+                    "payload": payload if payload is not None else {},
+                }
+            ),
+            content_type="application/json",
+        )
+
     def test_start_game_creates_five_unique_turns_and_events(self) -> None:
         """Starting a game creates five unique turns and start events."""
         self.create_municipalities(6)
@@ -612,6 +644,143 @@ class GameStartTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
 
+    def test_tracking_event_requires_login(self) -> None:
+        """Anonymous users cannot post tracking events."""
+        self.create_municipalities(5)
+        game = start_game(self.user)
+        turn = game.turns.order_by("turn_number").first()
+
+        response = self.post_tracking_event(turn)
+
+        self.assertRedirects(
+            response,
+            (
+                f"{reverse('accounts:login')}?next="
+                f"{reverse('game:track_turn_event', args=[turn.id])}"
+            ),
+        )
+
+    def test_tracking_event_rejects_get(self) -> None:
+        """Tracking event endpoint only accepts POST."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+        game = start_game(self.user)
+        turn = game.turns.order_by("turn_number").first()
+
+        response = self.client.get(reverse("game:track_turn_event", args=[turn.id]))
+
+        self.assertEqual(response.status_code, 405)
+
+    def test_tracking_event_requires_csrf(self) -> None:
+        """Tracking event POSTs require CSRF protection."""
+        self.create_municipalities(5)
+        game = start_game(self.user)
+        turn = game.turns.order_by("turn_number").first()
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user)
+
+        response = self.post_tracking_event(turn, client=csrf_client)
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_tracking_event_stores_allowed_client_events(self) -> None:
+        """Tracking event endpoint stores all allowed UI events."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+        game = start_game(self.user)
+        turn = game.turns.order_by("turn_number").first()
+
+        event_types = [
+            GameEvent.Type.MAP_CLICKED,
+            GameEvent.Type.PIN_MOVED,
+            GameEvent.Type.REVEAL_SHOWN,
+            GameEvent.Type.NEXT_TURN_CLICKED,
+        ]
+        for index, event_type in enumerate(event_types, start=1):
+            with self.subTest(event_type=event_type):
+                response = self.post_tracking_event(
+                    turn,
+                    event_type=event_type,
+                    payload={
+                        "event_index": index,
+                        "latitude": 47.05,
+                        "longitude": 8.05,
+                        "zoom": 8,
+                    },
+                )
+
+                self.assertEqual(response.status_code, 204)
+                self.assertTrue(
+                    GameEvent.objects.filter(
+                        user=self.user,
+                        game=game,
+                        turn=turn,
+                        event_type=event_type,
+                        payload__event_index=index,
+                    ).exists()
+                )
+
+    def test_tracking_event_rejects_non_client_event_type(self) -> None:
+        """Tracking endpoint rejects server-only event types."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+        game = start_game(self.user)
+        turn = game.turns.order_by("turn_number").first()
+
+        response = self.post_tracking_event(
+            turn,
+            event_type=GameEvent.Type.GAME_STARTED,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            GameEvent.objects.filter(
+                game=game,
+                event_type=GameEvent.Type.GAME_STARTED,
+            ).count(),
+            1,
+        )
+
+    def test_tracking_event_rejects_foreign_turn(self) -> None:
+        """Users cannot post tracking events to another user's turn."""
+        other_user = get_user_model().objects.create_user(
+            username="other-player",
+            password="test",
+        )
+        self.create_municipalities(5)
+        game = start_game(self.user)
+        turn = game.turns.order_by("turn_number").first()
+        self.client.force_login(other_user)
+
+        response = self.post_tracking_event(turn)
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(
+            GameEvent.objects.filter(
+                user=other_user,
+                turn=turn,
+                event_type=GameEvent.Type.MAP_CLICKED,
+            ).exists()
+        )
+
+    def test_tracking_event_rejects_invalid_payload_shape(self) -> None:
+        """Tracking payload must be a JSON object."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+        game = start_game(self.user)
+        turn = game.turns.order_by("turn_number").first()
+
+        response = self.post_tracking_event(turn, payload=["not", "an", "object"])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(
+            GameEvent.objects.filter(
+                game=game,
+                turn=turn,
+                event_type=GameEvent.Type.MAP_CLICKED,
+            ).exists()
+        )
+
     def test_start_view_creates_game_and_redirects(self) -> None:
         """Game start endpoint creates a game and redirects to the index."""
         self.create_municipalities(5)
@@ -670,6 +839,11 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Distance to municipality")
         self.assertContains(response, "0 m")
         self.assertContains(response, "Next turn")
+        self.assertContains(response, "data-next-turn-link")
+        self.assertContains(
+            response,
+            f'data-tracking-url="{reverse("game:track_turn_event", args=[first_turn.id])}"',
+        )
         self.assertContains(response, 'id="game-map"')
         self.assertContains(response, f'data-reveal-target-id="{first_turn.target.id}"')
         self.assertContains(response, 'data-reveal-lat="47.050000"')
@@ -783,6 +957,10 @@ class GameStartTests(TestCase):
         self.assertContains(response, "data-guess-lat")
         self.assertContains(response, "data-guess-lng")
         self.assertContains(response, "data-confirm-guess")
+        self.assertContains(
+            response,
+            f'data-tracking-url="{reverse("game:track_turn_event", args=[first_turn.id])}"',
+        )
         self.assertContains(
             response,
             f'data-canton-boundaries-url="{reverse("geo:cantons_geojson")}"',

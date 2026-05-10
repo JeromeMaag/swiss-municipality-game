@@ -6,6 +6,45 @@
     return Number.isFinite(value) ? value : fallback;
   }
 
+  function readCookie(name) {
+    const cookies = document.cookie ? document.cookie.split(";") : [];
+    for (let index = 0; index < cookies.length; index += 1) {
+      const cookie = cookies[index].trim();
+      if (cookie.substring(0, name.length + 1) === name + "=") {
+        return decodeURIComponent(cookie.substring(name.length + 1));
+      }
+    }
+    return "";
+  }
+
+  function getCsrfToken(mapElement) {
+    return mapElement.dataset.csrfToken || readCookie("csrftoken");
+  }
+
+  function sendTrackingEvent(mapElement, eventType, payload) {
+    const url = mapElement.dataset.trackingUrl;
+    if (!url || !window.fetch) {
+      return;
+    }
+
+    window.fetch(url, {
+      method: "POST",
+      credentials: "same-origin",
+      keepalive: true,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCsrfToken(mapElement),
+      },
+      body: JSON.stringify({
+        event_type: eventType,
+        payload: payload || {},
+      }),
+    }).catch(function () {
+      return null;
+    });
+  }
+
   function addBoundaryLayer(map, url, options) {
     if (!url) {
       return Promise.resolve(null);
@@ -93,7 +132,7 @@
     );
   }
 
-  function initializeGuessInteraction(map) {
+  function initializeGuessInteraction(map, mapElement) {
     const form = document.querySelector("[data-guess-form]");
     if (!form) {
       return;
@@ -117,7 +156,15 @@
     map.on("click", function (event) {
       const latitude = formatCoordinate(event.latlng.lat);
       const longitude = formatCoordinate(event.latlng.lng);
+      const previousLatLng = selectedLatLng;
+      const hadMarker = marker !== null;
       selectedLatLng = event.latlng;
+
+      sendTrackingEvent(mapElement, "MAP_CLICKED", {
+        latitude: Number(latitude),
+        longitude: Number(longitude),
+        zoom: map.getZoom(),
+      });
 
       if (marker === null) {
         marker = createGuessMarker(map);
@@ -128,6 +175,19 @@
       longitudeInput.value = longitude;
       coordinatesOutput.textContent = "Selected point: " + latitude + ", " + longitude;
       confirmButton.disabled = false;
+
+      sendTrackingEvent(mapElement, "PIN_MOVED", {
+        had_existing_pin: hadMarker,
+        latitude: Number(latitude),
+        longitude: Number(longitude),
+        previous_latitude: previousLatLng
+          ? Number(formatCoordinate(previousLatLng.lat))
+          : null,
+        previous_longitude: previousLatLng
+          ? Number(formatCoordinate(previousLatLng.lng))
+          : null,
+        zoom: map.getZoom(),
+      });
     });
   }
 
@@ -144,7 +204,7 @@
     };
   }
 
-  function initializeReveal(map, revealState) {
+  function initializeReveal(map, revealState, mapElement) {
     const marker = createRevealedGuessMarker(map);
 
     function updateMarkerPosition() {
@@ -154,6 +214,25 @@
     map.getContainer().classList.add("game-map--reveal");
     map.on("move zoom resize viewreset", updateMarkerPosition);
     updateMarkerPosition();
+    sendTrackingEvent(mapElement, "REVEAL_SHOWN", {
+      latitude: revealState.latlng.lat,
+      longitude: revealState.latlng.lng,
+      target_municipality_id: Number(revealState.targetId),
+      zoom: map.getZoom(),
+    });
+  }
+
+  function initializeNextTurnTracking(mapElement) {
+    const nextTurnLink = document.querySelector("[data-next-turn-link]");
+    if (!nextTurnLink) {
+      return;
+    }
+
+    nextTurnLink.addEventListener("click", function () {
+      sendTrackingEvent(mapElement, "NEXT_TURN_CLICKED", {
+        href: nextTurnLink.getAttribute("href"),
+      });
+    });
   }
 
   function isTargetFeature(feature, targetId) {
@@ -238,9 +317,10 @@
     addBaseMapLayer(map, mapElement.dataset.baseMapUrl);
     window.L.control.scale({ imperial: false, metric: true }).addTo(map);
     if (revealState) {
-      initializeReveal(map, revealState);
+      initializeReveal(map, revealState, mapElement);
+      initializeNextTurnTracking(mapElement);
     } else {
-      initializeGuessInteraction(map);
+      initializeGuessInteraction(map, mapElement);
     }
     mapElement.dataset.initialized = "true";
     addBoundaryLayer(map, mapElement.dataset.municipalityBoundariesUrl, {
