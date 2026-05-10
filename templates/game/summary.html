@@ -1,56 +1,101 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Game summary - GemeindeGuess CH{% endblock %}
+{% block body_class %}game-page{% endblock %}
+
+{% block extra_head %}
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin="anonymous"
+  >
+{% endblock %}
 
 {% block content %}
-  <section class="game-panel">
-    <div class="summary-header">
-      <div>
-        <h1>Game summary</h1>
-        <p class="muted">Finished game</p>
-      </div>
-      <form method="post" action="{% url 'game:start' %}">
-        {% csrf_token %}
-        <button type="submit">Start new game</button>
-      </form>
+  <section class="game-panel game-shell">
+    <div class="game-layout">
+      <section class="map-panel" aria-label="Game summary map">
+        <p class="map-status" data-map-status role="status" aria-live="polite" aria-atomic="true"></p>
+        <div
+          id="game-map"
+          class="game-map"
+          data-center-lat="46.8182"
+          data-center-lng="8.2275"
+          data-zoom="8"
+          data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
+          data-canton-boundaries-url="{% url 'geo:cantons_geojson' %}"
+          data-municipality-boundaries-url="{% url 'geo:municipality_boundaries_geojson' %}"
+          data-summary-map="true"
+        ></div>
+      </section>
+
+      <aside class="game-sidebar" aria-label="Game result">
+        <div class="hud-row" aria-label="Game result">
+          <div>
+            <span>Rounds</span>
+            <strong>{{ game.turns.all|length }}/{{ turn_count }}</strong>
+          </div>
+          <div>
+            <span>Score</span>
+            <strong>{{ game.total_score }}</strong>
+          </div>
+        </div>
+
+        <section class="target-panel result-panel summary-results" aria-labelledby="summary-heading">
+          <span class="state-label">Summary</span>
+          <h1 id="summary-heading">Game result</h1>
+          <ol class="summary-round-list">
+            {% for turn in game.turns.all %}
+              <li>
+                <article class="summary-round-card">
+                  <header>
+                    <span>{{ turn.turn_number }}</span>
+                    <strong>{{ turn.target.name }}</strong>
+                  </header>
+                  <dl class="result-list">
+                    <div class="result-list-primary">
+                      <dt>Score</dt>
+                      <dd>{{ turn.guess.score }}</dd>
+                    </div>
+                    <div>
+                      <dt>Distance</dt>
+                      <dd>{{ turn.guess.distance_to_municipality_m|floatformat:0 }} m</dd>
+                    </div>
+                    <div>
+                      <dt>Canton</dt>
+                      <dd>{{ turn.target.canton.abbreviation }}</dd>
+                    </div>
+                    {% if turn.target.population is not None %}
+                      <div>
+                        <dt>Population</dt>
+                        <dd>{{ turn.target.population }}</dd>
+                      </div>
+                    {% endif %}
+                  </dl>
+                </article>
+              </li>
+            {% endfor %}
+          </ol>
+        </section>
+
+        <form class="summary-start-form" method="post" action="{% url 'game:start' %}">
+          {% csrf_token %}
+          <button type="submit">New game</button>
+        </form>
+      </aside>
     </div>
-
-    <section class="summary-score" aria-labelledby="summary-score-heading">
-      <h2 id="summary-score-heading">Total score</h2>
-      <p>{{ game.total_score }}</p>
-    </section>
-
-    <ol class="summary-turn-list">
-      {% for turn in game.turns.all %}
-        <li>
-          <article class="summary-turn">
-            <header>
-              <p class="muted">Turn {{ turn.turn_number }}</p>
-              <h2>{{ turn.target.name }}</h2>
-            </header>
-            <dl class="result-list">
-              <div>
-                <dt>Canton</dt>
-                <dd>{{ turn.target.canton.abbreviation }}</dd>
-              </div>
-              {% if turn.target.population %}
-                <div>
-                  <dt>Population</dt>
-                  <dd>{{ turn.target.population }}</dd>
-                </div>
-              {% endif %}
-              <div>
-                <dt>Score</dt>
-                <dd>{{ turn.guess.score }}</dd>
-              </div>
-              <div>
-                <dt>Distance</dt>
-                <dd>{{ turn.guess.distance_to_municipality_m|floatformat:0 }} m</dd>
-              </div>
-            </dl>
-          </article>
-        </li>
-      {% endfor %}
-    </ol>
+    {{ summary_reveals|json_script:"game-summary-reveals" }}
   </section>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin="anonymous"
+    defer
+  ></script>
+  <script src="{% static 'js/game_map.js' %}?v=ui-polish-3" defer></script>
 {% endblock %}

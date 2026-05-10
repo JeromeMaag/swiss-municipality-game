@@ -209,20 +209,28 @@
     return value.toFixed(5);
   }
 
-  function createGuessMarker(map) {
+  function createGuessMarker(map, label) {
     const marker = document.createElement("div");
     marker.className = "guess-marker";
     marker.setAttribute("aria-hidden", "true");
+    if (label) {
+      marker.classList.add("guess-marker--numbered");
+    }
+    const markerLabel = label
+      ? '<span class="guess-marker-label">' + escapeHtml(label) + "</span>"
+      : "";
     marker.innerHTML = (
-      '<span class="guess-marker-head"></span>' +
+      '<span class="guess-marker-head">' +
+      markerLabel +
+      "</span>" +
       '<span class="guess-marker-stem"></span>'
     );
     map.getContainer().appendChild(marker);
     return marker;
   }
 
-  function createRevealedGuessMarker(map) {
-    const marker = createGuessMarker(map);
+  function createRevealedGuessMarker(map, label) {
+    const marker = createGuessMarker(map, label);
     marker.classList.add("guess-marker--revealed");
     return marker;
   }
@@ -300,6 +308,51 @@
     };
   }
 
+  function readSummaryState() {
+    const summaryElement = document.getElementById("game-summary-reveals");
+    if (!summaryElement) {
+      return null;
+    }
+
+    let rawReveals = [];
+    try {
+      rawReveals = JSON.parse(summaryElement.textContent || "[]");
+    } catch (error) {
+      rawReveals = [];
+    }
+
+    const reveals = rawReveals
+      .map(function (reveal) {
+        const latitude = Number.parseFloat(reveal.lat);
+        const longitude = Number.parseFloat(reveal.lng);
+        const targetId = reveal.targetId;
+        if (!targetId || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+          return null;
+        }
+        return {
+          distance: Number.parseFloat(reveal.distance) || 0,
+          latlng: window.L.latLng(latitude, longitude),
+          score: Number.parseInt(reveal.score, 10) || 0,
+          targetId: String(targetId),
+          turnNumber: Number.parseInt(reveal.turnNumber, 10) || 0,
+        };
+      })
+      .filter(Boolean);
+
+    if (reveals.length === 0) {
+      return null;
+    }
+
+    return {
+      reveals: reveals,
+      targetIds: new Set(
+        reveals.map(function (reveal) {
+          return reveal.targetId;
+        })
+      ),
+    };
+  }
+
   function initializeReveal(map, revealState, mapElement) {
     const marker = createRevealedGuessMarker(map);
 
@@ -315,6 +368,20 @@
       longitude: revealState.latlng.lng,
       target_municipality_id: Number(revealState.targetId),
       zoom: map.getZoom(),
+    });
+  }
+
+  function initializeSummary(map, summaryState) {
+    map.getContainer().classList.add("game-map--summary");
+    summaryState.reveals.forEach(function (reveal) {
+      const marker = createRevealedGuessMarker(map, String(reveal.turnNumber));
+
+      function updateMarkerPosition() {
+        positionGuessMarker(map, marker, reveal.latlng);
+      }
+
+      map.on("move zoom resize viewreset", updateMarkerPosition);
+      updateMarkerPosition();
     });
   }
 
@@ -339,9 +406,21 @@
     );
   }
 
-  function municipalityStyle(revealState) {
+  function isSummaryTargetFeature(feature, summaryState) {
+    return Boolean(
+      summaryState &&
+      feature &&
+      feature.properties &&
+      summaryState.targetIds.has(String(feature.properties.id))
+    );
+  }
+
+  function municipalityStyle(revealState, summaryState) {
     return function (feature) {
-      if (revealState && isTargetFeature(feature, revealState.targetId)) {
+      if (
+        (revealState && isTargetFeature(feature, revealState.targetId)) ||
+        isSummaryTargetFeature(feature, summaryState)
+      ) {
         return {
           color: "#7cff8b",
           fillColor: "#1b8f5a",
@@ -478,9 +557,9 @@
       color: "#ffffff",
       dashArray: "7 7",
       interactive: false,
-      opacity: 0.8,
+      opacity: 0.58,
       pane: "revealDistancePane",
-      weight: 3,
+      weight: 4,
     }).addTo(map);
     window.L.polyline([revealState.latlng, boundaryLatLng], {
       className: "reveal-distance-line",
@@ -489,7 +568,7 @@
       interactive: false,
       opacity: 0.95,
       pane: "revealDistancePane",
-      weight: 2,
+      weight: 2.5,
     }).addTo(map);
   }
 
@@ -507,6 +586,25 @@
     });
   }
 
+  function fitSummaryBounds(map, municipalityLayer, summaryState) {
+    const bounds = window.L.latLngBounds([]);
+    summaryState.reveals.forEach(function (reveal) {
+      bounds.extend(reveal.latlng);
+      const targetLayer = findTargetLayer(municipalityLayer, reveal.targetId);
+      if (targetLayer !== null) {
+        bounds.extend(targetLayer.getBounds());
+      }
+    });
+
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, {
+        animate: false,
+        maxZoom: 10,
+        padding: [64, 64],
+      });
+    }
+  }
+
   function initializeGameMap() {
     const mapElement = document.getElementById("game-map");
     if (!mapElement || !window.L || mapElement.dataset.initialized === "true") {
@@ -522,6 +620,7 @@
     const zoom = readNumber(mapElement, "zoom", 8);
     const labelMinZoom = readNumber(mapElement, "labelMinZoom", 11);
     const revealState = readRevealState(mapElement);
+    const summaryState = readSummaryState();
     const map = window.L.map(mapElement, {
       attributionControl: true,
       maxBounds: switzerlandBounds,
@@ -537,18 +636,26 @@
     if (revealState) {
       initializeReveal(map, revealState, mapElement);
       initializeNextTurnTracking(mapElement);
+    } else if (summaryState) {
+      initializeSummary(map, summaryState);
     } else {
       initializeGuessInteraction(map, mapElement);
     }
     mapElement.dataset.initialized = "true";
     addBoundaryLayer(map, mapElement.dataset.municipalityBoundariesUrl, {
       errorMessage: "Municipality boundaries could not be loaded.",
-      fitBounds: !revealState,
-      style: municipalityStyle(revealState),
+      fitBounds: !revealState && !summaryState,
+      style: municipalityStyle(revealState, summaryState),
     }).then(function (municipalityLayer) {
       if (revealState && municipalityLayer !== null) {
         fitRevealBounds(map, municipalityLayer, revealState);
         drawRevealDistanceLine(map, municipalityLayer, revealState);
+      }
+      if (summaryState && municipalityLayer !== null) {
+        fitSummaryBounds(map, municipalityLayer, summaryState);
+        summaryState.reveals.forEach(function (reveal) {
+          drawRevealDistanceLine(map, municipalityLayer, reveal);
+        });
       }
       return addBoundaryLayer(map, mapElement.dataset.cantonBoundariesUrl, {
         errorMessage: "Canton boundaries could not be loaded.",

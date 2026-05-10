@@ -155,8 +155,7 @@ a {
 }
 
 .intro h1,
-.game-start-panel h1,
-.summary-header h1 {
+.game-start-panel h1 {
   font-size: 3rem;
   line-height: 1;
   margin: 0;
@@ -509,6 +508,19 @@ a {
   --marker-fill: #ffe05c;
 }
 
+.guess-marker--numbered .guess-marker-head {
+  background: var(--marker-fill);
+}
+
+.guess-marker-label {
+  color: #0c1418;
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 900;
+  line-height: calc(1.55rem - 6px);
+  text-align: center;
+}
+
 .reveal-distance-line {
   filter: drop-shadow(0 0.18rem 0.2rem rgba(0, 0, 0, 0.42));
   stroke-linecap: round;
@@ -541,65 +553,71 @@ a {
   min-height: 620px;
 }
 
-.summary-header {
-  align-items: flex-start;
-  display: flex;
-  gap: 1rem;
-  justify-content: space-between;
-  margin-bottom: 1.5rem;
+.summary-results {
+  overflow: hidden;
 }
 
-.summary-header p {
-  margin-top: 0.5rem;
-}
-
-.summary-header form {
-  margin: 0;
-}
-
-.summary-score {
-  background: #15262d;
-  border-radius: 8px;
-  color: #ffffff;
-  margin: 0 0 1.5rem;
-  padding: 1.25rem;
-}
-
-.summary-score h2 {
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 0.9rem;
-  margin: 0 0 0.5rem;
-}
-
-.summary-score p {
-  font-size: 2.35rem;
-  font-weight: 850;
-  line-height: 1;
-  margin: 0;
-}
-
-.summary-turn-list {
+.summary-round-list {
   display: grid;
-  gap: 1rem;
+  gap: 0.7rem;
   list-style: none;
   margin: 0;
+  overflow: auto;
   padding: 0;
 }
 
-.summary-turn {
-  background: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 1rem;
+.summary-round-card {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 0.75rem;
 }
 
-.summary-turn header {
-  margin-bottom: 1rem;
+.summary-round-card header {
+  align-items: center;
+  display: flex;
+  gap: 0.55rem;
+  margin-bottom: 0.65rem;
 }
 
-.summary-turn h2,
-.summary-turn p {
+.summary-round-card header span {
+  align-items: center;
+  background: #ffe05c;
+  border-radius: 999px;
+  color: #0c1418;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  font-weight: 900;
+  height: 1.45rem;
+  justify-content: center;
+  width: 1.45rem;
+}
+
+.summary-round-card header strong {
+  color: #ffffff;
+  font-size: 0.95rem;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.summary-round-card .result-list {
+  gap: 0.38rem;
+}
+
+.summary-round-card .result-list div {
+  padding-top: 0.42rem;
+}
+
+.summary-start-form {
+  align-self: end;
+  display: grid;
   margin: 0;
+}
+
+.summary-start-form button {
+  min-height: 3rem;
+  width: 100%;
 }
 
 @media (max-width: 920px) {

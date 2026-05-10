@@ -1438,12 +1438,16 @@ class GameSummaryTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "game/summary.html")
-        self.assertContains(response, "Game summary")
+        self.assertContains(response, "Game result")
         self.assertContains(response, str(game.total_score))
         self.assertContains(response, "Summary Municipality 1")
-        self.assertContains(response, "Start new game")
+        self.assertContains(response, "New game")
         self.assertContains(response, reverse("game:start"))
         self.assertContains(response, 'method="post"')
+        self.assertContains(response, 'id="game-map"')
+        self.assertContains(response, 'data-summary-map="true"')
+        self.assertContains(response, "game-summary-reveals")
+        self.assertContains(response, "wmts.geo.admin.ch")
         self.assertContains(response, "Canton")
         self.assertContains(response, "ZH")
         self.assertContains(response, "Population")
@@ -1453,7 +1457,8 @@ class GameSummaryTests(TestCase):
         self.assertContains(response, "Distance")
         self.assertNotContains(response, "Distance to municipality")
         self.assertNotContains(response, "Distance to boundary")
-        self.assertContains(response, "Turn 5")
+        self.assertContains(response, "Summary Municipality 5")
+        self.assertContains(response, '"turnNumber": 5')
 
     def test_summary_rejects_other_users_game(self) -> None:
         """Users cannot view another user's game summary."""

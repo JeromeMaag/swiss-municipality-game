@@ -231,7 +231,43 @@ def summary(request, game_id: int):
     game = get_finished_game_summary(request.user, game_id)
     if game is None:
         raise Http404("Game summary not found.")
-    return render(request, "game/summary.html", {"game": game})
+    return render(
+        request,
+        "game/summary.html",
+        {
+            "game": game,
+            "summary_reveals": build_summary_reveals(game),
+            "turn_count": TURN_COUNT,
+        },
+    )
+
+
+def build_summary_reveals(game: Game) -> list[dict]:
+    """Return map reveal data for every guessed turn in a finished game.
+
+    Args:
+        game: Finished game with prefetched turns and guesses.
+
+    Returns:
+        JSON-serializable reveal data for the summary map.
+    """
+    reveals = []
+    for turn in game.turns.all():
+        try:
+            guess = turn.guess
+        except Guess.DoesNotExist:
+            continue
+        reveals.append(
+            {
+                "distance": guess.distance_to_municipality_m,
+                "lat": guess.point.y,
+                "lng": guess.point.x,
+                "score": guess.score,
+                "targetId": turn.target_id,
+                "turnNumber": turn.turn_number,
+            }
+        )
+    return reveals
 
 
 def parse_tracking_request(request) -> tuple[str, dict]:
