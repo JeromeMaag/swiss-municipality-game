@@ -26,6 +26,10 @@ from .management.commands.seed_dev_geodata import (
     DATASET_VERSION,
     DEV_MUNICIPALITIES,
 )
+from .management.commands.import_swissboundaries3d import (
+    DATASET_NAME as OFFICIAL_BOUNDARIES_DATASET_NAME,
+    safe_extract_zip,
+)
 from .models import Canton, GeoDatasetVersion, Municipality
 from .selectors import get_current_dataset_version
 
@@ -471,6 +475,166 @@ class ImportBoundariesCommandTests(TestCase):
         self.assertIsNotNone(municipality.label_point)
         self.assertEqual(Canton.objects.count(), 1)
         self.assertEqual(Municipality.objects.count(), 1)
+
+
+class ImportSwissBoundaries3DCommandTests(TestCase):
+    """Tests for the official swissBOUNDARIES3D import command."""
+
+    def test_safe_extract_zip_rejects_path_traversal(self) -> None:
+        """ZIP extraction rejects archive members outside the destination."""
+        archive = mock.Mock()
+        member = mock.Mock()
+        member.filename = "../outside.gpkg"
+        archive.infolist.return_value = [member]
+
+        with self.assertRaises(CommandError):
+            safe_extract_zip(archive, Path("data/raw/import-test"))
+
+        archive.extractall.assert_not_called()
+
+    def test_command_imports_latest_geopackage_asset(self) -> None:
+        """Command downloads the newest official GeoPackage and imports boundaries."""
+        output = StringIO()
+        asset_url = "https://example.test/swissboundaries3d_2026-01.gpkg.zip"
+        stac_items = {
+            "features": [
+                {
+                    "id": "swissboundaries3d_2025-01",
+                    "properties": {"datetime": "2025-01-01T00:00:00Z"},
+                    "assets": {
+                        "old.gpkg.zip": {
+                            "href": "https://example.test/old.gpkg.zip",
+                            "type": "application/x.geopackage+zip",
+                        },
+                    },
+                },
+                {
+                    "id": "swissboundaries3d_2026-01",
+                    "properties": {"datetime": "2026-01-01T00:00:00Z"},
+                    "assets": {
+                        "current.gpkg.zip": {
+                            "href": asset_url,
+                            "type": "application/x.geopackage+zip",
+                        },
+                    },
+                },
+            ],
+        }
+        canton_gdf = gpd.GeoDataFrame(
+            [
+                {
+                    "kantonsnummer": 1,
+                    "name": "Zurich",
+                    "geometry": Polygon(
+                        (
+                            (8.0, 47.0),
+                            (8.2, 47.0),
+                            (8.2, 47.2),
+                            (8.0, 47.2),
+                            (8.0, 47.0),
+                        )
+                    ),
+                },
+            ],
+            crs="EPSG:4326",
+        )
+        municipality_gdf = gpd.GeoDataFrame(
+            [
+                {
+                    "objektart": "Gemeindegebiet",
+                    "bfs_nummer": 131,
+                    "kantonsnummer": 1,
+                    "name": "Adliswil",
+                    "geometry": Polygon(
+                        (
+                            (8.02, 47.02),
+                            (8.08, 47.02),
+                            (8.08, 47.08),
+                            (8.02, 47.08),
+                            (8.02, 47.02),
+                        )
+                    ),
+                },
+                {
+                    "objektart": "Kantonsgebiet",
+                    "bfs_nummer": 9051,
+                    "kantonsnummer": 1,
+                    "name": "Zurichsee (ZH)",
+                    "geometry": Polygon(
+                        (
+                            (8.1, 47.1),
+                            (8.15, 47.1),
+                            (8.15, 47.15),
+                            (8.1, 47.15),
+                            (8.1, 47.1),
+                        )
+                    ),
+                },
+                {
+                    "objektart": "Gemeindegebiet",
+                    "bfs_nummer": 7004,
+                    "kantonsnummer": None,
+                    "name": "Triesenberg",
+                    "geometry": Polygon(
+                        (
+                            (9.5, 47.0),
+                            (9.6, 47.0),
+                            (9.6, 47.1),
+                            (9.5, 47.1),
+                            (9.5, 47.0),
+                        )
+                    ),
+                },
+            ],
+            crs="EPSG:4326",
+        )
+
+        def read_official_layer(_source, layer):
+            """Return fake swissBOUNDARIES3D layers.
+
+            Args:
+                _source: Ignored GeoPackage path.
+                layer: Requested layer name.
+
+            Returns:
+                The matching fake GeoDataFrame.
+            """
+            return canton_gdf if layer == "tlm_kantonsgebiet" else municipality_gdf
+
+        with mock.patch(
+            "geo.management.commands.import_swissboundaries3d.load_stac_items",
+            return_value=stac_items,
+        ):
+            with mock.patch(
+                "geo.management.commands.import_swissboundaries3d.download_asset",
+            ) as download_asset:
+                with mock.patch(
+                    "geo.management.commands.import_swissboundaries3d."
+                    "extract_single_geopackage",
+                    return_value=Path("official.gpkg"),
+                ):
+                    with mock.patch(
+                        "geo.management.commands.import_swissboundaries3d.read_layer",
+                        side_effect=read_official_layer,
+                    ):
+                        call_command("import_swissboundaries3d", stdout=output)
+
+        dataset_version = GeoDatasetVersion.objects.get(
+            name=OFFICIAL_BOUNDARIES_DATASET_NAME,
+            version_label="2026-01-01",
+        )
+        canton = Canton.objects.get()
+        municipality = Municipality.objects.get()
+
+        download_asset.assert_called_once()
+        self.assertEqual(dataset_version.source_url, asset_url)
+        self.assertEqual(canton.abbreviation, "ZH")
+        self.assertEqual(canton.bfs_number, 1)
+        self.assertEqual(municipality.name, "Adliswil")
+        self.assertEqual(municipality.bfs_number, 131)
+        self.assertEqual(municipality.canton, canton)
+        self.assertEqual(Municipality.objects.count(), 1)
+        self.assertIn("Imported 1 cantons and 1 municipalities", output.getvalue())
 
 
 class ImportPopulationCommandTests(TestCase):

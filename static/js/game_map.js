@@ -138,8 +138,8 @@
       style: {
         color: "#ffffff",
         fillOpacity: 0,
-        opacity: 0.95,
-        weight: 1.4,
+        opacity: 0.75,
+        weight: 0.6,
       },
     }).then(function () {
       return addBoundaryLayer(map, mapElement.dataset.cantonBoundariesUrl, {
@@ -147,8 +147,8 @@
         style: {
           color: "#ffcf4a",
           fillOpacity: 0,
-          opacity: 1,
-          weight: 3,
+          opacity: 0.9,
+          weight: 1.4,
         },
       });
     });
