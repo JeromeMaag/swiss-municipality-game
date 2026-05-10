@@ -144,7 +144,7 @@
               data-canton-boundaries-url="{% url 'geo:cantons_geojson' %}"
               data-municipality-boundaries-url="{% url 'geo:municipality_boundaries_geojson' %}"
               {% if last_guess %}
-                data-municipality-labels-url="{% url 'geo:municipality_labels_geojson' %}"
+                data-municipality-labels-url="{% url 'geo:municipality_labels_geojson' %}?turn={{ last_guess.turn.id }}"
                 data-label-min-zoom="12"
                 data-tracking-url="{% url 'game:track_turn_event' last_guess.turn.id %}"
               {% elif current_turn %}

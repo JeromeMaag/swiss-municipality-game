@@ -11,6 +11,7 @@ from django.test import Client, RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from geo.constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
 from geo.models import Canton, GeoDatasetVersion, Municipality
 from tests.utils import make_test_geometry
 from tracking.models import GameEvent
@@ -1083,7 +1084,10 @@ class GameStartTests(TestCase):
         )
         self.assertContains(
             response,
-            f'data-municipality-labels-url="{reverse("geo:municipality_labels_geojson")}"',
+            (
+                f'data-municipality-labels-url="{reverse("geo:municipality_labels_geojson")}'
+                f'?turn={first_turn.id}"'
+            ),
         )
         self.assertContains(response, 'data-label-min-zoom="12"')
         self.assertContains(response, 'id="game-map"')
@@ -1096,6 +1100,10 @@ class GameStartTests(TestCase):
         response = self.client.get(reverse("game:index"))
         self.assertNotContains(response, "Result")
         self.assertContains(response, "Turn 2 of 5")
+        self.assertNotIn(
+            MUNICIPALITY_LABEL_ACCESS_SESSION_KEY,
+            self.client.session,
+        )
 
     def test_guess_view_shows_zero_population_when_present(self) -> None:
         """Game index distinguishes a zero population value from missing data."""
@@ -1151,7 +1159,10 @@ class GameStartTests(TestCase):
         self.assertContains(response, 'id="game-map"')
         self.assertContains(
             response,
-            f'data-municipality-labels-url="{reverse("geo:municipality_labels_geojson")}"',
+            (
+                f'data-municipality-labels-url="{reverse("geo:municipality_labels_geojson")}'
+                f'?turn={turn.id}"'
+            ),
         )
         self.assertContains(response, 'data-label-min-zoom="12"')
         self.assertContains(response, f'data-reveal-target-id="{municipality.id}"')

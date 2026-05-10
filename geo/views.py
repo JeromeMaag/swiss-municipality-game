@@ -4,10 +4,11 @@ import hashlib
 
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
-from django.http import HttpResponse, HttpResponseNotModified
+from django.http import Http404, HttpResponse, HttpResponseNotModified
 from django.utils.cache import patch_cache_control
 from django.views.decorators.http import require_GET
 
+from .constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
 from .models import GeoDatasetVersion
 from .selectors import (
     get_cantons_for_dataset,
@@ -185,6 +186,7 @@ def municipality_labels(request):
     Returns:
         A GeoJSON FeatureCollection response with municipality names.
     """
+    require_municipality_label_access(request)
     return cached_geojson_response(
         request,
         "municipality-labels",
@@ -192,3 +194,33 @@ def municipality_labels(request):
             get_municipality_labels_for_dataset(dataset_version)
         ),
     )
+
+
+def require_municipality_label_access(request) -> None:
+    """Require a revealed turn grant before returning municipality labels.
+
+    Args:
+        request: The incoming HTTP request.
+
+    Raises:
+        Http404: If the request is not tied to the current user's revealed turn.
+    """
+    raw_turn_id = request.GET.get("turn", "")
+    try:
+        turn_id = int(raw_turn_id)
+    except (TypeError, ValueError) as error:
+        raise Http404("Municipality labels not found.") from error
+
+    if turn_id < 1:
+        raise Http404("Municipality labels not found.")
+    if request.session.get(MUNICIPALITY_LABEL_ACCESS_SESSION_KEY) != turn_id:
+        raise Http404("Municipality labels not found.")
+
+    from game.models import Turn
+
+    if not Turn.objects.filter(
+        pk=turn_id,
+        game__user=request.user,
+        revealed_at__isnull=False,
+    ).exists():
+        raise Http404("Municipality labels not found.")

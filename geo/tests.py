@@ -16,8 +16,11 @@ from django.core.management.base import CommandError
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from shapely.geometry import Polygon
 
+from geo.constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
+from game.models import Game, Turn
 from tests.utils import make_test_geometry
 
 from .management.commands.import_boundaries import simplify_geometry, to_float, to_int
@@ -247,6 +250,38 @@ class GeoJSONEndpointTests(TestCase):
         self.assertEqual(response["Content-Type"], "application/geo+json")
         return json.loads(response.content)
 
+    def grant_label_access(self, *, revealed: bool = True) -> Turn:
+        """Grant the test client session access to municipality labels.
+
+        Args:
+            revealed: Whether the linked turn has already been revealed.
+
+        Returns:
+            The turn tied to the label access grant.
+        """
+        game = Game.objects.create(user=self.user)
+        turn = Turn.objects.create(
+            game=game,
+            turn_number=1,
+            target=self.municipality,
+            revealed_at=timezone.now() if revealed else None,
+        )
+        session = self.client.session
+        session[MUNICIPALITY_LABEL_ACCESS_SESSION_KEY] = turn.id
+        session.save()
+        return turn
+
+    def municipality_labels_url(self, turn: Turn) -> str:
+        """Build the municipality labels URL for a revealed turn.
+
+        Args:
+            turn: Turn whose reveal authorizes label access.
+
+        Returns:
+            Label endpoint URL with turn context.
+        """
+        return f"{reverse('geo:municipality_labels_geojson')}?turn={turn.id}"
+
     def test_geojson_endpoints_require_login(self) -> None:
         """Anonymous users are redirected away from all GeoJSON endpoints."""
         self.client.logout()
@@ -288,7 +323,9 @@ class GeoJSONEndpointTests(TestCase):
 
     def test_municipality_labels_include_reveal_properties(self) -> None:
         """Municipality label endpoint returns names for reveal mode."""
-        response = self.client.get(reverse("geo:municipality_labels_geojson"))
+        turn = self.grant_label_access()
+
+        response = self.client.get(self.municipality_labels_url(turn))
         data = self.assert_geojson_response(response)
 
         self.assertEqual(data["type"], "FeatureCollection")
@@ -301,13 +338,44 @@ class GeoJSONEndpointTests(TestCase):
 
     def test_municipality_labels_skip_missing_label_points(self) -> None:
         """Municipality label endpoint omits municipalities without label points."""
+        turn = self.grant_label_access()
         self.municipality.label_point = None
         self.municipality.save(update_fields=["label_point"])
 
-        response = self.client.get(reverse("geo:municipality_labels_geojson"))
+        response = self.client.get(self.municipality_labels_url(turn))
         data = self.assert_geojson_response(response)
 
         self.assertEqual(data["features"], [])
+
+    def test_municipality_labels_require_revealed_turn_access(self) -> None:
+        """Municipality labels are unavailable without a current reveal grant."""
+        response = self.client.get(reverse("geo:municipality_labels_geojson"))
+        self.assertEqual(response.status_code, 404)
+
+        unrevealed_turn = self.grant_label_access(revealed=False)
+        response = self.client.get(self.municipality_labels_url(unrevealed_turn))
+        self.assertEqual(response.status_code, 404)
+
+    def test_municipality_labels_reject_foreign_turn_access(self) -> None:
+        """Users cannot reuse another user's revealed turn to load labels."""
+        other_user = get_user_model().objects.create_user(
+            username="other-player",
+            password="StrongPass123!",
+        )
+        game = Game.objects.create(user=other_user)
+        turn = Turn.objects.create(
+            game=game,
+            turn_number=1,
+            target=self.municipality,
+            revealed_at=timezone.now(),
+        )
+        session = self.client.session
+        session[MUNICIPALITY_LABEL_ACCESS_SESSION_KEY] = turn.id
+        session.save()
+
+        response = self.client.get(self.municipality_labels_url(turn))
+
+        self.assertEqual(response.status_code, 404)
 
     def test_boundary_responses_are_cacheable_per_browser(self) -> None:
         """Boundary endpoints expose private browser cache metadata."""
@@ -396,7 +464,6 @@ class GeoJSONEndpointTests(TestCase):
         urls = [
             reverse("geo:cantons_geojson"),
             reverse("geo:municipality_boundaries_geojson"),
-            reverse("geo:municipality_labels_geojson"),
         ]
 
         for url in urls:
