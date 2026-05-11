@@ -9,7 +9,7 @@ from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
 
 from geo.models import Municipality
-from geo.selectors import get_current_municipalities
+from geo.selectors import get_current_dataset_version, get_municipalities_for_dataset
 from tracking.models import GameEvent
 from tracking.services import track_event
 
@@ -189,7 +189,17 @@ def start_game_for_player(player: PlayerIdentity) -> Game:
             if existing_game is not None:
                 return existing_game
 
-            current_municipalities = get_current_municipalities()
+            dataset_version = get_current_dataset_version()
+            if dataset_version is None:
+                existing_game = get_active_game_for_player(player)
+                if existing_game is not None:
+                    return existing_game
+                raise NotEnoughMunicipalitiesError(
+                    f"At least {TURN_COUNT} active municipalities are required to "
+                    "start a game."
+                )
+
+            current_municipalities = get_municipalities_for_dataset(dataset_version)
             municipality_ids = list(current_municipalities.values_list("id", flat=True))
             if len(municipality_ids) < TURN_COUNT:
                 existing_game = get_active_game_for_player(player)
@@ -200,12 +210,8 @@ def start_game_for_player(player: PlayerIdentity) -> Game:
                     "start a game."
                 )
 
-            dataset_version_id = current_municipalities.values_list(
-                "dataset_version_id",
-                flat=True,
-            ).first()
             scoring_max_distance_m = calculate_scoring_max_distance_m_for_dataset(
-                dataset_version_id
+                dataset_version.id
             )
             target_ids = random.SystemRandom().sample(municipality_ids, TURN_COUNT)
             game = Game.objects.create(

@@ -16,7 +16,21 @@ class Migration(migrations.Migration):
             field=models.FloatField(
                 blank=True,
                 null=True,
-                validators=[django.core.validators.MinValueValidator(0)],
+                validators=[django.core.validators.MinValueValidator(1e-06)],
+            ),
+        ),
+        migrations.AddConstraint(
+            model_name="game",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    ("scoring_max_distance_m__isnull", True),
+                    models.Q(
+                        ("scoring_max_distance_m__gt", 0),
+                        ("scoring_max_distance_m__lt", float("inf")),
+                    ),
+                    _connector="OR",
+                ),
+                name="game_scoring_max_distance_positive",
             ),
         ),
     ]

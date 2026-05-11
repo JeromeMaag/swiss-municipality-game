@@ -117,10 +117,11 @@ class Game(models.Model):
         return "unowned player"
 
     def clean(self) -> None:
-        """Validate game lifecycle consistency.
+        """Validate game ownership, scoring extent, and lifecycle consistency.
 
         Raises:
-            ValidationError: If a finished game has no finish timestamp.
+            ValidationError: If ownership is invalid, the scoring extent is
+                non-finite, or a finished game has no finish timestamp.
         """
         super().clean()
         if (self.user_id is None) == (not self.guest_key):
