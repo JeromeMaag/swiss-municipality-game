@@ -384,6 +384,42 @@ class GameModelTests(TestCase):
 
         guess.full_clean()
 
+    def test_guess_save_derives_user_owner_from_turn_game(self) -> None:
+        """Direct guess saves sync user ownership from the linked game."""
+        game = Game.objects.create(user=self.user)
+        turn = Turn.objects.create(game=game, turn_number=1, target=self.municipality)
+
+        guess = Guess.objects.create(
+            turn=turn,
+            user=self.other_user,
+            guest_key="wrong-guest",
+            point=Point(8.05, 47.05, srid=4326),
+            distance_to_municipality_m=0,
+            score=1000,
+        )
+
+        guess.refresh_from_db()
+        self.assertEqual(guess.user, self.user)
+        self.assertEqual(guess.guest_key, "")
+
+    def test_guess_save_derives_guest_owner_from_turn_game(self) -> None:
+        """Direct guess saves sync guest ownership from the linked game."""
+        game = Game.objects.create(user=None, guest_key="guest-session")
+        turn = Turn.objects.create(game=game, turn_number=1, target=self.municipality)
+
+        guess = Guess.objects.create(
+            turn=turn,
+            user=self.user,
+            guest_key="wrong-guest",
+            point=Point(8.05, 47.05, srid=4326),
+            distance_to_municipality_m=0,
+            score=1000,
+        )
+
+        guess.refresh_from_db()
+        self.assertIsNone(guess.user_id)
+        self.assertEqual(guess.guest_key, "guest-session")
+
 
 class GuessSubmissionServiceTests(TestCase):
     """Tests for server-side guess submission behavior."""

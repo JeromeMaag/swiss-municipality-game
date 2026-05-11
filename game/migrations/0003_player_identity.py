@@ -31,6 +31,7 @@ class Migration(migrations.Migration):
             field=models.CharField(
                 blank=True,
                 default="",
+                editable=False,
                 max_length=32,
             ),
         ),
@@ -50,6 +51,7 @@ class Migration(migrations.Migration):
             name="user",
             field=models.ForeignKey(
                 blank=True,
+                editable=False,
                 null=True,
                 on_delete=django.db.models.deletion.CASCADE,
                 related_name="guesses",

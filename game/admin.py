@@ -58,5 +58,5 @@ class GuessAdmin(admin.ModelAdmin):
     )
     list_filter = ("guessed_at",)
     search_fields = ("user__username", "guest_key", "turn__target__name")
-    autocomplete_fields = ("turn", "user")
-    readonly_fields = ("guessed_at",)
+    autocomplete_fields = ("turn",)
+    readonly_fields = ("user", "guest_key", "guessed_at")

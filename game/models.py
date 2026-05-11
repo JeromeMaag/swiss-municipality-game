@@ -180,6 +180,7 @@ class Guess(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         blank=True,
+        editable=False,
         null=True,
         on_delete=models.CASCADE,
         related_name="guesses",
@@ -188,6 +189,7 @@ class Guess(models.Model):
         max_length=32,
         blank=True,
         default="",
+        editable=False,
     )
     point = models.PointField(srid=4326)
     distance_to_municipality_m = models.FloatField(validators=[MinValueValidator(0)])
@@ -248,6 +250,19 @@ class Guess(models.Model):
         if self.guest_key:
             return f"guest {self.guest_key[:8]}"
         return "unowned player"
+
+    def sync_owner_from_turn(self) -> None:
+        """Derive the guess owner from the linked turn's game."""
+        if not self.turn_id:
+            return
+        game = self.turn.game
+        self.user_id = game.user_id
+        self.guest_key = game.guest_key
+
+    def save(self, *args, **kwargs) -> None:
+        """Persist the guess after syncing owner fields from the game."""
+        self.sync_owner_from_turn()
+        super().save(*args, **kwargs)
 
     def clean(self) -> None:
         """Validate guess consistency.
