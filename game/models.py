@@ -1,5 +1,7 @@
 """Database models for game sessions and guesses."""
 
+import math
+
 from django.conf import settings
 from django.contrib.gis.db import models
 from django.core.exceptions import ValidationError
@@ -37,6 +39,11 @@ class Game(models.Model):
         default=Status.ACTIVE,
     )
     total_score = models.PositiveIntegerField(default=0)
+    scoring_max_distance_m = models.FloatField(
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(0.000001)],
+    )
     started_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(blank=True, null=True)
 
@@ -80,6 +87,16 @@ class Game(models.Model):
                 ),
                 name="game_owned_by_user_or_guest",
             ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(scoring_max_distance_m__isnull=True)
+                    | (
+                        models.Q(scoring_max_distance_m__gt=0)
+                        & models.Q(scoring_max_distance_m__lt=float("inf"))
+                    )
+                ),
+                name="game_scoring_max_distance_positive",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -100,15 +117,23 @@ class Game(models.Model):
         return "unowned player"
 
     def clean(self) -> None:
-        """Validate game lifecycle consistency.
+        """Validate game ownership, scoring extent, and lifecycle consistency.
 
         Raises:
-            ValidationError: If a finished game has no finish timestamp.
+            ValidationError: If ownership is invalid, the scoring extent is
+                non-finite, or a finished game has no finish timestamp.
         """
         super().clean()
         if (self.user_id is None) == (not self.guest_key):
             raise ValidationError(
                 "Games must belong to exactly one user or guest."
+            )
+        if (
+            self.scoring_max_distance_m is not None
+            and not math.isfinite(self.scoring_max_distance_m)
+        ):
+            raise ValidationError(
+                {"scoring_max_distance_m": "Scoring map extent must be finite."}
             )
         if self.status == self.Status.FINISHED and self.finished_at is None:
             raise ValidationError(

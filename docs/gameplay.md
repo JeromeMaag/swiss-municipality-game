@@ -18,7 +18,9 @@ shows all turns and the total score.
 ## Scoring
 
 The score is based on the shortest distance from your pin to the target
-municipality polygon.
+municipality polygon. The scoring curve scales with the played map area, so
+smaller future modes can use a stricter distance scale than the full Switzerland
+map.
 
 If the pin is inside the correct municipality, the distance is `0 m` and the
 turn receives the maximum score.

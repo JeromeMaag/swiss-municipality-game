@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 import json
+import math
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -27,6 +28,7 @@ from .services import (
     InvalidGuessCoordinatesError,
     NotEnoughMunicipalitiesError,
     _calculate_guess_distances,
+    _ensure_game_scoring_max_distance_m,
     _normalize_coordinate,
     _normalize_turn_id,
     start_game,
@@ -48,31 +50,44 @@ from .views import build_summary_reveals, get_last_guess_result, parse_tracking_
 class ScoringTests(TestCase):
     """Tests for game scoring helpers."""
 
+    map_max_distance_m = 410_779
+
     def test_calculate_score_returns_maximum_for_exact_hit(self) -> None:
         """An exact hit receives the maximum score."""
-        self.assertEqual(calculate_score(0), 1000)
+        self.assertEqual(calculate_score(0, self.map_max_distance_m), 1000)
+
+    def test_calculate_score_caps_near_misses_below_maximum(self) -> None:
+        """Only guesses inside the municipality receive the maximum score."""
+        self.assertEqual(calculate_score(1, self.map_max_distance_m), 999)
 
     def test_calculate_score_decays_with_distance(self) -> None:
-        """Scores decay according to the configured distance curve."""
-        self.assertEqual(calculate_score(5_000), 819)
-        self.assertEqual(calculate_score(25_000), 368)
-        self.assertEqual(calculate_score(100_000), 18)
+        """Scores decay by the map extent with a strict curve."""
+        self.assertEqual(calculate_score(5_000, self.map_max_distance_m), 784)
+        self.assertEqual(calculate_score(25_000, self.map_max_distance_m), 296)
+        self.assertEqual(calculate_score(100_000, self.map_max_distance_m), 8)
 
     def test_calculate_score_never_returns_negative_values(self) -> None:
         """Extremely large valid distances are clamped to zero."""
-        self.assertEqual(calculate_score(1_000_000_000), 0)
+        self.assertEqual(calculate_score(1_000_000_000, self.map_max_distance_m), 0)
 
     def test_calculate_score_rejects_negative_distance(self) -> None:
         """Negative distances are invalid."""
         with self.assertRaises(ValueError):
-            calculate_score(-1)
+            calculate_score(-1, self.map_max_distance_m)
 
     def test_calculate_score_rejects_non_finite_distance(self) -> None:
         """Infinite and NaN distances are invalid."""
         for distance in (float("inf"), float("nan")):
             with self.subTest(distance=distance):
                 with self.assertRaises(ValueError):
-                    calculate_score(distance)
+                    calculate_score(distance, self.map_max_distance_m)
+
+    def test_calculate_score_rejects_invalid_map_extent(self) -> None:
+        """The scoring map extent must be a positive finite distance."""
+        for map_max_distance_m in (0, -1, float("inf"), float("nan")):
+            with self.subTest(map_max_distance_m=map_max_distance_m):
+                with self.assertRaises(ValueError):
+                    calculate_score(100, map_max_distance_m)
 
 
 class GameServiceHelperTests(TestCase):
@@ -382,6 +397,30 @@ class GameModelTests(TestCase):
         with self.assertRaises(ValidationError):
             game.full_clean()
 
+    def test_game_rejects_zero_scoring_max_distance(self) -> None:
+        """Scoring map extent must be either empty or strictly positive."""
+        game = Game(user=self.user, scoring_max_distance_m=0)
+
+        with self.assertRaises(ValidationError):
+            game.full_clean()
+
+    def test_game_rejects_non_finite_scoring_max_distance(self) -> None:
+        """Scoring map extent must be finite."""
+        for distance in (float("inf"), float("nan")):
+            with self.subTest(distance=distance):
+                game = Game(user=self.user, scoring_max_distance_m=distance)
+
+                with self.assertRaises(ValidationError):
+                    game.full_clean()
+
+    def test_database_rejects_non_finite_scoring_max_distance(self) -> None:
+        """Database constraints reject non-finite scoring map extents."""
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Game.objects.create(
+                user=self.user,
+                scoring_max_distance_m=float("inf"),
+            )
+
     def test_database_rejects_multiple_active_games_for_same_user(self) -> None:
         """Only one active game can exist per user."""
         Game.objects.create(user=self.user)
@@ -630,6 +669,7 @@ class GuessSubmissionServiceTests(TestCase):
         self.assertAlmostEqual(result.guess.distance_to_municipality_m, 0, places=3)
         self.assertGreater(result.guess.distance_to_boundary_m, 0)
         self.assertIsNotNone(result.guess.nearest_boundary_point)
+        self.assertIsNotNone(game.scoring_max_distance_m)
         self.assertEqual(result.guess.score, 1000)
         self.assertIsNotNone(turns[0].revealed_at)
         self.assertEqual(game.total_score, 1000)
@@ -694,9 +734,44 @@ class GuessSubmissionServiceTests(TestCase):
         self.assertGreater(result.guess.distance_to_municipality_m, 0)
         self.assertGreater(result.guess.distance_to_boundary_m, 0)
         self.assertIsNotNone(result.guess.nearest_boundary_point)
+        self.assertIsNotNone(game.scoring_max_distance_m)
         self.assertLess(result.guess.score, 1000)
         self.assertGreaterEqual(result.guess.score, 0)
         self.assertEqual(game.total_score, result.guess.score)
+
+    def test_submit_guess_persists_legacy_game_scoring_distance(self) -> None:
+        """Legacy games missing scoring extent calculate and persist it on guess."""
+        game, turns = self.create_game_with_turns()
+        game.scoring_max_distance_m = None
+        game.save(update_fields=["scoring_max_distance_m"])
+
+        result = submit_guess(self.user, turns[0].id, 47.05, 8.2)
+
+        game.refresh_from_db()
+        self.assertIsNotNone(game.scoring_max_distance_m)
+        self.assertGreater(game.scoring_max_distance_m, 0)
+        self.assertEqual(
+            result.guess.score,
+            calculate_score(
+                result.guess.distance_to_municipality_m,
+                game.scoring_max_distance_m,
+            ),
+        )
+
+    def test_ensure_game_scoring_distance_repairs_non_finite_value(self) -> None:
+        """Non-finite legacy scoring extents are recalculated and persisted."""
+        game, turns = self.create_game_with_turns()
+        game.scoring_max_distance_m = float("inf")
+
+        scoring_max_distance_m = _ensure_game_scoring_max_distance_m(
+            game=game,
+            target_id=turns[0].target_id,
+        )
+
+        self.assertTrue(math.isfinite(scoring_max_distance_m))
+        self.assertGreater(scoring_max_distance_m, 0)
+        game.refresh_from_db()
+        self.assertEqual(game.scoring_max_distance_m, scoring_max_distance_m)
 
     def test_submit_guess_finishes_game_after_final_turn(self) -> None:
         """Submitting the final turn marks the game as finished."""
@@ -875,6 +950,8 @@ class GameStartTests(TestCase):
 
         turns = list(game.turns.order_by("turn_number"))
         self.assertEqual(game.status, Game.Status.ACTIVE)
+        self.assertIsNotNone(game.scoring_max_distance_m)
+        self.assertGreater(game.scoring_max_distance_m, 0)
         self.assertEqual(len(turns), 5)
         self.assertEqual([turn.turn_number for turn in turns], [1, 2, 3, 4, 5])
         self.assertEqual(len({turn.target_id for turn in turns}), 5)
