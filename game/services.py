@@ -20,6 +20,14 @@ from .selectors import get_active_game_for_player
 
 
 TURN_COUNT = 5
+NEAREST_BOUNDARY_POINT_SQL = """
+    ST_AsEWKB(
+        ST_ClosestPoint(
+            ST_Boundary(target.geom)::geography,
+            guess.point::geography
+        )::geometry
+    )
+"""
 
 
 class NotEnoughMunicipalitiesError(ValueError):
@@ -396,12 +404,7 @@ def calculate_nearest_boundary_point(*, point: Point, target_id: int) -> Point:
         guess AS (
             SELECT {point_sql} AS point
         )
-        SELECT ST_AsEWKB(
-            ST_ClosestPoint(
-                ST_Boundary(target.geom)::geography,
-                guess.point::geography
-            )::geometry
-        )
+        SELECT {NEAREST_BOUNDARY_POINT_SQL}
         FROM target, guess
     """
     parameters = [target_id, point.x, point.y]
@@ -442,12 +445,7 @@ def _calculate_guess_distances(*, point: Point, target_id: int) -> GuessDistance
         SELECT
             ST_Distance(target.geom::geography, guess.point::geography),
             ST_Distance(ST_Boundary(target.geom)::geography, guess.point::geography),
-            ST_AsEWKB(
-                ST_ClosestPoint(
-                    ST_Boundary(target.geom)::geography,
-                    guess.point::geography
-                )::geometry
-            )
+            {NEAREST_BOUNDARY_POINT_SQL}
         FROM target, guess
     """
     parameters = [target_id, point.x, point.y]
