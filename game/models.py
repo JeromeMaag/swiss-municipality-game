@@ -1,5 +1,7 @@
 """Database models for game sessions and guesses."""
 
+import math
+
 from django.conf import settings
 from django.contrib.gis.db import models
 from django.core.exceptions import ValidationError
@@ -88,7 +90,10 @@ class Game(models.Model):
             models.CheckConstraint(
                 condition=(
                     models.Q(scoring_max_distance_m__isnull=True)
-                    | models.Q(scoring_max_distance_m__gt=0)
+                    | (
+                        models.Q(scoring_max_distance_m__gt=0)
+                        & models.Q(scoring_max_distance_m__lt=float("inf"))
+                    )
                 ),
                 name="game_scoring_max_distance_positive",
             ),
@@ -121,6 +126,13 @@ class Game(models.Model):
         if (self.user_id is None) == (not self.guest_key):
             raise ValidationError(
                 "Games must belong to exactly one user or guest."
+            )
+        if (
+            self.scoring_max_distance_m is not None
+            and not math.isfinite(self.scoring_max_distance_m)
+        ):
+            raise ValidationError(
+                {"scoring_max_distance_m": "Scoring map extent must be finite."}
             )
         if self.status == self.Status.FINISHED and self.finished_at is None:
             raise ValidationError(

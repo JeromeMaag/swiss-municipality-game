@@ -402,6 +402,23 @@ class GameModelTests(TestCase):
         with self.assertRaises(ValidationError):
             game.full_clean()
 
+    def test_game_rejects_non_finite_scoring_max_distance(self) -> None:
+        """Scoring map extent must be finite."""
+        for distance in (float("inf"), float("nan")):
+            with self.subTest(distance=distance):
+                game = Game(user=self.user, scoring_max_distance_m=distance)
+
+                with self.assertRaises(ValidationError):
+                    game.full_clean()
+
+    def test_database_rejects_non_finite_scoring_max_distance(self) -> None:
+        """Database constraints reject non-finite scoring map extents."""
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Game.objects.create(
+                user=self.user,
+                scoring_max_distance_m=float("inf"),
+            )
+
     def test_database_rejects_multiple_active_games_for_same_user(self) -> None:
         """Only one active game can exist per user."""
         Game.objects.create(user=self.user)

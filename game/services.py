@@ -347,9 +347,6 @@ def submit_guess_for_player(
             .first()
         )
         update_fields = ["total_score"]
-        if game.scoring_max_distance_m is None or game.scoring_max_distance_m <= 0:
-            game.scoring_max_distance_m = scoring_max_distance_m
-            update_fields.append("scoring_max_distance_m")
         if next_turn is None:
             game.status = Game.Status.FINISHED
             game.finished_at = timezone.now()
