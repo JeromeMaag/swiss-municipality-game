@@ -40,7 +40,7 @@ class Game(models.Model):
     scoring_max_distance_m = models.FloatField(
         blank=True,
         null=True,
-        validators=[MinValueValidator(0)],
+        validators=[MinValueValidator(0.000001)],
     )
     started_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(blank=True, null=True)
@@ -84,6 +84,13 @@ class Game(models.Model):
                     | (models.Q(user__isnull=True) & ~models.Q(guest_key=""))
                 ),
                 name="game_owned_by_user_or_guest",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(scoring_max_distance_m__isnull=True)
+                    | models.Q(scoring_max_distance_m__gt=0)
+                ),
+                name="game_scoring_max_distance_positive",
             ),
         ]
 

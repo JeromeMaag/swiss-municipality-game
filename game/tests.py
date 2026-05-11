@@ -395,6 +395,13 @@ class GameModelTests(TestCase):
         with self.assertRaises(ValidationError):
             game.full_clean()
 
+    def test_game_rejects_zero_scoring_max_distance(self) -> None:
+        """Scoring map extent must be either empty or strictly positive."""
+        game = Game(user=self.user, scoring_max_distance_m=0)
+
+        with self.assertRaises(ValidationError):
+            game.full_clean()
+
     def test_database_rejects_multiple_active_games_for_same_user(self) -> None:
         """Only one active game can exist per user."""
         Game.objects.create(user=self.user)
@@ -712,6 +719,18 @@ class GuessSubmissionServiceTests(TestCase):
         self.assertLess(result.guess.score, 1000)
         self.assertGreaterEqual(result.guess.score, 0)
         self.assertEqual(game.total_score, result.guess.score)
+
+    def test_submit_guess_persists_legacy_game_scoring_distance(self) -> None:
+        """Legacy games missing scoring extent calculate and persist it on guess."""
+        game, turns = self.create_game_with_turns()
+        game.scoring_max_distance_m = None
+        game.save(update_fields=["scoring_max_distance_m"])
+
+        submit_guess(self.user, turns[0].id, 47.05, 8.2)
+
+        game.refresh_from_db()
+        self.assertIsNotNone(game.scoring_max_distance_m)
+        self.assertGreater(game.scoring_max_distance_m, 0)
 
     def test_submit_guess_finishes_game_after_final_turn(self) -> None:
         """Submitting the final turn marks the game as finished."""

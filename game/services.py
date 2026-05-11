@@ -479,7 +479,12 @@ def _ensure_game_scoring_max_distance_m(*, game: Game, target_id: int) -> float:
         .get(pk=target_id)
         .dataset_version_id
     )
-    return calculate_scoring_max_distance_m_for_dataset(dataset_version_id)
+    scoring_max_distance_m = calculate_scoring_max_distance_m_for_dataset(
+        dataset_version_id
+    )
+    game.scoring_max_distance_m = scoring_max_distance_m
+    game.save(update_fields=["scoring_max_distance_m"])
+    return scoring_max_distance_m
 
 
 def calculate_nearest_boundary_point(*, point: Point, target_id: int) -> Point:
