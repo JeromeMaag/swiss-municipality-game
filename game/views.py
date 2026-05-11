@@ -34,7 +34,6 @@ CLIENT_TRACKING_EVENT_TYPES = frozenset(
 MAX_TRACKING_REQUEST_BYTES = 4096
 
 
-@login_required
 @require_GET
 def index(request):
     """Render the current game entry page.
@@ -45,8 +44,11 @@ def index(request):
     Returns:
         A rendered game page for the active game or start form.
     """
-    active_game = get_active_game(request.user)
-    last_guess = get_last_guess_result(request)
+    active_game = None
+    last_guess = None
+    if request.user.is_authenticated:
+        active_game = get_active_game(request.user)
+        last_guess = get_last_guess_result(request)
     if active_game is None and last_guess is not None:
         active_game = last_guess.turn.game
     elif (
@@ -430,7 +432,7 @@ def render_game_index(
         reveal_guess_lat = f"{last_guess.point.y:.6f}"
         reveal_guess_lng = f"{last_guess.point.x:.6f}"
         request.session[MUNICIPALITY_LABEL_ACCESS_SESSION_KEY] = last_guess.turn_id
-    else:
+    elif request.user.is_authenticated:
         request.session.pop(MUNICIPALITY_LABEL_ACCESS_SESSION_KEY, None)
     return render(
         request,
@@ -442,8 +444,8 @@ def render_game_index(
             "last_guess": last_guess,
             "reveal_guess_lat": reveal_guess_lat,
             "reveal_guess_lng": reveal_guess_lng,
-            "show_game_map": active_game is not None
-            and (current_turn is not None or last_guess is not None),
+            "show_game_map": active_game is None
+            or (current_turn is not None or last_guess is not None),
             "turn_count": TURN_COUNT,
             "turns": turns,
             "error": error,

@@ -1,20 +1,17 @@
 """Project-level views."""
 
-from django.shortcuts import redirect, render
+from django.shortcuts import redirect
 from django.views.decorators.http import require_GET
 
 
 @require_GET
 def home(request):
-    """Route users into the right entry screen.
+    """Route users into the game entry screen.
 
     Args:
         request: The incoming HTTP request.
 
     Returns:
-        A redirect to the game for authenticated users, otherwise the public
-        home page.
+        A redirect to the game entry page.
     """
-    if request.user.is_authenticated:
-        return redirect("game:index")
-    return render(request, "home.html")
+    return redirect("game:index")

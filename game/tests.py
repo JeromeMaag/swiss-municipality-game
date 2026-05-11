@@ -622,17 +622,33 @@ class GameStartTests(TestCase):
         self.assertEqual(Game.objects.filter(user=self.user).count(), 1)
 
     def test_game_index_shows_start_form_without_active_game(self) -> None:
-        """Game index renders a start form when no active game exists."""
+        """Logged-in game index renders the map shell and start form."""
         self.client.force_login(self.user)
 
         response = self.client.get(reverse("game:index"))
 
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "game/index.html")
-        self.assertContains(response, "New game")
+        self.assertContains(response, 'id="game-map"')
+        self.assertContains(response, "wmts.geo.admin.ch")
+        self.assertContains(response, "Start game")
         self.assertContains(response, "Start")
         self.assertContains(response, reverse("game:start"))
-        self.assertNotContains(response, 'id="game-map"')
+
+    def test_game_index_shows_auth_prompt_for_anonymous_users(self) -> None:
+        """Anonymous users can view the game shell before login."""
+        response = self.client.get(reverse("game:index"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "game/index.html")
+        self.assertContains(response, 'id="game-map"')
+        self.assertContains(response, "Start game")
+        self.assertContains(response, reverse("geo:cantons_geojson"))
+        self.assertContains(response, reverse("geo:municipality_boundaries_geojson"))
+        self.assertContains(response, "Guest play is coming next")
+        self.assertContains(response, reverse("accounts:login"))
+        self.assertContains(response, reverse("accounts:register"))
+        self.assertNotContains(response, reverse("game:start"))
 
     def test_start_view_requires_login(self) -> None:
         """Anonymous users cannot start games."""

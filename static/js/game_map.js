@@ -700,9 +700,52 @@
     }, 0);
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initializeGameMap);
-  } else {
+  function initializeAuthChoiceModal() {
+    const trigger = document.querySelector("[data-auth-modal-trigger]");
+    const modal = document.querySelector("[data-auth-modal]");
+    if (!trigger || !modal) {
+      return;
+    }
+
+    const closeButtons = modal.querySelectorAll("[data-auth-modal-close]");
+
+    function openModal() {
+      modal.hidden = false;
+      const firstAction = modal.querySelector("[data-auth-primary], a, button");
+      if (firstAction) {
+        firstAction.focus();
+      }
+    }
+
+    function closeModal() {
+      modal.hidden = true;
+      trigger.focus();
+    }
+
+    trigger.addEventListener("click", openModal);
+    closeButtons.forEach(function (button) {
+      button.addEventListener("click", closeModal);
+    });
+    modal.addEventListener("click", function (event) {
+      if (event.target === modal) {
+        closeModal();
+      }
+    });
+    document.addEventListener("keydown", function (event) {
+      if (!modal.hidden && event.key === "Escape") {
+        closeModal();
+      }
+    });
+  }
+
+  function initializePage() {
     initializeGameMap();
+    initializeAuthChoiceModal();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initializePage);
+  } else {
+    initializePage();
   }
 })();

@@ -145,37 +145,6 @@ a {
   padding: 0;
 }
 
-.intro {
-  max-width: 720px;
-}
-
-.intro-landing {
-  display: grid;
-  gap: 1.75rem;
-  padding: 7rem 0 3rem;
-}
-
-.intro h1,
-.game-start-panel h1 {
-  font-size: 3rem;
-  line-height: 1;
-  margin: 0;
-}
-
-.intro p,
-.game-start-panel p {
-  color: var(--muted);
-  font-size: 1.1rem;
-  line-height: 1.65;
-  margin: 1rem 0 0;
-  max-width: 34rem;
-}
-
-.intro-actions {
-  display: flex;
-  gap: 0.75rem;
-}
-
 .auth-panel {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -289,6 +258,10 @@ a {
   z-index: 900;
 }
 
+.game-entry-sidebar {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
 @supports (backdrop-filter: blur(18px)) {
   .game-sidebar {
     backdrop-filter: blur(18px);
@@ -385,7 +358,6 @@ a {
 }
 
 .guess-form button,
-.game-start-panel button,
 .game-sidebar > .button-link {
   min-height: 3rem;
   width: 100%;
@@ -406,27 +378,86 @@ a {
   padding: 0.85rem 1rem;
 }
 
-.game-start-panel {
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  color: #ffffff;
-  left: 50%;
-  max-width: calc(100vw - 2rem);
-  padding: 1.25rem;
-  position: fixed;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 360px;
-}
-
-.game-start-panel form {
-  margin-top: 1.25rem;
-}
-
 .game-map--boundary-error {
   outline: 2px solid #efaaa3;
   outline-offset: -2px;
+}
+
+.auth-choice-backdrop {
+  align-items: center;
+  background: rgba(6, 12, 15, 0.66);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 1.5rem;
+  position: fixed;
+  z-index: 1300;
+}
+
+.auth-choice-backdrop[hidden] {
+  display: none;
+}
+
+.auth-choice-modal {
+  background: rgba(11, 20, 25, 0.94);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.44);
+  color: #ffffff;
+  display: grid;
+  gap: 1rem;
+  max-width: calc(100vw - 2rem);
+  padding: 1.25rem;
+  position: relative;
+  width: 390px;
+}
+
+.auth-choice-modal h2 {
+  font-size: 1.85rem;
+  line-height: 1.05;
+  margin: 0;
+}
+
+.auth-choice-modal p {
+  color: var(--panel-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.auth-choice-actions {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.auth-choice-modal .button-link-secondary {
+  border-color: var(--panel-border);
+  color: #ffffff;
+}
+
+.auth-choice-modal .button-link-secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.auth-choice-close {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.15rem;
+  font-weight: 800;
+  height: 2rem;
+  line-height: 1;
+  padding: 0;
+  position: absolute;
+  right: 0.75rem;
+  top: 0.75rem;
+  width: 2rem;
+}
+
+.auth-choice-close:hover {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .map-status {

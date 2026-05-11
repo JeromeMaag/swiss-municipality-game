@@ -160,7 +160,6 @@ def server_cached_geojson_response(name: str, data_builder) -> HttpResponse:
     return no_store_geojson_response(data)
 
 
-@login_required
 @require_GET
 def canton_boundaries(request):
     """Return current canton boundaries as GeoJSON.
@@ -180,7 +179,6 @@ def canton_boundaries(request):
     )
 
 
-@login_required
 @require_GET
 def municipality_boundaries(request):
     """Return current municipality boundaries without municipality names.

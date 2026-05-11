@@ -111,16 +111,13 @@ class SettingsHelperTests(SimpleTestCase):
 
 
 class HomeViewTests(TestCase):
-    """Tests for the public home page view."""
+    """Tests for the root entry view."""
 
-    def test_home_renders(self) -> None:
-        """Home page responds successfully to GET requests."""
+    def test_home_redirects_to_game(self) -> None:
+        """Anonymous users enter the game shell from the root URL."""
         response = self.client.get(reverse("home"))
 
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "home.html")
-        self.assertContains(response, "A clean Swiss map game")
-        self.assertNotContains(response, "Django project shell")
+        self.assertRedirects(response, reverse("game:index"))
 
     def test_authenticated_home_redirects_to_game(self) -> None:
         """Authenticated users enter the game flow from the root URL."""

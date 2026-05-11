@@ -475,22 +475,27 @@ class GeoJSONEndpointTests(TestCase):
         """
         return f"{reverse('geo:municipality_labels_geojson')}?turn={turn.id}"
 
-    def test_geojson_endpoints_require_login(self) -> None:
-        """Anonymous users are redirected away from all GeoJSON endpoints."""
+    def test_boundary_geojson_endpoints_are_public(self) -> None:
+        """Anonymous users can load non-sensitive boundary GeoJSON."""
         self.client.logout()
         urls = [
             reverse("geo:cantons_geojson"),
             reverse("geo:municipality_boundaries_geojson"),
-            reverse("geo:municipality_labels_geojson"),
         ]
 
         for url in urls:
             with self.subTest(url=url):
                 response = self.client.get(url)
-                self.assertEqual(response.status_code, 302)
-                self.assertTrue(
-                    response["Location"].startswith(reverse("accounts:login"))
-                )
+                self.assert_geojson_response(response)
+
+    def test_municipality_labels_require_login(self) -> None:
+        """Anonymous users cannot access reveal-only municipality labels."""
+        self.client.logout()
+
+        response = self.client.get(reverse("geo:municipality_labels_geojson"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response["Location"].startswith(reverse("accounts:login")))
 
     def test_canton_boundaries_returns_feature_collection(self) -> None:
         """Canton boundary endpoint returns canton properties and geometry."""
