@@ -82,7 +82,7 @@ def start_game_for_player(player: PlayerIdentity) -> Game:
     """Return an active game for a player, creating one when needed.
 
     Args:
-        player: User or guest session identity that starts or resumes a game.
+        player: User or guest identity that starts or resumes a game.
 
     Returns:
         An active game with five turns.
@@ -183,7 +183,7 @@ def submit_guess_for_player(
     """Submit and score a point guess for a player's current turn.
 
     Args:
-        player: User or guest session identity submitting the guess.
+        player: User or guest identity submitting the guess.
         turn_id: Turn being guessed.
         latitude: WGS84 latitude value.
         longitude: WGS84 longitude value.

@@ -1,31 +1,35 @@
 """Player identity helpers for authenticated and guest games."""
 
 from dataclasses import dataclass
+from uuid import uuid4
 
 from django.db.models import Q
+
+
+GUEST_PLAYER_SESSION_KEY = "guest_player_key"
 
 
 @dataclass(frozen=True)
 class PlayerIdentity:
     """Ownership identity for a game participant.
 
-    A player is either an authenticated user or an anonymous browser session.
-    Guest session identities are intentionally separate from account identities
-    so statistics and history can stay account-only.
+    A player is either an authenticated user or an anonymous guest key stored in
+    the browser session. Guest identities are intentionally separate from account
+    identities so statistics and history can stay account-only.
     """
 
     user: object | None = None
-    session_key: str = ""
+    guest_key: str = ""
 
     @classmethod
     def for_user(cls, user) -> "PlayerIdentity":
         """Build an identity for an authenticated user."""
-        return cls(user=user, session_key="")
+        return cls(user=user, guest_key="")
 
     @classmethod
-    def for_session(cls, session_key: str) -> "PlayerIdentity":
+    def for_guest(cls, guest_key: str) -> "PlayerIdentity":
         """Build an identity for a guest browser session."""
-        return cls(user=None, session_key=session_key)
+        return cls(user=None, guest_key=guest_key)
 
     @property
     def is_authenticated(self) -> bool:
@@ -35,7 +39,7 @@ class PlayerIdentity:
     @property
     def is_guest(self) -> bool:
         """Return whether this identity belongs to a guest browser session."""
-        return not self.is_authenticated and bool(self.session_key)
+        return not self.is_authenticated and bool(self.guest_key)
 
     @property
     def can_own_games(self) -> bool:
@@ -45,10 +49,10 @@ class PlayerIdentity:
     def model_fields(self) -> dict[str, object]:
         """Return model fields representing this owner."""
         if self.is_authenticated:
-            return {"user": self.user, "session_key": ""}
+            return {"user": self.user, "guest_key": ""}
         if self.is_guest:
-            return {"user": None, "session_key": self.session_key}
-        return {"user": None, "session_key": ""}
+            return {"user": None, "guest_key": self.guest_key}
+        return {"user": None, "guest_key": ""}
 
     def owner_query(self, prefix: str = "") -> Q:
         """Return a query condition matching rows owned by this player.
@@ -58,14 +62,14 @@ class PlayerIdentity:
                 filtering turns through their game owner.
         """
         user_lookup = f"{prefix}__user" if prefix else "user"
-        session_lookup = f"{prefix}__session_key" if prefix else "session_key"
+        guest_lookup = f"{prefix}__guest_key" if prefix else "guest_key"
         if self.is_authenticated:
-            return Q(**{user_lookup: self.user, session_lookup: ""})
+            return Q(**{user_lookup: self.user, guest_lookup: ""})
         if self.is_guest:
             return Q(
                 **{
                     f"{user_lookup}__isnull": True,
-                    session_lookup: self.session_key,
+                    guest_lookup: self.guest_key,
                 }
             )
         return Q(pk__isnull=True)
@@ -73,9 +77,9 @@ class PlayerIdentity:
     def owns(self, obj) -> bool:
         """Return whether a model instance belongs to this player."""
         if self.is_authenticated:
-            return obj.user_id == self.user.id and obj.session_key == ""
+            return obj.user_id == self.user.id and obj.guest_key == ""
         if self.is_guest:
-            return obj.user_id is None and obj.session_key == self.session_key
+            return obj.user_id is None and obj.guest_key == self.guest_key
         return False
 
 
@@ -84,14 +88,16 @@ def get_player_identity(request, *, create_session: bool = False) -> PlayerIdent
 
     Args:
         request: Incoming Django request.
-        create_session: Whether to create a session key for anonymous users.
+        create_session: Whether to create a guest key for anonymous users.
 
     Returns:
-        A user identity for authenticated requests, otherwise a guest session
-        identity when a session key exists.
+        A user identity for authenticated requests, otherwise a guest identity
+        when the browser session already has a guest key.
     """
     if request.user.is_authenticated:
         return PlayerIdentity.for_user(request.user)
-    if create_session and request.session.session_key is None:
-        request.session.save()
-    return PlayerIdentity.for_session(request.session.session_key or "")
+    guest_key = request.session.get(GUEST_PLAYER_SESSION_KEY, "")
+    if create_session and not guest_key:
+        guest_key = uuid4().hex
+        request.session[GUEST_PLAYER_SESSION_KEY] = guest_key
+    return PlayerIdentity.for_guest(guest_key or "")

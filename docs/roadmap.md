@@ -12,7 +12,7 @@ useful after a finished game.
 - Game history
 - Personal statistics
 - Distance calculation bug fixes
-- Multilanguage
+- Multilingual support
 
 ## Gameplay Ideas
 

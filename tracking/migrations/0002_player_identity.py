@@ -15,11 +15,11 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name="gameevent",
-            name="session_key",
+            name="guest_key",
             field=models.CharField(
                 blank=True,
                 default="",
-                max_length=40,
+                max_length=32,
             ),
         ),
         migrations.AlterField(
@@ -36,18 +36,18 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name="gameevent",
             index=models.Index(
-                fields=["session_key", "created_at"],
-                name="event_session_created_idx",
+                fields=["guest_key", "created_at"],
+                name="event_guest_created_idx",
             ),
         ),
         migrations.AddConstraint(
             model_name="gameevent",
             constraint=models.CheckConstraint(
                 condition=(
-                    models.Q(user__isnull=False, session_key="")
-                    | (models.Q(user__isnull=True) & ~models.Q(session_key=""))
+                    models.Q(user__isnull=False, guest_key="")
+                    | (models.Q(user__isnull=True) & ~models.Q(guest_key=""))
                 ),
-                name="event_owned_by_user_or_session",
+                name="event_owned_by_user_or_guest",
             ),
         ),
     ]

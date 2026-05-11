@@ -26,8 +26,8 @@ class Game(models.Model):
         on_delete=models.CASCADE,
         related_name="games",
     )
-    session_key = models.CharField(
-        max_length=40,
+    guest_key = models.CharField(
+        max_length=32,
         blank=True,
         default="",
     )
@@ -47,8 +47,8 @@ class Game(models.Model):
         indexes = [
             models.Index(fields=["user", "status"]),
             models.Index(
-                fields=["session_key", "status"],
-                name="game_session_status_idx",
+                fields=["guest_key", "status"],
+                name="game_guest_status_idx",
             ),
             models.Index(fields=["status", "started_at"]),
         ]
@@ -62,19 +62,19 @@ class Game(models.Model):
                 name="unique_active_game_per_user",
             ),
             models.UniqueConstraint(
-                fields=["session_key"],
+                fields=["guest_key"],
                 condition=(
                     models.Q(status=GAME_STATUS_ACTIVE)
-                    & ~models.Q(session_key="")
+                    & ~models.Q(guest_key="")
                 ),
-                name="unique_active_game_per_session",
+                name="unique_active_game_per_guest",
             ),
             models.CheckConstraint(
                 condition=(
-                    models.Q(user__isnull=False, session_key="")
-                    | (models.Q(user__isnull=True) & ~models.Q(session_key=""))
+                    models.Q(user__isnull=False, guest_key="")
+                    | (models.Q(user__isnull=True) & ~models.Q(guest_key=""))
                 ),
-                name="game_owned_by_user_or_session",
+                name="game_owned_by_user_or_guest",
             ),
         ]
 
@@ -91,8 +91,8 @@ class Game(models.Model):
         """Return a compact display label for the game owner."""
         if self.user_id:
             return str(self.user)
-        if self.session_key:
-            return f"session {self.session_key[:8]}"
+        if self.guest_key:
+            return f"guest {self.guest_key[:8]}"
         return "unowned player"
 
     def clean(self) -> None:
@@ -102,9 +102,9 @@ class Game(models.Model):
             ValidationError: If a finished game has no finish timestamp.
         """
         super().clean()
-        if (self.user_id is None) == (not self.session_key):
+        if (self.user_id is None) == (not self.guest_key):
             raise ValidationError(
-                "Games must belong to exactly one user or guest session."
+                "Games must belong to exactly one user or guest."
             )
         if self.status == self.Status.FINISHED and self.finished_at is None:
             raise ValidationError(
@@ -184,8 +184,8 @@ class Guess(models.Model):
         on_delete=models.CASCADE,
         related_name="guesses",
     )
-    session_key = models.CharField(
-        max_length=40,
+    guest_key = models.CharField(
+        max_length=32,
         blank=True,
         default="",
     )
@@ -207,17 +207,17 @@ class Guess(models.Model):
         indexes = [
             models.Index(fields=["user", "guessed_at"]),
             models.Index(
-                fields=["session_key", "guessed_at"],
-                name="guess_session_guessed_idx",
+                fields=["guest_key", "guessed_at"],
+                name="guess_guest_guessed_idx",
             ),
         ]
         constraints = [
             models.CheckConstraint(
                 condition=(
-                    models.Q(user__isnull=False, session_key="")
-                    | (models.Q(user__isnull=True) & ~models.Q(session_key=""))
+                    models.Q(user__isnull=False, guest_key="")
+                    | (models.Q(user__isnull=True) & ~models.Q(guest_key=""))
                 ),
-                name="guess_owned_by_user_or_session",
+                name="guess_owned_by_user_or_guest",
             ),
             models.CheckConstraint(
                 condition=models.Q(distance_to_municipality_m__gte=0),
@@ -245,8 +245,8 @@ class Guess(models.Model):
         """Return a compact display label for the guess owner."""
         if self.user_id:
             return str(self.user)
-        if self.session_key:
-            return f"session {self.session_key[:8]}"
+        if self.guest_key:
+            return f"guest {self.guest_key[:8]}"
         return "unowned player"
 
     def clean(self) -> None:
@@ -257,11 +257,11 @@ class Guess(models.Model):
         """
         super().clean()
         errors = {}
-        if (self.user_id is None) == (not self.session_key):
-            errors["user"] = "Guesses must belong to exactly one user or guest session."
+        if (self.user_id is None) == (not self.guest_key):
+            errors["user"] = "Guesses must belong to exactly one user or guest."
         if self.turn_id:
             game = self.turn.game
-            if self.user_id != game.user_id or self.session_key != game.session_key:
+            if self.user_id != game.user_id or self.guest_key != game.guest_key:
                 errors["user"] = "Guess owner must match the game owner."
         if errors:
             raise ValidationError(errors)

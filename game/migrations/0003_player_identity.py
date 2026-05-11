@@ -18,20 +18,20 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name="game",
-            name="session_key",
+            name="guest_key",
             field=models.CharField(
                 blank=True,
                 default="",
-                max_length=40,
+                max_length=32,
             ),
         ),
         migrations.AddField(
             model_name="guess",
-            name="session_key",
+            name="guest_key",
             field=models.CharField(
                 blank=True,
                 default="",
-                max_length=40,
+                max_length=32,
             ),
         ),
         migrations.AlterField(
@@ -59,15 +59,15 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name="game",
             index=models.Index(
-                fields=["session_key", "status"],
-                name="game_session_status_idx",
+                fields=["guest_key", "status"],
+                name="game_guest_status_idx",
             ),
         ),
         migrations.AddIndex(
             model_name="guess",
             index=models.Index(
-                fields=["session_key", "guessed_at"],
-                name="guess_session_guessed_idx",
+                fields=["guest_key", "guessed_at"],
+                name="guess_guest_guessed_idx",
             ),
         ),
         migrations.AddConstraint(
@@ -83,30 +83,30 @@ class Migration(migrations.Migration):
             constraint=models.UniqueConstraint(
                 condition=(
                     models.Q(status="active")
-                    & ~models.Q(session_key="")
+                    & ~models.Q(guest_key="")
                 ),
-                fields=("session_key",),
-                name="unique_active_game_per_session",
+                fields=("guest_key",),
+                name="unique_active_game_per_guest",
             ),
         ),
         migrations.AddConstraint(
             model_name="game",
             constraint=models.CheckConstraint(
                 condition=(
-                    models.Q(user__isnull=False, session_key="")
-                    | (models.Q(user__isnull=True) & ~models.Q(session_key=""))
+                    models.Q(user__isnull=False, guest_key="")
+                    | (models.Q(user__isnull=True) & ~models.Q(guest_key=""))
                 ),
-                name="game_owned_by_user_or_session",
+                name="game_owned_by_user_or_guest",
             ),
         ),
         migrations.AddConstraint(
             model_name="guess",
             constraint=models.CheckConstraint(
                 condition=(
-                    models.Q(user__isnull=False, session_key="")
-                    | (models.Q(user__isnull=True) & ~models.Q(session_key=""))
+                    models.Q(user__isnull=False, guest_key="")
+                    | (models.Q(user__isnull=True) & ~models.Q(guest_key=""))
                 ),
-                name="guess_owned_by_user_or_session",
+                name="guess_owned_by_user_or_guest",
             ),
         ),
     ]

@@ -376,7 +376,7 @@ def get_last_guess_result(request, player=None) -> Guess | None:
         .only(
             "id",
             "user",
-            "session_key",
+            "guest_key",
             "point",
             "distance_to_municipality_m",
             "distance_to_boundary_m",
@@ -387,7 +387,7 @@ def get_last_guess_result(request, player=None) -> Guess | None:
             "turn__game__status",
             "turn__game__total_score",
             "turn__game__user",
-            "turn__game__session_key",
+            "turn__game__guest_key",
             "turn__target__name",
             "turn__target__population",
             "turn__target__canton__abbreviation",
@@ -470,7 +470,6 @@ def render_game_index(
                 active_game is None
                 and last_guess is None
                 and not request.user.is_authenticated
-                and not request.session.session_key
             ),
             "turn_count": TURN_COUNT,
             "turns": turns,

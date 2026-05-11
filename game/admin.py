@@ -27,7 +27,7 @@ class GameAdmin(admin.ModelAdmin):
         "finished_at",
     )
     list_filter = ("status", "started_at", "finished_at")
-    search_fields = ("user__username", "session_key")
+    search_fields = ("user__username", "guest_key")
     autocomplete_fields = ("user",)
     readonly_fields = ("started_at",)
     inlines = (TurnInline,)
@@ -57,6 +57,6 @@ class GuessAdmin(admin.ModelAdmin):
         "guessed_at",
     )
     list_filter = ("guessed_at",)
-    search_fields = ("user__username", "session_key", "turn__target__name")
+    search_fields = ("user__username", "guest_key", "turn__target__name")
     autocomplete_fields = ("turn", "user")
     readonly_fields = ("guessed_at",)

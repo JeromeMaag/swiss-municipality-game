@@ -22,7 +22,7 @@ def get_active_game_for_player(player: PlayerIdentity) -> Game | None:
     """Return the newest active game for a player identity.
 
     Args:
-        player: User or guest session identity whose game should be returned.
+        player: User or guest identity whose game should be returned.
 
     Returns:
         The active game or None.
@@ -69,7 +69,7 @@ def get_finished_game_summary_for_player(
     """Return a finished summary game for a player identity.
 
     Args:
-        player: User or guest session identity that owns the game.
+        player: User or guest identity that owns the game.
         game_id: Finished game primary key.
 
     Returns:

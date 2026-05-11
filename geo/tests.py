@@ -25,6 +25,7 @@ from shapely.geometry import Polygon
 
 from geo.admin_views import truncate_command_output
 from geo.constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
+from game.identity import GUEST_PLAYER_SESSION_KEY
 from game.models import Game, Turn
 from tests.utils import make_test_geometry
 
@@ -447,21 +448,21 @@ class GeoJSONEndpointTests(TestCase):
         self,
         *,
         revealed: bool = True,
-        session_key: str = "",
+        guest_key: str = "",
     ) -> Turn:
         """Grant the test client session access to municipality labels.
 
         Args:
             revealed: Whether the linked turn has already been revealed.
-            session_key: Optional guest session key that owns the turn.
+            guest_key: Optional guest key that owns the turn.
 
         Returns:
             The turn tied to the label access grant.
         """
         owner_fields = (
-            {"user": None, "session_key": session_key}
-            if session_key
-            else {"user": self.user, "session_key": ""}
+            {"user": None, "guest_key": guest_key}
+            if guest_key
+            else {"user": self.user, "guest_key": ""}
         )
         game = Game.objects.create(**owner_fields)
         turn = Turn.objects.create(
@@ -472,6 +473,8 @@ class GeoJSONEndpointTests(TestCase):
         )
         session = self.client.session
         session[MUNICIPALITY_LABEL_ACCESS_SESSION_KEY] = turn.id
+        if guest_key:
+            session[GUEST_PLAYER_SESSION_KEY] = guest_key
         session.save()
         return turn
 
@@ -547,9 +550,7 @@ class GeoJSONEndpointTests(TestCase):
     def test_municipality_labels_allow_guest_reveal_access(self) -> None:
         """Guest players can load labels for their own revealed turn."""
         self.client.logout()
-        session = self.client.session
-        session.save()
-        turn = self.grant_label_access(session_key=session.session_key)
+        turn = self.grant_label_access(guest_key="guest-label-key")
 
         response = self.client.get(self.municipality_labels_url(turn))
         data = self.assert_geojson_response(response)
