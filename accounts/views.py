@@ -1,14 +1,18 @@
 """Views for account-related pages."""
 
 from django.contrib.auth import login
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView as DjangoLoginView
 from django.contrib.auth.views import LogoutView as DjangoLogoutView
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
+from django.views.decorators.http import require_GET
 from django.views.generic.edit import FormView
+
+from game.statistics import build_player_statistics
 
 from .forms import RegistrationForm
 
@@ -24,6 +28,24 @@ class LogoutView(DjangoLogoutView):
     """Log out authenticated users via POST."""
 
     http_method_names = ["post", "options"]
+
+
+@login_required
+@require_GET
+def profile(request):
+    """Render personal statistics for the signed-in user.
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        A rendered profile statistics page.
+    """
+    return render(
+        request,
+        "accounts/profile.html",
+        {"statistics": build_player_statistics(request.user)},
+    )
 
 
 @method_decorator(sensitive_post_parameters("password1", "password2"), name="dispatch")

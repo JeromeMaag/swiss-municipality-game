@@ -41,6 +41,7 @@ from .selectors import (
     get_finished_games_for_player,
     get_finished_game_summary,
 )
+from .statistics import build_player_statistics
 from .views import get_last_guess_result, parse_tracking_request
 
 
@@ -1684,12 +1685,25 @@ class GameSummaryTests(TestCase):
             geom=make_test_geometry(),
         )
 
-    def create_finished_game(self, user=None, guest_key: str = "") -> Game:
+    def create_finished_game(
+        self,
+        user=None,
+        guest_key: str = "",
+        *,
+        bfs_offset: int = 9000,
+        distances: list[float] | None = None,
+        finished_at=None,
+        scores: list[int] | None = None,
+    ) -> Game:
         """Create a finished game with five guessed turns.
 
         Args:
             user: Optional owner for the game.
             guest_key: Optional guest owner for the game.
+            bfs_offset: First BFS number to use for generated municipalities.
+            distances: Optional per-turn municipality distances.
+            finished_at: Optional finished timestamp.
+            scores: Optional per-turn scores.
 
         Returns:
             A finished game with five turns and guesses.
@@ -1704,14 +1718,15 @@ class GameSummaryTests(TestCase):
         game = Game.objects.create(
             **owner_fields,
             status=Game.Status.FINISHED,
-            finished_at=timezone.now(),
+            finished_at=finished_at or timezone.now(),
         )
         for index in range(5):
-            score = 1000 - (index * 100)
+            score = scores[index] if scores is not None else 1000 - (index * 100)
+            distance = distances[index] if distances is not None else index * 1000
             total_score += score
             municipality = Municipality.objects.create(
                 dataset_version=self.dataset_version,
-                bfs_number=9000 + index,
+                bfs_number=bfs_offset + index,
                 name=f"Summary Municipality {index + 1}",
                 canton=self.canton,
                 population=10_000 + index,
@@ -1727,7 +1742,7 @@ class GameSummaryTests(TestCase):
                 turn=turn,
                 **owner_fields,
                 point=Point(8.05, 47.05, srid=4326),
-                distance_to_municipality_m=index * 1000,
+                distance_to_municipality_m=distance,
                 distance_to_boundary_m=500 + index,
                 score=score,
             )
@@ -1908,6 +1923,99 @@ class GameSummaryTests(TestCase):
         response = self.client.get(reverse("game:history_detail", args=[game.id]))
 
         self.assertEqual(response.status_code, 404)
+
+    def test_profile_requires_authenticated_user(self) -> None:
+        """Profile statistics are account-only."""
+        response = self.client.get(reverse("profile"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("accounts:login"), response["Location"])
+
+    def test_profile_shows_empty_statistics(self) -> None:
+        """Profile page renders a clean empty statistics state."""
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("profile"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "accounts/profile.html")
+        self.assertContains(response, "Games played")
+        self.assertContains(response, "Average score")
+        self.assertContains(response, "No finished games yet.")
+        self.assertNotContains(response, "Total score")
+
+    def test_profile_shows_player_statistics_and_recent_games(self) -> None:
+        """Profile page summarizes only the signed-in user's finished games."""
+        older_game = self.create_finished_game(
+            bfs_offset=9100,
+            distances=[0, 100, 200, 300, 400],
+            finished_at=timezone.now() - timedelta(days=2),
+            scores=[1000, 900, 800, 700, 600],
+        )
+        newer_game = self.create_finished_game(
+            bfs_offset=9200,
+            distances=[1000, 2000, 3000, 4000, 5000],
+            finished_at=timezone.now() - timedelta(days=1),
+            scores=[400, 300, 200, 100, 0],
+        )
+        self.create_finished_game(user=self.other_user, bfs_offset=9300)
+        self.create_finished_game(guest_key="guest-profile-key", bfs_offset=9400)
+        Game.objects.create(user=self.user)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("profile"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.user.username)
+        self.assertContains(response, "Games played")
+        self.assertContains(response, "2")
+        self.assertContains(response, "Average score")
+        self.assertContains(response, "2500")
+        self.assertContains(response, "Best score")
+        self.assertContains(response, "4000")
+        self.assertContains(response, "Rounds played")
+        self.assertContains(response, "10")
+        self.assertContains(response, "Average distance")
+        self.assertContains(response, "1600 m")
+        self.assertContains(response, "Best distance")
+        self.assertContains(response, "0 m")
+        self.assertContains(response, "Perfect rounds")
+        self.assertContains(response, "1")
+        self.assertContains(response, "CH")
+        self.assertContains(response, "2 games")
+        self.assertContains(response, "2500 avg score")
+        self.assertContains(
+            response,
+            reverse("game:history_detail", args=[newer_game.id]),
+        )
+        self.assertContains(
+            response,
+            reverse("game:history_detail", args=[older_game.id]),
+        )
+        self.assertEqual(
+            response.context["statistics"]["recent_games"],
+            [newer_game, older_game],
+        )
+        self.assertNotContains(response, "Total score")
+
+    def test_build_player_statistics_limits_recent_games(self) -> None:
+        """Recent profile games are capped to the latest five finished games."""
+        for index in range(6):
+            Game.objects.create(
+                user=self.user,
+                status=Game.Status.FINISHED,
+                total_score=index,
+                finished_at=timezone.now() + timedelta(minutes=index),
+            )
+
+        statistics = build_player_statistics(self.user)
+
+        self.assertEqual(statistics["games_played"], 6)
+        self.assertEqual(len(statistics["recent_games"]), 5)
+        self.assertEqual(
+            [game.total_score for game in statistics["recent_games"]],
+            [5, 4, 3, 2, 1],
+        )
 
 
 class GameSelectorTests(TestCase):
