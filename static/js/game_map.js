@@ -540,8 +540,12 @@
     return bestPoint ? map.layerPointToLatLng(bestPoint) : null;
   }
 
+  function shouldDrawRevealDistanceLine(distance) {
+    return Number.isFinite(distance) && Math.round(distance) >= 1;
+  }
+
   function drawRevealDistanceLine(map, municipalityLayer, revealState) {
-    if (!revealState.distance || revealState.distance <= 0) {
+    if (!shouldDrawRevealDistanceLine(revealState.distance)) {
       return;
     }
 
