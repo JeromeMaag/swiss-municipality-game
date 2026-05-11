@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
-from django.contrib.gis.geos import Point
+from django.contrib.gis.geos import MultiPolygon, Point, Polygon
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -78,6 +78,31 @@ class ScoringTests(TestCase):
 class GameServiceHelperTests(TestCase):
     """Tests for low-level game service validation helpers."""
 
+    def create_distance_target(
+        self,
+        coordinates: tuple[tuple[float, float], ...],
+    ) -> Municipality:
+        """Create a municipality target with exact WGS84 test geometry."""
+        dataset_version = GeoDatasetVersion.objects.create(
+            name="distance-test",
+            version_label="test",
+        )
+        geometry = MultiPolygon(Polygon(coordinates, srid=4326), srid=4326)
+        canton = Canton.objects.create(
+            dataset_version=dataset_version,
+            bfs_number=1,
+            abbreviation="DT",
+            name="Distance Test",
+            geom=geometry,
+        )
+        return Municipality.objects.create(
+            dataset_version=dataset_version,
+            bfs_number=1,
+            name="Distance Target",
+            canton=canton,
+            geom=geometry,
+        )
+
     def test_normalize_coordinate_accepts_bounds(self) -> None:
         """Coordinate normalization accepts inclusive boundary values."""
         self.assertEqual(
@@ -115,6 +140,84 @@ class GameServiceHelperTests(TestCase):
             "Target municipality does not exist.",
         ):
             _calculate_guess_distances(point=Point(8.0, 47.0, srid=4326), target_id=0)
+
+    def test_calculate_guess_distances_matches_known_meridian_distance(self) -> None:
+        """Distance calculation matches a known WGS84 meridian distance."""
+        target = self.create_distance_target(
+            ((0, 0), (1, 0), (1, 1), (0, 1), (0, 0))
+        )
+
+        distances = _calculate_guess_distances(
+            point=Point(0, 2, srid=4326),
+            target_id=target.id,
+        )
+
+        self.assertAlmostEqual(
+            distances.distance_to_municipality_m,
+            110_575.06354905,
+            delta=0.01,
+        )
+        self.assertAlmostEqual(
+            distances.distance_to_boundary_m,
+            110_575.06354905,
+            delta=0.01,
+        )
+        self.assertAlmostEqual(distances.nearest_boundary_point.x, 0.0001523435)
+        self.assertAlmostEqual(distances.nearest_boundary_point.y, 1.0000000232)
+
+    def test_calculate_guess_distances_matches_known_swiss_latitude_distance(
+        self,
+    ) -> None:
+        """Distance calculation matches a known WGS84 east-west distance."""
+        target = self.create_distance_target(
+            (
+                (8.0, 47.0),
+                (8.1, 47.0),
+                (8.1, 47.1),
+                (8.0, 47.1),
+                (8.0, 47.0),
+            )
+        )
+
+        distances = _calculate_guess_distances(
+            point=Point(8.2, 47.05, srid=4326),
+            target_id=target.id,
+        )
+
+        self.assertAlmostEqual(
+            distances.distance_to_municipality_m,
+            7_598.50117843,
+            delta=0.01,
+        )
+        self.assertAlmostEqual(
+            distances.distance_to_boundary_m,
+            7_598.50117843,
+            delta=0.01,
+        )
+        self.assertAlmostEqual(distances.nearest_boundary_point.x, 8.1)
+        self.assertAlmostEqual(distances.nearest_boundary_point.y, 47.0500435216)
+
+    def test_calculate_guess_distances_returns_zero_inside_polygon(self) -> None:
+        """Guess points inside the municipality have zero target distance."""
+        target = self.create_distance_target(
+            (
+                (8.0, 47.0),
+                (8.1, 47.0),
+                (8.1, 47.1),
+                (8.0, 47.1),
+                (8.0, 47.0),
+            )
+        )
+
+        distances = _calculate_guess_distances(
+            point=Point(8.05, 47.05, srid=4326),
+            target_id=target.id,
+        )
+
+        self.assertAlmostEqual(distances.distance_to_municipality_m, 0, delta=0.01)
+        self.assertGreater(distances.distance_to_boundary_m, 0)
+        self.assertAlmostEqual(distances.nearest_boundary_point.x, 8.05, delta=0.06)
+        self.assertAlmostEqual(distances.nearest_boundary_point.y, 47.05, delta=0.06)
 
 
 class PlayerIdentityTests(TestCase):
@@ -1457,6 +1560,8 @@ class GameStartTests(TestCase):
         self.assertContains(response, 'data-label-min-zoom="11"')
         self.assertContains(response, 'id="game-map"')
         self.assertContains(response, f'data-reveal-target-id="{first_turn.target.id}"')
+        self.assertContains(response, "data-reveal-boundary-lat")
+        self.assertContains(response, "data-reveal-boundary-lng")
         self.assertContains(response, 'data-reveal-lat="47.050000"')
         self.assertContains(response, 'data-reveal-lng="8.050000"')
         self.assertContains(response, 'data-reveal-distance="0.000000"')
@@ -1531,6 +1636,8 @@ class GameStartTests(TestCase):
         )
         self.assertContains(response, 'data-label-min-zoom="11"')
         self.assertContains(response, f'data-reveal-target-id="{municipality.id}"')
+        self.assertContains(response, "data-reveal-boundary-lat")
+        self.assertContains(response, "data-reveal-boundary-lng")
         self.assertContains(response, 'data-reveal-lat="47.050000"')
         self.assertContains(response, 'data-reveal-lng="8.050000"')
         self.assertContains(response, 'data-reveal-distance="0.000000"')
@@ -1794,8 +1901,19 @@ class GameSummaryTests(TestCase):
         for index, reveal in enumerate(reveals):
             self.assertEqual(
                 set(reveal),
-                {"distance", "lat", "lng", "score", "targetId", "turnNumber"},
+                {
+                    "boundaryLat",
+                    "boundaryLng",
+                    "distance",
+                    "lat",
+                    "lng",
+                    "score",
+                    "targetId",
+                    "turnNumber",
+                },
             )
+            self.assertIsInstance(reveal["boundaryLat"], float)
+            self.assertIsInstance(reveal["boundaryLng"], float)
             self.assertEqual(reveal["lat"], 47.05)
             self.assertEqual(reveal["lng"], 8.05)
             self.assertEqual(reveal["distance"], index * 1000)

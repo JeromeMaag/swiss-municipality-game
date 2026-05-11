@@ -295,6 +295,8 @@
 
   function readRevealState(mapElement) {
     const targetId = mapElement.dataset.revealTargetId;
+    const boundaryLatitude = Number.parseFloat(mapElement.dataset.revealBoundaryLat);
+    const boundaryLongitude = Number.parseFloat(mapElement.dataset.revealBoundaryLng);
     const latitude = Number.parseFloat(mapElement.dataset.revealLat);
     const longitude = Number.parseFloat(mapElement.dataset.revealLng);
     const distance = Number.parseFloat(mapElement.dataset.revealDistance);
@@ -302,6 +304,10 @@
       return null;
     }
     return {
+      boundaryLatLng:
+        Number.isFinite(boundaryLatitude) && Number.isFinite(boundaryLongitude)
+          ? window.L.latLng(boundaryLatitude, boundaryLongitude)
+          : null,
       distance: Number.isFinite(distance) ? distance : null,
       latlng: window.L.latLng(latitude, longitude),
       targetId: targetId,
@@ -326,6 +332,8 @@
         if (!reveal || typeof reveal !== "object") {
           return null;
         }
+        const boundaryLatitude = Number.parseFloat(reveal.boundaryLat);
+        const boundaryLongitude = Number.parseFloat(reveal.boundaryLng);
         const latitude = Number.parseFloat(reveal.lat);
         const longitude = Number.parseFloat(reveal.lng);
         const distance = Number.parseFloat(reveal.distance);
@@ -343,6 +351,10 @@
           return null;
         }
         return {
+          boundaryLatLng:
+            Number.isFinite(boundaryLatitude) && Number.isFinite(boundaryLongitude)
+              ? window.L.latLng(boundaryLatitude, boundaryLongitude)
+              : null,
           distance: distance,
           latlng: window.L.latLng(latitude, longitude),
           score: score,
@@ -549,16 +561,19 @@
       return;
     }
 
-    const targetLayer = findTargetLayer(municipalityLayer, revealState.targetId);
-    if (targetLayer === null) {
-      return;
-    }
+    let boundaryLatLng = revealState.boundaryLatLng;
+    if (boundaryLatLng === null) {
+      const targetLayer = findTargetLayer(municipalityLayer, revealState.targetId);
+      if (targetLayer === null) {
+        return;
+      }
 
-    const boundaryLatLng = closestBoundaryPoint(
-      map,
-      targetLayer.feature,
-      revealState.latlng
-    );
+      boundaryLatLng = closestBoundaryPoint(
+        map,
+        targetLayer.feature,
+        revealState.latlng
+      );
+    }
     if (boundaryLatLng === null) {
       return;
     }
