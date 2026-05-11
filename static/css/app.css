@@ -886,6 +886,12 @@ a {
   margin: 0;
 }
 
+.profile-section-empty {
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
 @media (max-width: 920px) {
   .game-page {
     overflow: auto;

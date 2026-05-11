@@ -56,15 +56,19 @@
 
       <section class="profile-section" aria-labelledby="mode-heading">
         <h2 id="mode-heading">Map performance</h2>
-        <ol class="profile-mode-list">
-          {% for mode in statistics.map_modes %}
-            <li>
-              <strong>{{ mode.label }}</strong>
-              <span>{{ mode.games_played }} game{{ mode.games_played|pluralize }}</span>
-              <span>{{ mode.average_score }} avg score</span>
-            </li>
-          {% endfor %}
-        </ol>
+        {% if statistics.map_modes %}
+          <ol class="profile-mode-list">
+            {% for mode in statistics.map_modes %}
+              <li>
+                <strong>{{ mode.label }}</strong>
+                <span>{{ mode.games_played }} game{{ mode.games_played|pluralize }}</span>
+                <span>{{ mode.average_score }} avg score</span>
+              </li>
+            {% endfor %}
+          </ol>
+        {% else %}
+          <p class="profile-section-empty">Play a finished game to unlock map stats.</p>
+        {% endif %}
       </section>
 
       <section class="profile-section profile-recent" aria-labelledby="recent-heading">

@@ -1936,19 +1936,31 @@ class GameSummaryTests(TestCase):
         self.client.force_login(self.user)
 
         response = self.client.get(reverse("profile"))
+        statistics = response.context["statistics"]
 
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "accounts/profile.html")
+        self.assertEqual(statistics["games_played"], 0)
+        self.assertEqual(statistics["average_score"], 0)
+        self.assertEqual(statistics["best_score"], 0)
+        self.assertEqual(statistics["rounds_played"], 0)
+        self.assertEqual(statistics["average_distance_m"], 0)
+        self.assertEqual(statistics["best_distance_m"], 0)
+        self.assertEqual(statistics["perfect_rounds"], 0)
+        self.assertEqual(statistics["map_modes"], [])
+        self.assertEqual(statistics["recent_games"], [])
         self.assertContains(response, "Games played")
         self.assertContains(response, "Average score")
+        self.assertContains(response, "Play a finished game to unlock map stats.")
         self.assertContains(response, "No finished games yet.")
+        self.assertNotContains(response, "0 avg score")
         self.assertNotContains(response, "Total score")
 
     def test_profile_shows_player_statistics_and_recent_games(self) -> None:
         """Profile page summarizes only the signed-in user's finished games."""
         older_game = self.create_finished_game(
             bfs_offset=9100,
-            distances=[0, 100, 200, 300, 400],
+            distances=[0, 0.49, 200, 300, 499.51],
             finished_at=timezone.now() - timedelta(days=2),
             scores=[1000, 900, 800, 700, 600],
         )
@@ -1964,23 +1976,31 @@ class GameSummaryTests(TestCase):
         self.client.force_login(self.user)
 
         response = self.client.get(reverse("profile"))
+        statistics = response.context["statistics"]
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(statistics["games_played"], 2)
+        self.assertEqual(statistics["average_score"], 2500)
+        self.assertEqual(statistics["best_score"], 4000)
+        self.assertEqual(statistics["rounds_played"], 10)
+        self.assertEqual(statistics["average_distance_m"], 1600)
+        self.assertEqual(statistics["best_distance_m"], 0)
+        self.assertEqual(statistics["perfect_rounds"], 1)
+        self.assertEqual(
+            statistics["map_modes"],
+            [{"average_score": 2500, "games_played": 2, "label": "CH"}],
+        )
+        self.assertEqual(statistics["recent_games"], [newer_game, older_game])
         self.assertContains(response, self.user.username)
         self.assertContains(response, "Games played")
-        self.assertContains(response, "2")
         self.assertContains(response, "Average score")
-        self.assertContains(response, "2500")
         self.assertContains(response, "Best score")
-        self.assertContains(response, "4000")
         self.assertContains(response, "Rounds played")
-        self.assertContains(response, "10")
         self.assertContains(response, "Average distance")
         self.assertContains(response, "1600 m")
         self.assertContains(response, "Best distance")
         self.assertContains(response, "0 m")
         self.assertContains(response, "Perfect rounds")
-        self.assertContains(response, "1")
         self.assertContains(response, "CH")
         self.assertContains(response, "2 games")
         self.assertContains(response, "2500 avg score")
@@ -1991,10 +2011,6 @@ class GameSummaryTests(TestCase):
         self.assertContains(
             response,
             reverse("game:history_detail", args=[older_game.id]),
-        )
-        self.assertEqual(
-            response.context["statistics"]["recent_games"],
-            [newer_game, older_game],
         )
         self.assertNotContains(response, "Total score")
 
