@@ -8,7 +8,6 @@ useful after a finished game.
 - Switchable background maps
 - Further visual polish for the game UI
 - Municipality games limited to one canton
-- Improved scoring calculation
 - Multilingual support
 
 ## Gameplay Ideas
