@@ -466,6 +466,12 @@ def render_game_index(
             "reveal_guess_lng": reveal_guess_lng,
             "show_game_map": active_game is None
             or (current_turn is not None or last_guess is not None),
+            "open_auth_choice_modal": (
+                active_game is None
+                and last_guess is None
+                and not request.user.is_authenticated
+                and not request.session.session_key
+            ),
             "turn_count": TURN_COUNT,
             "turns": turns,
             "error": error,

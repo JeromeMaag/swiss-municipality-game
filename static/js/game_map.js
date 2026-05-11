@@ -736,6 +736,9 @@
         closeModal();
       }
     });
+    if (modal.dataset.authModalOpen === "true") {
+      openModal();
+    }
   }
 
   function initializePage() {

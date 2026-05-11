@@ -185,7 +185,15 @@
             <button type="button" class="button-link auth-choice-trigger" data-auth-modal-trigger>
               Start
             </button>
-            <div class="auth-choice-backdrop" data-auth-modal hidden>
+            <div
+              class="auth-choice-backdrop"
+              data-auth-modal
+              {% if open_auth_choice_modal %}
+                data-auth-modal-open="true"
+              {% else %}
+                hidden
+              {% endif %}
+            >
               <section
                 class="auth-choice-modal"
                 role="dialog"
@@ -233,6 +241,6 @@
       crossorigin="anonymous"
       defer
     ></script>
-    <script src="{% static 'js/game_map.js' %}?v=ui-polish-3" defer></script>
+    <script src="{% static 'js/game_map.js' %}?v=guest-entry-1" defer></script>
   {% endif %}
 {% endblock %}

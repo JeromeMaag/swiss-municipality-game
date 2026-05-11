@@ -826,9 +826,23 @@ class GameStartTests(TestCase):
         self.assertContains(response, reverse("geo:cantons_geojson"))
         self.assertContains(response, reverse("geo:municipality_boundaries_geojson"))
         self.assertContains(response, "Play without account")
+        self.assertContains(response, "data-auth-modal-open")
         self.assertContains(response, reverse("accounts:login"))
         self.assertContains(response, reverse("accounts:register"))
         self.assertContains(response, reverse("game:start"))
+
+    def test_game_index_resumes_guest_game_without_auth_prompt(self) -> None:
+        """Guest players with an active game continue without the entry modal."""
+        self.create_municipalities(5)
+        self.client.post(reverse("game:start"))
+
+        response = self.client.get(reverse("game:index"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "1/5")
+        self.assertContains(response, "Guess")
+        self.assertNotContains(response, "data-auth-modal-open")
+        self.assertNotContains(response, "Play without account")
 
     def test_start_view_allows_guest_session_games(self) -> None:
         """Anonymous users can start a guest-owned game."""
