@@ -7,7 +7,8 @@ from .models import GameEvent
 
 def track_event(
     user=None,
-    event_type: str = "",
+    *,
+    event_type: str,
     session_key: str = "",
     game=None,
     turn=None,

@@ -21,7 +21,6 @@ class Migration(migrations.Migration):
             name="session_key",
             field=models.CharField(
                 blank=True,
-                db_index=True,
                 default="",
                 max_length=40,
             ),
@@ -31,7 +30,6 @@ class Migration(migrations.Migration):
             name="session_key",
             field=models.CharField(
                 blank=True,
-                db_index=True,
                 default="",
                 max_length=40,
             ),

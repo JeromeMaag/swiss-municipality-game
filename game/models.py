@@ -30,7 +30,6 @@ class Game(models.Model):
         max_length=40,
         blank=True,
         default="",
-        db_index=True,
     )
     status = models.CharField(
         max_length=20,
@@ -189,7 +188,6 @@ class Guess(models.Model):
         max_length=40,
         blank=True,
         default="",
-        db_index=True,
     )
     point = models.PointField(srid=4326)
     distance_to_municipality_m = models.FloatField(validators=[MinValueValidator(0)])

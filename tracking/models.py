@@ -34,7 +34,6 @@ class GameEvent(models.Model):
         max_length=40,
         blank=True,
         default="",
-        db_index=True,
     )
     game = models.ForeignKey(
         "game.Game",
@@ -80,7 +79,7 @@ class GameEvent(models.Model):
         """Return the event display label.
 
         Returns:
-            A human-readable event type and user label.
+            A human-readable event type and owner label.
         """
         return f"{self.event_type} for {self.owner_label}"
 
