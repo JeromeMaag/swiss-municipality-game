@@ -274,18 +274,22 @@ def history(request, game_id: int | None = None):
         Http404: If the requested game is not a finished owned game.
     """
     player = get_player_identity(request)
-    history_games = list(get_finished_games_for_player(player))
-    selected_game = None
     if game_id is not None:
         selected_game = get_finished_game_summary_for_player(player, game_id)
         if selected_game is None:
             raise Http404("Game history not found.")
+        history_games = []
+        history_stats = build_history_stats(history_games)
+    else:
+        selected_game = None
+        history_games = list(get_finished_games_for_player(player))
+        history_stats = build_history_stats(history_games)
     return render(
         request,
         "game/history.html",
         {
             "history_games": history_games,
-            "history_stats": build_history_stats(history_games),
+            "history_stats": history_stats,
             "map_label": HISTORY_MAP_LABEL,
             "selected_game": selected_game,
             "summary_reveals": (

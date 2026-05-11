@@ -1,6 +1,6 @@
 """Query helpers for game views and services."""
 
-from django.db.models import Prefetch
+from django.db.models import Prefetch, QuerySet
 
 from .identity import PlayerIdentity
 from .models import Game, Turn
@@ -62,7 +62,7 @@ def get_finished_game_summary(user, game_id: int) -> Game | None:
     return get_finished_game_summary_for_player(PlayerIdentity.for_user(user), game_id)
 
 
-def get_finished_games_for_player(player: PlayerIdentity):
+def get_finished_games_for_player(player: PlayerIdentity) -> QuerySet[Game]:
     """Return finished games for a player ordered by newest first.
 
     Args:

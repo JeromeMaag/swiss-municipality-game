@@ -685,6 +685,14 @@ a {
   transform: translateY(-1px);
 }
 
+.history-game-card:focus-visible {
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(255, 255, 255, 0.24);
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+  transform: translateY(-1px);
+}
+
 .history-game-card header,
 .history-game-card dl div {
   align-items: baseline;
