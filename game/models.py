@@ -202,6 +202,12 @@ class Guess(models.Model):
         null=True,
         validators=[MinValueValidator(0)],
     )
+    nearest_boundary_point = models.PointField(
+        blank=True,
+        editable=False,
+        null=True,
+        srid=4326,
+    )
     score = models.PositiveIntegerField()
     guessed_at = models.DateTimeField(auto_now_add=True)
 

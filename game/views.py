@@ -2,8 +2,9 @@
 
 import json
 
-from django.core.exceptions import ValidationError
 from django.contrib.auth.decorators import login_required
+from django.contrib.gis.geos import Point
+from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET, require_POST
@@ -24,6 +25,7 @@ from .services import (
     TURN_COUNT,
     GuessSubmissionError,
     NotEnoughMunicipalitiesError,
+    calculate_nearest_boundary_point,
     start_game_for_player,
     submit_guess_for_player,
 )
@@ -337,8 +339,11 @@ def build_summary_reveals(game: Game) -> list[dict]:
             guess = turn.guess
         except Guess.DoesNotExist:
             continue
+        boundary_point = nearest_boundary_point_for_guess(guess)
         reveals.append(
             {
+                "boundaryLat": boundary_point.y,
+                "boundaryLng": boundary_point.x,
                 "distance": guess.distance_to_municipality_m,
                 "lat": guess.point.y,
                 "lng": guess.point.x,
@@ -348,6 +353,16 @@ def build_summary_reveals(game: Game) -> list[dict]:
             }
         )
     return reveals
+
+
+def nearest_boundary_point_for_guess(guess: Guess) -> Point:
+    """Return the exact boundary point nearest to a persisted guess."""
+    if guess.nearest_boundary_point is not None:
+        return guess.nearest_boundary_point
+    return calculate_nearest_boundary_point(
+        point=guess.point,
+        target_id=guess.turn.target_id,
+    )
 
 
 def parse_tracking_request(request) -> tuple[str, dict]:
@@ -446,6 +461,7 @@ def get_last_guess_result(request, player=None) -> Guess | None:
             "point",
             "distance_to_municipality_m",
             "distance_to_boundary_m",
+            "nearest_boundary_point",
             "score",
             "turn__id",
             "turn__turn_number",
@@ -494,6 +510,8 @@ def render_game_index(
     turns = []
     current_turn = None
     current_target_name = ""
+    reveal_boundary_lat = ""
+    reveal_boundary_lng = ""
     reveal_guess_lat = ""
     reveal_guess_lng = ""
     if active_game is not None:
@@ -515,6 +533,9 @@ def render_game_index(
                 pk=current_turn.target_id
             ).name
     if last_guess is not None:
+        boundary_point = nearest_boundary_point_for_guess(last_guess)
+        reveal_boundary_lat = str(boundary_point.y)
+        reveal_boundary_lng = str(boundary_point.x)
         reveal_guess_lat = f"{last_guess.point.y:.6f}"
         reveal_guess_lng = f"{last_guess.point.x:.6f}"
         request.session[MUNICIPALITY_LABEL_ACCESS_SESSION_KEY] = last_guess.turn_id
@@ -528,6 +549,8 @@ def render_game_index(
             "current_turn": current_turn,
             "current_target_name": current_target_name,
             "last_guess": last_guess,
+            "reveal_boundary_lat": reveal_boundary_lat,
+            "reveal_boundary_lng": reveal_boundary_lng,
             "reveal_guess_lat": reveal_guess_lat,
             "reveal_guess_lng": reveal_guess_lng,
             "show_game_map": active_game is None

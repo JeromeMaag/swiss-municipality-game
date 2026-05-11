@@ -4,7 +4,7 @@ import math
 import random
 from dataclasses import dataclass
 
-from django.contrib.gis.geos import Point
+from django.contrib.gis.geos import GEOSGeometry, Point
 from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
 
@@ -20,6 +20,14 @@ from .selectors import get_active_game_for_player
 
 
 TURN_COUNT = 5
+NEAREST_BOUNDARY_POINT_SQL = """
+    ST_AsEWKB(
+        ST_ClosestPoint(
+            ST_Boundary(target.geom)::geography,
+            guess.point::geography
+        )::geometry
+    )
+"""
 
 
 class NotEnoughMunicipalitiesError(ValueError):
@@ -41,10 +49,12 @@ class GuessDistances:
     Attributes:
         distance_to_municipality_m: Distance to the municipality polygon in meters.
         distance_to_boundary_m: Distance to the municipality boundary in meters.
+        nearest_boundary_point: Boundary point nearest to the guess point.
     """
 
     distance_to_municipality_m: float
     distance_to_boundary_m: float
+    nearest_boundary_point: Point
 
 
 @dataclass(frozen=True)
@@ -234,6 +244,7 @@ def submit_guess_for_player(
             point=point,
             distance_to_municipality_m=distances.distance_to_municipality_m,
             distance_to_boundary_m=distances.distance_to_boundary_m,
+            nearest_boundary_point=distances.nearest_boundary_point,
             score=score,
             **player.model_fields(),
         )
@@ -369,6 +380,44 @@ def _validate_guessable_turn(*, player: PlayerIdentity, game: Game, turn: Turn) 
         raise GuessSubmissionError("Turn is not the current turn.")
 
 
+def calculate_nearest_boundary_point(*, point: Point, target_id: int) -> Point:
+    """Return the target boundary point nearest to a guess point.
+
+    Args:
+        point: Guess point in WGS84 coordinates.
+        target_id: Target municipality primary key.
+
+    Returns:
+        Nearest boundary point in WGS84 coordinates.
+
+    Raises:
+        GuessSubmissionError: If the target municipality cannot be found.
+    """
+    municipality_table = connection.ops.quote_name(Municipality._meta.db_table)
+    point_sql = "ST_SetSRID(ST_MakePoint(%s, %s), 4326)"
+    query = f"""
+        WITH target AS (
+            SELECT geom
+            FROM {municipality_table}
+            WHERE id = %s
+        ),
+        guess AS (
+            SELECT {point_sql} AS point
+        )
+        SELECT {NEAREST_BOUNDARY_POINT_SQL}
+        FROM target, guess
+    """
+    parameters = [target_id, point.x, point.y]
+    with connection.cursor() as cursor:
+        cursor.execute(query, parameters)
+        row = cursor.fetchone()
+
+    if row is None:
+        raise GuessSubmissionError("Target municipality does not exist.")
+
+    return GEOSGeometry(memoryview(row[0]))
+
+
 def _calculate_guess_distances(*, point: Point, target_id: int) -> GuessDistances:
     """Calculate geodesic guess distances against a municipality polygon.
 
@@ -383,15 +432,23 @@ def _calculate_guess_distances(*, point: Point, target_id: int) -> GuessDistance
         GuessSubmissionError: If the target municipality cannot be found.
     """
     municipality_table = connection.ops.quote_name(Municipality._meta.db_table)
-    point_sql = "ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography"
+    point_sql = "ST_SetSRID(ST_MakePoint(%s, %s), 4326)"
     query = f"""
+        WITH target AS (
+            SELECT geom
+            FROM {municipality_table}
+            WHERE id = %s
+        ),
+        guess AS (
+            SELECT {point_sql} AS point
+        )
         SELECT
-            ST_Distance(geom::geography, {point_sql}),
-            ST_Distance(ST_Boundary(geom)::geography, {point_sql})
-        FROM {municipality_table}
-        WHERE id = %s
+            ST_Distance(target.geom::geography, guess.point::geography),
+            ST_Distance(ST_Boundary(target.geom)::geography, guess.point::geography),
+            {NEAREST_BOUNDARY_POINT_SQL}
+        FROM target, guess
     """
-    parameters = [point.x, point.y, point.x, point.y, target_id]
+    parameters = [target_id, point.x, point.y]
     with connection.cursor() as cursor:
         cursor.execute(query, parameters)
         row = cursor.fetchone()
@@ -402,4 +459,5 @@ def _calculate_guess_distances(*, point: Point, target_id: int) -> GuessDistance
     return GuessDistances(
         distance_to_municipality_m=float(row[0]),
         distance_to_boundary_m=float(row[1]),
+        nearest_boundary_point=GEOSGeometry(memoryview(row[2])),
     )

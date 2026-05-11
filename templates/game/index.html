@@ -46,6 +46,8 @@
               {% endif %}
               {% if last_guess %}
                 data-reveal-target-id="{{ last_guess.turn.target.id }}"
+                data-reveal-boundary-lat="{{ reveal_boundary_lat }}"
+                data-reveal-boundary-lng="{{ reveal_boundary_lng }}"
                 data-reveal-lat="{{ reveal_guess_lat }}"
                 data-reveal-lng="{{ reveal_guess_lng }}"
                 data-reveal-distance="{{ last_guess.distance_to_municipality_m|floatformat:6 }}"
@@ -241,6 +243,6 @@
       crossorigin="anonymous"
       defer
     ></script>
-    <script src="{% static 'js/game_map.js' %}?v=history-1" defer></script>
+    <script src="{% static 'js/game_map.js' %}?v=boundary-point-1" defer></script>
   {% endif %}
 {% endblock %}
