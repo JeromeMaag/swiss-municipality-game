@@ -5,7 +5,8 @@ import subprocess
 import sys
 from unittest import mock
 
-from django.test import SimpleTestCase
+from django.contrib.auth import get_user_model
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from .settings import get_bool_env, get_list_env
@@ -109,7 +110,7 @@ class SettingsHelperTests(SimpleTestCase):
                 self.assertIn("SECRET_KEY must be configured", result.stderr)
 
 
-class HomeViewTests(SimpleTestCase):
+class HomeViewTests(TestCase):
     """Tests for the public home page view."""
 
     def test_home_renders(self) -> None:
@@ -118,8 +119,20 @@ class HomeViewTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "home.html")
-        self.assertContains(response, "Guess Swiss municipalities on a map")
+        self.assertContains(response, "A clean Swiss map game")
         self.assertNotContains(response, "Django project shell")
+
+    def test_authenticated_home_redirects_to_game(self) -> None:
+        """Authenticated users enter the game flow from the root URL."""
+        user = get_user_model().objects.create_user(
+            username="player",
+            password="StrongPass123!",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("home"))
+
+        self.assertRedirects(response, reverse("game:index"))
 
     def test_home_rejects_post_requests(self) -> None:
         """Home page only allows GET requests."""

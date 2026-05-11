@@ -209,16 +209,28 @@
     return value.toFixed(5);
   }
 
-  function createGuessMarker(map) {
+  function createGuessMarker(map, label) {
     const marker = document.createElement("div");
     marker.className = "guess-marker";
     marker.setAttribute("aria-hidden", "true");
+    if (label) {
+      marker.classList.add("guess-marker--numbered");
+    }
+    const markerLabel = label
+      ? '<span class="guess-marker-label">' + escapeHtml(label) + "</span>"
+      : "";
+    marker.innerHTML = (
+      '<span class="guess-marker-head">' +
+      markerLabel +
+      "</span>" +
+      '<span class="guess-marker-stem"></span>'
+    );
     map.getContainer().appendChild(marker);
     return marker;
   }
 
-  function createRevealedGuessMarker(map) {
-    const marker = createGuessMarker(map);
+  function createRevealedGuessMarker(map, label) {
+    const marker = createGuessMarker(map, label);
     marker.classList.add("guess-marker--revealed");
     return marker;
   }
@@ -226,7 +238,7 @@
   function positionGuessMarker(map, marker, latlng) {
     const point = map.latLngToContainerPoint(latlng);
     marker.style.transform = (
-      "translate(" + point.x + "px, " + point.y + "px) translate(-50%, -50%)"
+      "translate(" + point.x + "px, " + point.y + "px) translate(-50%, -100%)"
     );
   }
 
@@ -238,7 +250,6 @@
 
     const latitudeInput = form.querySelector("[data-guess-lat]");
     const longitudeInput = form.querySelector("[data-guess-lng]");
-    const coordinatesOutput = form.querySelector("[data-guess-coordinates]");
     const confirmButton = form.querySelector("[data-confirm-guess]");
     let marker = null;
     let selectedLatLng = null;
@@ -265,7 +276,6 @@
 
       latitudeInput.value = latitude;
       longitudeInput.value = longitude;
-      coordinatesOutput.textContent = "Selected point: " + latitude + ", " + longitude;
       confirmButton.disabled = false;
 
       sendTrackingEvent(mapElement, "MAP_CLICKED", {
@@ -287,12 +297,72 @@
     const targetId = mapElement.dataset.revealTargetId;
     const latitude = Number.parseFloat(mapElement.dataset.revealLat);
     const longitude = Number.parseFloat(mapElement.dataset.revealLng);
+    const distance = Number.parseFloat(mapElement.dataset.revealDistance);
     if (!targetId || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
       return null;
     }
     return {
+      distance: Number.isFinite(distance) ? distance : null,
       latlng: window.L.latLng(latitude, longitude),
       targetId: targetId,
+    };
+  }
+
+  function readSummaryState() {
+    const summaryElement = document.getElementById("game-summary-reveals");
+    if (!summaryElement) {
+      return null;
+    }
+
+    let rawReveals = [];
+    try {
+      rawReveals = JSON.parse(summaryElement.textContent || "[]");
+    } catch (error) {
+      rawReveals = [];
+    }
+
+    const reveals = (Array.isArray(rawReveals) ? rawReveals : [])
+      .map(function (reveal) {
+        if (!reveal || typeof reveal !== "object") {
+          return null;
+        }
+        const latitude = Number.parseFloat(reveal.lat);
+        const longitude = Number.parseFloat(reveal.lng);
+        const distance = Number.parseFloat(reveal.distance);
+        const score = Number.parseInt(reveal.score, 10);
+        const turnNumber = Number.parseInt(reveal.turnNumber, 10);
+        const targetId = reveal.targetId;
+        if (
+          !targetId ||
+          !Number.isFinite(latitude) ||
+          !Number.isFinite(longitude) ||
+          !Number.isFinite(distance) ||
+          !Number.isInteger(score) ||
+          !Number.isInteger(turnNumber)
+        ) {
+          return null;
+        }
+        return {
+          distance: distance,
+          latlng: window.L.latLng(latitude, longitude),
+          score: score,
+          targetId: String(targetId),
+          turnNumber: turnNumber,
+        };
+      })
+      .filter(Boolean);
+
+    if (reveals.length === 0) {
+      return null;
+    }
+
+    return {
+      reveals: reveals,
+      targetIds: new Set(
+        reveals.map(function (reveal) {
+          return reveal.targetId;
+        })
+      ),
     };
   }
 
@@ -311,6 +381,20 @@
       longitude: revealState.latlng.lng,
       target_municipality_id: Number(revealState.targetId),
       zoom: map.getZoom(),
+    });
+  }
+
+  function initializeSummary(map, summaryState) {
+    map.getContainer().classList.add("game-map--summary");
+    summaryState.reveals.forEach(function (reveal) {
+      const marker = createRevealedGuessMarker(map, String(reveal.turnNumber));
+
+      function updateMarkerPosition() {
+        positionGuessMarker(map, marker, reveal.latlng);
+      }
+
+      map.on("move zoom resize viewreset", updateMarkerPosition);
+      updateMarkerPosition();
     });
   }
 
@@ -335,9 +419,21 @@
     );
   }
 
-  function municipalityStyle(revealState) {
+  function isSummaryTargetFeature(feature, summaryState) {
+    return Boolean(
+      summaryState &&
+      feature &&
+      feature.properties &&
+      summaryState.targetIds.has(String(feature.properties.id))
+    );
+  }
+
+  function municipalityStyle(revealState, summaryState) {
     return function (feature) {
-      if (revealState && isTargetFeature(feature, revealState.targetId)) {
+      if (
+        (revealState && isTargetFeature(feature, revealState.targetId)) ||
+        isSummaryTargetFeature(feature, summaryState)
+      ) {
         return {
           color: "#7cff8b",
           fillColor: "#1b8f5a",
@@ -368,6 +464,131 @@
     return targetLayer;
   }
 
+  function latLngFromCoordinate(coordinate) {
+    return window.L.latLng(coordinate[1], coordinate[0]);
+  }
+
+  function geometryRings(geometry) {
+    if (!geometry) {
+      return [];
+    }
+    if (geometry.type === "Polygon") {
+      return geometry.coordinates;
+    }
+    if (geometry.type === "MultiPolygon") {
+      return geometry.coordinates.reduce(function (rings, polygon) {
+        return rings.concat(polygon);
+      }, []);
+    }
+    return [];
+  }
+
+  function closestPointOnSegment(point, segmentStart, segmentEnd) {
+    const delta = segmentEnd.subtract(segmentStart);
+    const lengthSquared = delta.x * delta.x + delta.y * delta.y;
+    if (lengthSquared === 0) {
+      return segmentStart;
+    }
+
+    const ratio = Math.max(
+      0,
+      Math.min(
+        1,
+        ((point.x - segmentStart.x) * delta.x +
+          (point.y - segmentStart.y) * delta.y) /
+          lengthSquared
+      )
+    );
+    return window.L.point(
+      segmentStart.x + ratio * delta.x,
+      segmentStart.y + ratio * delta.y
+    );
+  }
+
+  function squaredDistance(firstPoint, secondPoint) {
+    const deltaX = firstPoint.x - secondPoint.x;
+    const deltaY = firstPoint.y - secondPoint.y;
+    return deltaX * deltaX + deltaY * deltaY;
+  }
+
+  function closestBoundaryPoint(map, feature, latlng) {
+    const guessPoint = map.latLngToLayerPoint(latlng);
+    let bestPoint = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    geometryRings(feature.geometry).forEach(function (ring) {
+      for (let index = 0; index < ring.length - 1; index += 1) {
+        const segmentStart = map.latLngToLayerPoint(
+          latLngFromCoordinate(ring[index])
+        );
+        const segmentEnd = map.latLngToLayerPoint(
+          latLngFromCoordinate(ring[index + 1])
+        );
+        const candidate = closestPointOnSegment(
+          guessPoint,
+          segmentStart,
+          segmentEnd
+        );
+        const distance = squaredDistance(guessPoint, candidate);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestPoint = candidate;
+        }
+      }
+    });
+
+    return bestPoint ? map.layerPointToLatLng(bestPoint) : null;
+  }
+
+  function shouldDrawRevealDistanceLine(distance) {
+    return Number.isFinite(distance) && Math.round(distance) >= 1;
+  }
+
+  function drawRevealDistanceLine(map, municipalityLayer, revealState) {
+    if (!shouldDrawRevealDistanceLine(revealState.distance)) {
+      return;
+    }
+
+    const targetLayer = findTargetLayer(municipalityLayer, revealState.targetId);
+    if (targetLayer === null) {
+      return;
+    }
+
+    const boundaryLatLng = closestBoundaryPoint(
+      map,
+      targetLayer.feature,
+      revealState.latlng
+    );
+    if (boundaryLatLng === null) {
+      return;
+    }
+
+    if (!map.getPane("revealDistancePane")) {
+      map.createPane("revealDistancePane");
+      map.getPane("revealDistancePane").style.zIndex = 660;
+      map.getPane("revealDistancePane").style.pointerEvents = "none";
+    }
+
+    window.L.polyline([revealState.latlng, boundaryLatLng], {
+      className: "reveal-distance-line reveal-distance-line-outline",
+      color: "#ffffff",
+      dashArray: "7 7",
+      interactive: false,
+      opacity: 0.58,
+      pane: "revealDistancePane",
+      weight: 4,
+    }).addTo(map);
+    window.L.polyline([revealState.latlng, boundaryLatLng], {
+      className: "reveal-distance-line",
+      color: "#05080a",
+      dashArray: "7 7",
+      interactive: false,
+      opacity: 0.95,
+      pane: "revealDistancePane",
+      weight: 2.5,
+    }).addTo(map);
+  }
+
   function fitRevealBounds(map, municipalityLayer, revealState) {
     const bounds = window.L.latLngBounds([revealState.latlng]);
     const targetLayer = findTargetLayer(municipalityLayer, revealState.targetId);
@@ -380,6 +601,25 @@
       maxZoom: 12,
       padding: [42, 42],
     });
+  }
+
+  function fitSummaryBounds(map, municipalityLayer, summaryState) {
+    const bounds = window.L.latLngBounds([]);
+    summaryState.reveals.forEach(function (reveal) {
+      bounds.extend(reveal.latlng);
+      const targetLayer = findTargetLayer(municipalityLayer, reveal.targetId);
+      if (targetLayer !== null) {
+        bounds.extend(targetLayer.getBounds());
+      }
+    });
+
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, {
+        animate: false,
+        maxZoom: 10,
+        padding: [64, 64],
+      });
+    }
   }
 
   function initializeGameMap() {
@@ -397,6 +637,7 @@
     const zoom = readNumber(mapElement, "zoom", 8);
     const labelMinZoom = readNumber(mapElement, "labelMinZoom", 11);
     const revealState = readRevealState(mapElement);
+    const summaryState = readSummaryState();
     const map = window.L.map(mapElement, {
       attributionControl: true,
       maxBounds: switzerlandBounds,
@@ -412,17 +653,26 @@
     if (revealState) {
       initializeReveal(map, revealState, mapElement);
       initializeNextTurnTracking(mapElement);
+    } else if (summaryState) {
+      initializeSummary(map, summaryState);
     } else {
       initializeGuessInteraction(map, mapElement);
     }
     mapElement.dataset.initialized = "true";
     addBoundaryLayer(map, mapElement.dataset.municipalityBoundariesUrl, {
       errorMessage: "Municipality boundaries could not be loaded.",
-      fitBounds: !revealState,
-      style: municipalityStyle(revealState),
+      fitBounds: !revealState && !summaryState,
+      style: municipalityStyle(revealState, summaryState),
     }).then(function (municipalityLayer) {
       if (revealState && municipalityLayer !== null) {
         fitRevealBounds(map, municipalityLayer, revealState);
+        drawRevealDistanceLine(map, municipalityLayer, revealState);
+      }
+      if (summaryState && municipalityLayer !== null) {
+        fitSummaryBounds(map, municipalityLayer, summaryState);
+        summaryState.reveals.forEach(function (reveal) {
+          drawRevealDistanceLine(map, municipalityLayer, reveal);
+        });
       }
       return addBoundaryLayer(map, mapElement.dataset.cantonBoundariesUrl, {
         errorMessage: "Canton boundaries could not be loaded.",

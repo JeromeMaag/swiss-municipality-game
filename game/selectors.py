@@ -55,7 +55,6 @@ def get_finished_game_summary(user, game_id: int) -> Game | None:
             "target__canton__geom",
             "target__canton__geom_simplified",
             "target__canton__label_point",
-            "guess__point",
         )
         .order_by("turn_number")
     )
