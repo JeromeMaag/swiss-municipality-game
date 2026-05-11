@@ -272,11 +272,14 @@ class Guess(models.Model):
         """
         super().clean()
         errors = {}
+        def add_error(field: str, message: str) -> None:
+            errors.setdefault(field, []).append(message)
+
         if (self.user_id is None) == (not self.guest_key):
-            errors["user"] = "Guesses must belong to exactly one user or guest."
+            add_error("user", "Guesses must belong to exactly one user or guest.")
         if self.turn_id:
             game = self.turn.game
             if self.user_id != game.user_id or self.guest_key != game.guest_key:
-                errors["user"] = "Guess owner must match the game owner."
+                add_error("user", "Guess owner must match the game owner.")
         if errors:
             raise ValidationError(errors)

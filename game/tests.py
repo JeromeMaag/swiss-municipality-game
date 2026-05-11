@@ -1996,7 +1996,7 @@ class GameViewHelperTests(TestCase):
         )
 
     def test_get_last_guess_result_returns_guess_once(self) -> None:
-        """Last-guess helper loads the stored guess and clears the guest key."""
+        """Last-guess helper loads the stored guess and clears last_guess_id."""
         request = RequestFactory().get(reverse("game:index"))
         request.user = self.user
         request.session = {"last_guess_id": str(self.guess.id)}
