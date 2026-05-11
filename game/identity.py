@@ -50,12 +50,24 @@ class PlayerIdentity:
             return {"user": None, "session_key": self.session_key}
         return {"user": None, "session_key": ""}
 
-    def owner_query(self) -> Q:
-        """Return a query condition matching rows owned by this player."""
+    def owner_query(self, prefix: str = "") -> Q:
+        """Return a query condition matching rows owned by this player.
+
+        Args:
+            prefix: Optional related-object prefix, for example ``"game"`` when
+                filtering turns through their game owner.
+        """
+        user_lookup = f"{prefix}__user" if prefix else "user"
+        session_lookup = f"{prefix}__session_key" if prefix else "session_key"
         if self.is_authenticated:
-            return Q(user=self.user, session_key="")
+            return Q(**{user_lookup: self.user, session_lookup: ""})
         if self.is_guest:
-            return Q(user__isnull=True, session_key=self.session_key)
+            return Q(
+                **{
+                    f"{user_lookup}__isnull": True,
+                    session_lookup: self.session_key,
+                }
+            )
         return Q(pk__isnull=True)
 
     def owns(self, obj) -> bool:

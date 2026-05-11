@@ -2,7 +2,6 @@
 
 import hashlib
 
-from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.http import Http404, HttpResponse, HttpResponseNotModified
 from django.utils.cache import patch_cache_control
@@ -198,7 +197,6 @@ def municipality_boundaries(request):
     )
 
 
-@login_required
 @require_GET
 def municipality_labels(request):
     """Return current municipality label points for reveal mode.
@@ -238,11 +236,16 @@ def require_municipality_label_access(request) -> None:
     if request.session.get(MUNICIPALITY_LABEL_ACCESS_SESSION_KEY) != turn_id:
         raise Http404("Municipality labels not found.")
 
+    from game.identity import get_player_identity
     from game.models import Turn
 
+    player = get_player_identity(request)
+    if not player.can_own_games:
+        raise Http404("Municipality labels not found.")
+
     if not Turn.objects.filter(
+        player.owner_query("game"),
         pk=turn_id,
-        game__user=request.user,
         revealed_at__isnull=False,
     ).exists():
         raise Http404("Municipality labels not found.")

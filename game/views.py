@@ -2,7 +2,6 @@
 
 import json
 
-from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
@@ -16,16 +15,15 @@ from tracking.services import track_event
 from .identity import get_player_identity
 from .models import Game, Guess, Turn
 from .selectors import (
-    get_active_game,
     get_active_game_for_player,
-    get_finished_game_summary,
+    get_finished_game_summary_for_player,
 )
 from .services import (
     TURN_COUNT,
     GuessSubmissionError,
     NotEnoughMunicipalitiesError,
-    start_game,
-    submit_guess,
+    start_game_for_player,
+    submit_guess_for_player,
 )
 
 
@@ -52,9 +50,9 @@ def index(request):
     active_game = None
     last_guess = None
     player = get_player_identity(request)
-    if player.is_authenticated:
+    if player.can_own_games:
         active_game = get_active_game_for_player(player)
-        last_guess = get_last_guess_result(request)
+        last_guess = get_last_guess_result(request, player=player)
     if active_game is None and last_guess is not None:
         active_game = last_guess.turn.game
     elif (
@@ -70,10 +68,9 @@ def index(request):
     )
 
 
-@login_required
 @require_POST
 def start(request):
-    """Start or resume an active game for the current user.
+    """Start or resume an active game for the current player.
 
     Args:
         request: The incoming HTTP request.
@@ -81,17 +78,17 @@ def start(request):
     Returns:
         A redirect to the game index, or a validation response if setup is blocked.
     """
+    player = get_player_identity(request, create_session=True)
     try:
-        start_game(request.user)
+        start_game_for_player(player)
     except NotEnoughMunicipalitiesError as error:
         return render_game_index(request, error=str(error), status=400)
     return redirect("game:index")
 
 
-@login_required
 @require_POST
 def guess(request):
-    """Submit a guess for the current game turn.
+    """Submit a guess for the current player's game turn.
 
     Args:
         request: The incoming HTTP request.
@@ -100,15 +97,18 @@ def guess(request):
         A redirect to the game index, or a validation response when the guess is
         rejected.
     """
+    player = get_player_identity(request)
     try:
-        result = submit_guess(
-            user=request.user,
+        result = submit_guess_for_player(
+            player=player,
             turn_id=request.POST.get("turn_id"),
             latitude=request.POST.get("latitude"),
             longitude=request.POST.get("longitude"),
         )
     except GuessSubmissionError as error:
-        active_game = get_active_game(request.user)
+        active_game = (
+            get_active_game_for_player(player) if player.can_own_games else None
+        )
         return render_game_index(
             request,
             active_game=active_game,
@@ -119,7 +119,6 @@ def guess(request):
     return redirect("game:index")
 
 
-@login_required
 @require_POST
 def track_turn_event(request, turn_id: int):
     """Persist a client-side tracking event for a game turn.
@@ -133,8 +132,12 @@ def track_turn_event(request, turn_id: int):
         response for invalid tracking input.
 
     Raises:
-        Http404: If the turn does not belong to the current user.
+        Http404: If the turn does not belong to the current player.
     """
+    player = get_player_identity(request)
+    if not player.can_own_games:
+        raise Http404("Turn not found.")
+
     try:
         event_type, payload = parse_tracking_request(request)
     except ValueError as error:
@@ -142,8 +145,8 @@ def track_turn_event(request, turn_id: int):
 
     try:
         turn = Turn.objects.select_related("game").get(
+            player.owner_query("game"),
             pk=turn_id,
-            game__user=request.user,
         )
     except Turn.DoesNotExist as error:
         raise Http404("Turn not found.") from error
@@ -151,11 +154,11 @@ def track_turn_event(request, turn_id: int):
     try:
         validate_tracking_event_state(event_type=event_type, turn=turn)
         track_event(
-            user=request.user,
             game=turn.game,
             turn=turn,
             event_type=event_type,
             payload=payload,
+            **player.model_fields(),
         )
     except ValueError as error:
         return JsonResponse({"error": str(error)}, status=400)
@@ -221,10 +224,9 @@ def is_latest_revealed_turn(turn: Turn) -> bool:
     ).exists()
 
 
-@login_required
 @require_GET
 def summary(request, game_id: int):
-    """Render the summary for a finished game owned by the current user.
+    """Render the summary for a finished game owned by the current player.
 
     Args:
         request: The incoming HTTP request.
@@ -234,9 +236,12 @@ def summary(request, game_id: int):
         A rendered summary page for the finished game.
 
     Raises:
-        Http404: If the game is not finished or does not belong to the user.
+        Http404: If the game is not finished or does not belong to the player.
     """
-    game = get_finished_game_summary(request.user, game_id)
+    player = get_player_identity(request)
+    if not player.can_own_games:
+        raise Http404("Game summary not found.")
+    game = get_finished_game_summary_for_player(player, game_id)
     if game is None:
         raise Http404("Game summary not found.")
     return render(
@@ -341,11 +346,12 @@ def get_tracking_request_body(request) -> bytes:
     return request.body
 
 
-def get_last_guess_result(request) -> Guess | None:
+def get_last_guess_result(request, player=None) -> Guess | None:
     """Return the one-time result guess stored in the session.
 
     Args:
         request: The incoming HTTP request.
+        player: Optional precomputed player identity.
 
     Returns:
         The submitted guess result, or None when no valid result is pending.
@@ -360,10 +366,17 @@ def get_last_guess_result(request) -> Guess | None:
     if guess_pk < 1:
         return None
 
+    if player is None:
+        player = get_player_identity(request)
+    if not player.can_own_games:
+        return None
+
     return (
         Guess.objects.select_related("turn__game", "turn__target__canton")
         .only(
             "id",
+            "user",
+            "session_key",
             "point",
             "distance_to_municipality_m",
             "distance_to_boundary_m",
@@ -374,6 +387,7 @@ def get_last_guess_result(request) -> Guess | None:
             "turn__game__status",
             "turn__game__total_score",
             "turn__game__user",
+            "turn__game__session_key",
             "turn__target__name",
             "turn__target__population",
             "turn__target__canton__abbreviation",
@@ -387,7 +401,7 @@ def get_last_guess_result(request) -> Guess | None:
             "turn__target__canton__geom_simplified",
             "turn__target__canton__label_point",
         )
-        .filter(pk=guess_pk, user=request.user)
+        .filter(player.owner_query(), pk=guess_pk)
         .first()
     )
 
@@ -438,7 +452,7 @@ def render_game_index(
         reveal_guess_lat = f"{last_guess.point.y:.6f}"
         reveal_guess_lng = f"{last_guess.point.x:.6f}"
         request.session[MUNICIPALITY_LABEL_ACCESS_SESSION_KEY] = last_guess.turn_id
-    elif request.user.is_authenticated:
+    else:
         request.session.pop(MUNICIPALITY_LABEL_ACCESS_SESSION_KEY, None)
     return render(
         request,

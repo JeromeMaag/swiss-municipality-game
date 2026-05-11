@@ -200,14 +200,18 @@
                 >
                   &times;
                 </button>
-                <span class="state-label">Account required for now</span>
-                <h2 id="auth-choice-heading">Start with an account</h2>
+                <span class="state-label">Account optional</span>
+                <h2 id="auth-choice-heading">Start playing</h2>
                 <p>
-                  Guest play is coming next. For now, log in or create an account
-                  to start a game.
+                  Play now in this browser, or sign in if you want future history
+                  and statistics.
                 </p>
+                <form class="guess-form" method="post" action="{% url 'game:start' %}">
+                  {% csrf_token %}
+                  <button type="submit" data-auth-primary>Play without account</button>
+                </form>
                 <div class="auth-choice-actions">
-                  <a class="button-link" href="{% url 'accounts:login' %}" data-auth-primary>Log in</a>
+                  <a class="button-link" href="{% url 'accounts:login' %}">Log in</a>
                   <a class="button-link button-link-secondary" href="{% url 'accounts:register' %}">
                     Create account
                   </a>

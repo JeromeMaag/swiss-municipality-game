@@ -443,16 +443,27 @@ class GeoJSONEndpointTests(TestCase):
         self.assertEqual(response["Content-Type"], "application/geo+json")
         return json.loads(response.content)
 
-    def grant_label_access(self, *, revealed: bool = True) -> Turn:
+    def grant_label_access(
+        self,
+        *,
+        revealed: bool = True,
+        session_key: str = "",
+    ) -> Turn:
         """Grant the test client session access to municipality labels.
 
         Args:
             revealed: Whether the linked turn has already been revealed.
+            session_key: Optional guest session key that owns the turn.
 
         Returns:
             The turn tied to the label access grant.
         """
-        game = Game.objects.create(user=self.user)
+        owner_fields = (
+            {"user": None, "session_key": session_key}
+            if session_key
+            else {"user": self.user, "session_key": ""}
+        )
+        game = Game.objects.create(**owner_fields)
         turn = Turn.objects.create(
             game=game,
             turn_number=1,
@@ -488,14 +499,13 @@ class GeoJSONEndpointTests(TestCase):
                 response = self.client.get(url)
                 self.assert_geojson_response(response)
 
-    def test_municipality_labels_require_login(self) -> None:
-        """Anonymous users cannot access reveal-only municipality labels."""
+    def test_municipality_labels_require_owner_session(self) -> None:
+        """Anonymous users cannot access labels without an owning session."""
         self.client.logout()
 
         response = self.client.get(reverse("geo:municipality_labels_geojson"))
 
-        self.assertEqual(response.status_code, 302)
-        self.assertTrue(response["Location"].startswith(reverse("accounts:login")))
+        self.assertEqual(response.status_code, 404)
 
     def test_canton_boundaries_returns_feature_collection(self) -> None:
         """Canton boundary endpoint returns canton properties and geometry."""
@@ -533,6 +543,19 @@ class GeoJSONEndpointTests(TestCase):
         self.assertEqual(feature["properties"]["id"], self.municipality.id)
         self.assertEqual(feature["properties"]["name"], "Zurich")
         self.assertNotIn("canton_abbreviation", feature["properties"])
+
+    def test_municipality_labels_allow_guest_reveal_access(self) -> None:
+        """Guest players can load labels for their own revealed turn."""
+        self.client.logout()
+        session = self.client.session
+        session.save()
+        turn = self.grant_label_access(session_key=session.session_key)
+
+        response = self.client.get(self.municipality_labels_url(turn))
+        data = self.assert_geojson_response(response)
+
+        self.assertEqual(len(data["features"]), 1)
+        self.assertEqual(data["features"][0]["properties"]["name"], "Zurich")
 
     def test_municipality_labels_skip_missing_label_points(self) -> None:
         """Municipality label endpoint omits municipalities without label points."""
