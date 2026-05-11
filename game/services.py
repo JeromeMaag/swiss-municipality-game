@@ -474,7 +474,11 @@ def _validate_guessable_turn(*, player: PlayerIdentity, game: Game, turn: Turn) 
 
 def _ensure_game_scoring_max_distance_m(*, game: Game, target_id: int) -> float:
     """Return a game's scoring distance scale, calculating it for legacy games."""
-    if game.scoring_max_distance_m is not None and game.scoring_max_distance_m > 0:
+    if (
+        game.scoring_max_distance_m is not None
+        and math.isfinite(game.scoring_max_distance_m)
+        and game.scoring_max_distance_m > 0
+    ):
         return game.scoring_max_distance_m
 
     dataset_version_id = (

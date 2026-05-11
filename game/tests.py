@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 import json
+import math
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -27,6 +28,7 @@ from .services import (
     InvalidGuessCoordinatesError,
     NotEnoughMunicipalitiesError,
     _calculate_guess_distances,
+    _ensure_game_scoring_max_distance_m,
     _normalize_coordinate,
     _normalize_turn_id,
     start_game,
@@ -755,6 +757,21 @@ class GuessSubmissionServiceTests(TestCase):
                 game.scoring_max_distance_m,
             ),
         )
+
+    def test_ensure_game_scoring_distance_repairs_non_finite_value(self) -> None:
+        """Non-finite legacy scoring extents are recalculated and persisted."""
+        game, turns = self.create_game_with_turns()
+        game.scoring_max_distance_m = float("inf")
+
+        scoring_max_distance_m = _ensure_game_scoring_max_distance_m(
+            game=game,
+            target_id=turns[0].target_id,
+        )
+
+        self.assertTrue(math.isfinite(scoring_max_distance_m))
+        self.assertGreater(scoring_max_distance_m, 0)
+        game.refresh_from_db()
+        self.assertEqual(game.scoring_max_distance_m, scoring_max_distance_m)
 
     def test_submit_guess_finishes_game_after_final_turn(self) -> None:
         """Submitting the final turn marks the game as finished."""
