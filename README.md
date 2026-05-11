@@ -7,10 +7,10 @@ boundaries, and BFS STATPOP population data.
 
 ## Gameplay
 
-Log in, start a game, and guess where the shown Swiss municipality is located.
-Place a pin on the map and confirm the guess. The game then reveals the target
-municipality, the distance, the score, the canton, and the population when it is
-available.
+Start a game as a guest or with an account, then guess where the shown Swiss
+municipality is located. Place a pin on the map and confirm the guess. The game
+then reveals the target municipality, the distance, the score, the canton, and
+the population when it is available.
 
 A game has five turns. After the last turn, the summary page shows all guesses
 and the total score.
@@ -74,14 +74,18 @@ python manage.py seed_dev_geodata
 
 ## Run
 
-Create a user and start the development server:
+Start the development server:
 
 ```powershell
-python manage.py createsuperuser
 python manage.py runserver
 ```
 
-Open `http://127.0.0.1:8000/`.
+Open `http://127.0.0.1:8000/`. You can play without an account. Create a
+superuser only when you need the Django admin:
+
+```powershell
+python manage.py createsuperuser
+```
 
 ## Checks
 

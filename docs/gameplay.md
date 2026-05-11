@@ -4,7 +4,7 @@ GemeindeGuess CH is about finding Swiss municipalities on a map.
 
 ## How To Play
 
-1. Log in and start a game.
+1. Start a game as a guest, or log in if you want account-based history later.
 2. The game shows the name of one target municipality.
 3. Move around the map and place your pin where you think the municipality is.
 4. Confirm the guess.

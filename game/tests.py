@@ -1968,6 +1968,35 @@ class GameViewHelperTests(TestCase):
         self.assertEqual(result, self.guess)
         self.assertNotIn("last_guess_id", request.session)
 
+    def test_get_last_guess_result_returns_guest_guess_once(self) -> None:
+        """Last-guess helper supports guest session-owned guesses."""
+        session = self.client.session
+        session.save()
+        guest_game = Game.objects.create(user=None, session_key=session.session_key)
+        guest_turn = Turn.objects.create(
+            game=guest_game,
+            turn_number=1,
+            target=self.turn.target,
+            revealed_at=timezone.now(),
+        )
+        guest_guess = Guess.objects.create(
+            turn=guest_turn,
+            user=None,
+            session_key=session.session_key,
+            point=Point(8.06, 47.06, srid=4326),
+            distance_to_municipality_m=10,
+            score=990,
+        )
+        request = RequestFactory().get(reverse("game:index"))
+        request.user = AnonymousUser()
+        request.session = session
+        request.session["last_guess_id"] = str(guest_guess.id)
+
+        result = get_last_guess_result(request)
+
+        self.assertEqual(result, guest_guess)
+        self.assertNotIn("last_guess_id", request.session)
+
     def test_get_last_guess_result_ignores_invalid_or_foreign_ids(self) -> None:
         """Last-guess helper ignores invalid ids and guesses owned by others."""
         other_game = Game.objects.create(user=self.other_user)
