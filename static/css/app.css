@@ -654,6 +654,79 @@ a {
   width: 100%;
 }
 
+.history-panel {
+  overflow: hidden;
+}
+
+.history-game-list {
+  display: grid;
+  gap: 0.7rem;
+  list-style: none;
+  margin: 0;
+  overflow: auto;
+  padding: 0;
+}
+
+.history-game-card {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #ffffff;
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  text-decoration: none;
+  transition: background 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
+.history-game-card:hover {
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(255, 255, 255, 0.24);
+  transform: translateY(-1px);
+}
+
+.history-game-card header,
+.history-game-card dl div {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+}
+
+.history-game-card header strong {
+  font-size: 1rem;
+}
+
+.history-game-card header span,
+.history-game-card dt {
+  color: var(--panel-muted);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.history-game-card dl {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+}
+
+.history-game-card dd {
+  font-weight: 840;
+  margin: 0;
+}
+
+.history-empty {
+  align-content: center;
+  display: grid;
+  gap: 1rem;
+  min-height: 100%;
+}
+
+.history-empty p {
+  color: var(--panel-muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
 @media (max-width: 920px) {
   .game-page {
     overflow: auto;

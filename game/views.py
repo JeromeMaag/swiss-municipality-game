@@ -3,6 +3,7 @@
 import json
 
 from django.core.exceptions import ValidationError
+from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET, require_POST
@@ -16,6 +17,7 @@ from .identity import get_player_identity
 from .models import Game, Guess, Turn
 from .selectors import (
     get_active_game_for_player,
+    get_finished_games_for_player,
     get_finished_game_summary_for_player,
 )
 from .services import (
@@ -35,6 +37,7 @@ CLIENT_TRACKING_EVENT_TYPES = frozenset(
     }
 )
 MAX_TRACKING_REQUEST_BYTES = 4096
+HISTORY_MAP_LABEL = "CH"
 
 
 @require_GET
@@ -253,6 +256,65 @@ def summary(request, game_id: int):
             "turn_count": TURN_COUNT,
         },
     )
+
+
+@login_required
+@require_GET
+def history(request, game_id: int | None = None):
+    """Render finished games and optional map review for the signed-in user.
+
+    Args:
+        request: The incoming HTTP request.
+        game_id: Optional finished game primary key to review.
+
+    Returns:
+        A rendered history page for the authenticated user.
+
+    Raises:
+        Http404: If the requested game is not a finished owned game.
+    """
+    player = get_player_identity(request)
+    history_games = list(get_finished_games_for_player(player))
+    selected_game = None
+    if game_id is not None:
+        selected_game = get_finished_game_summary_for_player(player, game_id)
+        if selected_game is None:
+            raise Http404("Game history not found.")
+    return render(
+        request,
+        "game/history.html",
+        {
+            "history_games": history_games,
+            "history_stats": build_history_stats(history_games),
+            "map_label": HISTORY_MAP_LABEL,
+            "selected_game": selected_game,
+            "summary_reveals": (
+                build_summary_reveals(selected_game)
+                if selected_game is not None
+                else []
+            ),
+            "turn_count": TURN_COUNT,
+        },
+    )
+
+
+def build_history_stats(games: list[Game]) -> dict[str, int]:
+    """Return simple score statistics for a finished-game list.
+
+    Args:
+        games: Finished games visible in history.
+
+    Returns:
+        Counts and score statistics for the history sidebar.
+    """
+    if not games:
+        return {"average_score": 0, "best_score": 0, "played": 0}
+    total_score = sum(game.total_score for game in games)
+    return {
+        "average_score": round(total_score / len(games)),
+        "best_score": max(game.total_score for game in games),
+        "played": len(games),
+    }
 
 
 def build_summary_reveals(game: Game) -> list[dict]:

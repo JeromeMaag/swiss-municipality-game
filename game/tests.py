@@ -1,5 +1,6 @@
 """Tests for the game app."""
 
+from datetime import timedelta
 import json
 from unittest.mock import patch
 
@@ -37,6 +38,7 @@ from .selectors import (
     get_active_game,
     get_active_game_for_player,
     get_current_turn,
+    get_finished_games_for_player,
     get_finished_game_summary,
 )
 from .views import get_last_guess_result, parse_tracking_request
@@ -1827,6 +1829,86 @@ class GameSummaryTests(TestCase):
 
         self.assertEqual(response.status_code, 404)
 
+    def test_history_requires_authenticated_user(self) -> None:
+        """History is account-only and redirects anonymous users."""
+        response = self.client.get(reverse("game:history"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("accounts:login"), response["Location"])
+
+    def test_history_lists_finished_user_games(self) -> None:
+        """History page lists finished games with score and map label."""
+        game = self.create_finished_game()
+        other_game = Game.objects.create(
+            user=self.other_user,
+            status=Game.Status.FINISHED,
+            total_score=123,
+            finished_at=timezone.now(),
+        )
+        active_game = Game.objects.create(user=self.user)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("game:history"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "game/history.html")
+        self.assertContains(response, "History")
+        self.assertContains(response, "Personal statistics")
+        self.assertContains(response, 'id="game-map"')
+        self.assertNotContains(response, 'data-summary-map="true"')
+        self.assertContains(response, "Map")
+        self.assertContains(response, "CH")
+        self.assertContains(response, str(game.total_score))
+        self.assertContains(response, reverse("game:history_detail", args=[game.id]))
+        self.assertNotContains(
+            response,
+            reverse("game:history_detail", args=[other_game.id]),
+        )
+        self.assertNotContains(
+            response,
+            reverse("game:history_detail", args=[active_game.id]),
+        )
+
+    def test_history_shows_empty_state(self) -> None:
+        """History page handles users without finished games."""
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("game:history"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "No finished games yet.")
+        self.assertContains(response, reverse("game:index"))
+
+    def test_history_detail_shows_selected_game_review(self) -> None:
+        """History detail reuses the map summary review for one game."""
+        game = self.create_finished_game()
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("game:history_detail", args=[game.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "game/history.html")
+        self.assertContains(response, "Game result")
+        self.assertContains(response, "Back to history")
+        self.assertContains(response, reverse("game:history"))
+        self.assertContains(response, "Map")
+        self.assertContains(response, "CH")
+        self.assertContains(response, 'data-summary-map="true"')
+        self.assertContains(response, "game-summary-reveals")
+        self.assertContains(response, "Summary Municipality 5")
+        self.assertNotContains(response, "New game")
+        self.assertEqual(response.context["selected_game"], game)
+        self.assertEqual(len(response.context["summary_reveals"]), 5)
+
+    def test_history_detail_rejects_other_users_game(self) -> None:
+        """Users cannot review another user's game from history."""
+        game = self.create_finished_game(user=self.other_user)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("game:history_detail", args=[game.id]))
+
+        self.assertEqual(response.status_code, 404)
+
 
 class GameSelectorTests(TestCase):
     """Tests for game query helpers used by views."""
@@ -1903,6 +1985,32 @@ class GameSelectorTests(TestCase):
 
         self.assertEqual(get_current_turn(game), second_turn)
         self.assertIsNone(get_current_turn(None))
+
+    def test_get_finished_games_for_player_returns_newest_owned_games(self) -> None:
+        """Finished-game list selector returns only owned finished games."""
+        older_game = Game.objects.create(
+            user=self.user,
+            status=Game.Status.FINISHED,
+            total_score=100,
+            finished_at=timezone.now() - timedelta(days=1),
+        )
+        newer_game = Game.objects.create(
+            user=self.user,
+            status=Game.Status.FINISHED,
+            total_score=200,
+            finished_at=timezone.now(),
+        )
+        Game.objects.create(user=self.user)
+        Game.objects.create(
+            user=self.other_user,
+            status=Game.Status.FINISHED,
+            total_score=300,
+            finished_at=timezone.now(),
+        )
+
+        games = list(get_finished_games_for_player(PlayerIdentity.for_user(self.user)))
+
+        self.assertEqual(games, [newer_game, older_game])
 
     def test_get_finished_game_summary_returns_ordered_finished_game(self) -> None:
         """Finished-game selector returns ordered turns for the requesting owner."""
