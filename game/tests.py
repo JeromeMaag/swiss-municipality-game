@@ -743,11 +743,18 @@ class GuessSubmissionServiceTests(TestCase):
         game.scoring_max_distance_m = None
         game.save(update_fields=["scoring_max_distance_m"])
 
-        submit_guess(self.user, turns[0].id, 47.05, 8.2)
+        result = submit_guess(self.user, turns[0].id, 47.05, 8.2)
 
         game.refresh_from_db()
         self.assertIsNotNone(game.scoring_max_distance_m)
         self.assertGreater(game.scoring_max_distance_m, 0)
+        self.assertEqual(
+            result.guess.score,
+            calculate_score(
+                result.guess.distance_to_municipality_m,
+                game.scoring_max_distance_m,
+            ),
+        )
 
     def test_submit_guess_finishes_game_after_final_turn(self) -> None:
         """Submitting the final turn marks the game as finished."""
