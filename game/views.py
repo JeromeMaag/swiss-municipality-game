@@ -2,8 +2,9 @@
 
 import json
 
-from django.core.exceptions import ValidationError
 from django.contrib.auth.decorators import login_required
+from django.contrib.gis.geos import Point
+from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET, require_POST
@@ -354,8 +355,10 @@ def build_summary_reveals(game: Game) -> list[dict]:
     return reveals
 
 
-def nearest_boundary_point_for_guess(guess: Guess):
+def nearest_boundary_point_for_guess(guess: Guess) -> Point:
     """Return the exact boundary point nearest to a persisted guess."""
+    if guess.nearest_boundary_point is not None:
+        return guess.nearest_boundary_point
     return calculate_nearest_boundary_point(
         point=guess.point,
         target_id=guess.turn.target_id,
@@ -458,6 +461,7 @@ def get_last_guess_result(request, player=None) -> Guess | None:
             "point",
             "distance_to_municipality_m",
             "distance_to_boundary_m",
+            "nearest_boundary_point",
             "score",
             "turn__id",
             "turn__turn_number",

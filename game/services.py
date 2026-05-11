@@ -236,6 +236,7 @@ def submit_guess_for_player(
             point=point,
             distance_to_municipality_m=distances.distance_to_municipality_m,
             distance_to_boundary_m=distances.distance_to_boundary_m,
+            nearest_boundary_point=distances.nearest_boundary_point,
             score=score,
             **player.model_fields(),
         )
@@ -384,10 +385,34 @@ def calculate_nearest_boundary_point(*, point: Point, target_id: int) -> Point:
     Raises:
         GuessSubmissionError: If the target municipality cannot be found.
     """
-    return _calculate_guess_distances(
-        point=point,
-        target_id=target_id,
-    ).nearest_boundary_point
+    municipality_table = connection.ops.quote_name(Municipality._meta.db_table)
+    point_sql = "ST_SetSRID(ST_MakePoint(%s, %s), 4326)"
+    query = f"""
+        WITH target AS (
+            SELECT geom
+            FROM {municipality_table}
+            WHERE id = %s
+        ),
+        guess AS (
+            SELECT {point_sql} AS point
+        )
+        SELECT ST_AsEWKB(
+            ST_ClosestPoint(
+                ST_Boundary(target.geom)::geography,
+                guess.point::geography
+            )::geometry
+        )
+        FROM target, guess
+    """
+    parameters = [target_id, point.x, point.y]
+    with connection.cursor() as cursor:
+        cursor.execute(query, parameters)
+        row = cursor.fetchone()
+
+    if row is None:
+        raise GuessSubmissionError("Target municipality does not exist.")
+
+    return GEOSGeometry(memoryview(row[0]))
 
 
 def _calculate_guess_distances(*, point: Point, target_id: int) -> GuessDistances:

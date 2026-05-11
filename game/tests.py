@@ -42,7 +42,7 @@ from .selectors import (
     get_finished_game_summary,
 )
 from .statistics import build_player_statistics
-from .views import get_last_guess_result, parse_tracking_request
+from .views import build_summary_reveals, get_last_guess_result, parse_tracking_request
 
 
 class ScoringTests(TestCase):
@@ -629,6 +629,7 @@ class GuessSubmissionServiceTests(TestCase):
         self.assertEqual(result.guess.point.y, 47.05)
         self.assertAlmostEqual(result.guess.distance_to_municipality_m, 0, places=3)
         self.assertGreater(result.guess.distance_to_boundary_m, 0)
+        self.assertIsNotNone(result.guess.nearest_boundary_point)
         self.assertEqual(result.guess.score, 1000)
         self.assertIsNotNone(turns[0].revealed_at)
         self.assertEqual(game.total_score, 1000)
@@ -692,6 +693,7 @@ class GuessSubmissionServiceTests(TestCase):
         game.refresh_from_db()
         self.assertGreater(result.guess.distance_to_municipality_m, 0)
         self.assertGreater(result.guess.distance_to_boundary_m, 0)
+        self.assertIsNotNone(result.guess.nearest_boundary_point)
         self.assertLess(result.guess.score, 1000)
         self.assertGreaterEqual(result.guess.score, 0)
         self.assertEqual(game.total_score, result.guess.score)
@@ -1876,6 +1878,7 @@ class GameSummaryTests(TestCase):
                 point=Point(8.05, 47.05, srid=4326),
                 distance_to_municipality_m=distance,
                 distance_to_boundary_m=500 + index,
+                nearest_boundary_point=Point(8.0, 47.05, srid=4326),
                 score=score,
             )
         game.total_score = total_score
@@ -1945,6 +1948,18 @@ class GameSummaryTests(TestCase):
             self.assertEqual(reveal["score"], 1000 - (index * 100))
             self.assertIsInstance(reveal["targetId"], int)
         self.assertContains(response, '"turnNumber": 5')
+
+    def test_build_summary_reveals_uses_stored_boundary_point(self) -> None:
+        """Summary reveal payloads reuse persisted nearest boundary points."""
+        game = self.create_finished_game()
+        summary = get_finished_game_summary(self.user, game.id)
+
+        with patch("game.views.calculate_nearest_boundary_point") as calculate:
+            reveals = build_summary_reveals(summary)
+
+        calculate.assert_not_called()
+        self.assertEqual(reveals[0]["boundaryLat"], 47.05)
+        self.assertEqual(reveals[0]["boundaryLng"], 8.0)
 
     def test_summary_shows_guest_finished_game_results(self) -> None:
         """Guest players can view summaries for games owned by their guest key."""
