@@ -144,13 +144,90 @@
         </aside>
       </div>
     {% else %}
-      <div class="game-start-panel">
-        <span class="state-label">GemeindeGuess CH</span>
-        <h1>New game</h1>
-        <form method="post" action="{% url 'game:start' %}">
-          {% csrf_token %}
-          <button type="submit">Start</button>
-        </form>
+      <div class="game-layout">
+        <section class="map-panel" aria-label="Game preview map">
+          <p class="map-status" data-map-status role="status" aria-live="polite" aria-atomic="true"></p>
+          <div
+            id="game-map"
+            class="game-map"
+            data-center-lat="46.8182"
+            data-center-lng="8.2275"
+            data-zoom="8"
+            data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
+            data-canton-boundaries-url="{% url 'geo:cantons_geojson' %}"
+            data-municipality-boundaries-url="{% url 'geo:municipality_boundaries_geojson' %}"
+          ></div>
+        </section>
+
+        <aside class="game-sidebar game-entry-sidebar" aria-label="Start game">
+          <div class="hud-row" aria-label="Game setup">
+            <div>
+              <span>Rounds</span>
+              <strong>{{ turn_count }}</strong>
+            </div>
+            <div>
+              <span>Map</span>
+              <strong>CH</strong>
+            </div>
+          </div>
+
+          <section class="target-panel" aria-labelledby="start-heading">
+            <span class="state-label">GemeindeGuess CH</span>
+            <h1 id="start-heading">Start game</h1>
+          </section>
+
+          {% if request.user.is_authenticated %}
+            <form class="guess-form" method="post" action="{% url 'game:start' %}">
+              {% csrf_token %}
+              <button type="submit">Start</button>
+            </form>
+          {% else %}
+            <button type="button" class="button-link auth-choice-trigger" data-auth-modal-trigger>
+              Start
+            </button>
+            <div
+              class="auth-choice-backdrop"
+              data-auth-modal
+              {% if open_auth_choice_modal %}
+                data-auth-modal-open="true"
+              {% else %}
+                hidden
+              {% endif %}
+            >
+              <section
+                class="auth-choice-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="auth-choice-heading"
+              >
+                <button
+                  type="button"
+                  class="auth-choice-close"
+                  aria-label="Close"
+                  data-auth-modal-close
+                >
+                  &times;
+                </button>
+                <span class="state-label">Account optional</span>
+                <h2 id="auth-choice-heading">Start playing</h2>
+                <p>
+                  Play now in this browser, or sign in if you want future history
+                  and statistics.
+                </p>
+                <form class="guess-form" method="post" action="{% url 'game:start' %}">
+                  {% csrf_token %}
+                  <button type="submit" data-auth-primary>Play without account</button>
+                </form>
+                <div class="auth-choice-actions">
+                  <a class="button-link" href="{% url 'accounts:login' %}">Log in</a>
+                  <a class="button-link button-link-secondary" href="{% url 'accounts:register' %}">
+                    Create account
+                  </a>
+                </div>
+              </section>
+            </div>
+          {% endif %}
+        </aside>
       </div>
     {% endif %}
   </section>
@@ -164,6 +241,6 @@
       crossorigin="anonymous"
       defer
     ></script>
-    <script src="{% static 'js/game_map.js' %}?v=ui-polish-3" defer></script>
+    <script src="{% static 'js/game_map.js' %}?v=guest-entry-1" defer></script>
   {% endif %}
 {% endblock %}

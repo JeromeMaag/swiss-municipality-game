@@ -18,9 +18,16 @@ class TurnInline(admin.TabularInline):
 class GameAdmin(admin.ModelAdmin):
     """Admin configuration for games."""
 
-    list_display = ("id", "user", "status", "total_score", "started_at", "finished_at")
+    list_display = (
+        "id",
+        "owner_label",
+        "status",
+        "total_score",
+        "started_at",
+        "finished_at",
+    )
     list_filter = ("status", "started_at", "finished_at")
-    search_fields = ("user__username",)
+    search_fields = ("user__username", "guest_key")
     autocomplete_fields = ("user",)
     readonly_fields = ("started_at",)
     inlines = (TurnInline,)
@@ -44,12 +51,12 @@ class GuessAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "turn",
-        "user",
+        "owner_label",
         "distance_to_municipality_m",
         "score",
         "guessed_at",
     )
     list_filter = ("guessed_at",)
-    search_fields = ("user__username", "turn__target__name")
-    autocomplete_fields = ("turn", "user")
-    readonly_fields = ("guessed_at",)
+    search_fields = ("user__username", "guest_key", "turn__target__name")
+    autocomplete_fields = ("turn",)
+    readonly_fields = ("user", "guest_key", "guessed_at")

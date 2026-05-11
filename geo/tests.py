@@ -25,6 +25,7 @@ from shapely.geometry import Polygon
 
 from geo.admin_views import truncate_command_output
 from geo.constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
+from game.identity import GUEST_PLAYER_SESSION_KEY
 from game.models import Game, Turn
 from tests.utils import make_test_geometry
 
@@ -443,16 +444,27 @@ class GeoJSONEndpointTests(TestCase):
         self.assertEqual(response["Content-Type"], "application/geo+json")
         return json.loads(response.content)
 
-    def grant_label_access(self, *, revealed: bool = True) -> Turn:
+    def grant_label_access(
+        self,
+        *,
+        revealed: bool = True,
+        guest_key: str = "",
+    ) -> Turn:
         """Grant the test client session access to municipality labels.
 
         Args:
             revealed: Whether the linked turn has already been revealed.
+            guest_key: Optional guest key that owns the turn.
 
         Returns:
             The turn tied to the label access grant.
         """
-        game = Game.objects.create(user=self.user)
+        owner_fields = (
+            {"user": None, "guest_key": guest_key}
+            if guest_key
+            else {"user": self.user, "guest_key": ""}
+        )
+        game = Game.objects.create(**owner_fields)
         turn = Turn.objects.create(
             game=game,
             turn_number=1,
@@ -461,6 +473,8 @@ class GeoJSONEndpointTests(TestCase):
         )
         session = self.client.session
         session[MUNICIPALITY_LABEL_ACCESS_SESSION_KEY] = turn.id
+        if guest_key:
+            session[GUEST_PLAYER_SESSION_KEY] = guest_key
         session.save()
         return turn
 
@@ -475,22 +489,26 @@ class GeoJSONEndpointTests(TestCase):
         """
         return f"{reverse('geo:municipality_labels_geojson')}?turn={turn.id}"
 
-    def test_geojson_endpoints_require_login(self) -> None:
-        """Anonymous users are redirected away from all GeoJSON endpoints."""
+    def test_boundary_geojson_endpoints_are_public(self) -> None:
+        """Anonymous users can load non-sensitive boundary GeoJSON."""
         self.client.logout()
         urls = [
             reverse("geo:cantons_geojson"),
             reverse("geo:municipality_boundaries_geojson"),
-            reverse("geo:municipality_labels_geojson"),
         ]
 
         for url in urls:
             with self.subTest(url=url):
                 response = self.client.get(url)
-                self.assertEqual(response.status_code, 302)
-                self.assertTrue(
-                    response["Location"].startswith(reverse("accounts:login"))
-                )
+                self.assert_geojson_response(response)
+
+    def test_municipality_labels_require_owner_session(self) -> None:
+        """Anonymous users cannot access labels without an owning session."""
+        self.client.logout()
+
+        response = self.client.get(reverse("geo:municipality_labels_geojson"))
+
+        self.assertEqual(response.status_code, 404)
 
     def test_canton_boundaries_returns_feature_collection(self) -> None:
         """Canton boundary endpoint returns canton properties and geometry."""
@@ -528,6 +546,17 @@ class GeoJSONEndpointTests(TestCase):
         self.assertEqual(feature["properties"]["id"], self.municipality.id)
         self.assertEqual(feature["properties"]["name"], "Zurich")
         self.assertNotIn("canton_abbreviation", feature["properties"])
+
+    def test_municipality_labels_allow_guest_reveal_access(self) -> None:
+        """Guest players can load labels for their own revealed turn."""
+        self.client.logout()
+        turn = self.grant_label_access(guest_key="guest-label-key")
+
+        response = self.client.get(self.municipality_labels_url(turn))
+        data = self.assert_geojson_response(response)
+
+        self.assertEqual(len(data["features"]), 1)
+        self.assertEqual(data["features"][0]["properties"]["name"], "Zurich")
 
     def test_municipality_labels_skip_missing_label_points(self) -> None:
         """Municipality label endpoint omits municipalities without label points."""
@@ -581,14 +610,16 @@ class GeoJSONEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 404)
 
-    def test_boundary_responses_require_browser_revalidation(self) -> None:
-        """Boundary endpoints use ETags without allowing stale browser reuse."""
+    def test_boundary_responses_are_publicly_cacheable(self) -> None:
+        """Boundary endpoints allow browser and CDN caching."""
         response = self.client.get(reverse("geo:municipality_boundaries_geojson"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("private", response["Cache-Control"])
-        self.assertIn("no-cache", response["Cache-Control"])
-        self.assertIn("max-age=0", response["Cache-Control"])
+        self.assertIn("public", response["Cache-Control"])
+        self.assertIn("max-age=300", response["Cache-Control"])
+        self.assertIn("stale-while-revalidate=3600", response["Cache-Control"])
+        self.assertNotIn("private", response["Cache-Control"])
+        self.assertNotIn("no-cache", response["Cache-Control"])
         self.assertIn("ETag", response)
 
     def test_boundary_responses_support_conditional_gets(self) -> None:
@@ -603,6 +634,8 @@ class GeoJSONEndpointTests(TestCase):
 
         self.assertEqual(cached_response.status_code, 304)
         self.assertEqual(cached_response["ETag"], etag)
+        self.assertIn("public", cached_response["Cache-Control"])
+        self.assertIn("max-age=300", cached_response["Cache-Control"])
 
     def test_boundary_conditional_get_accepts_etag_lists_and_wildcards(self) -> None:
         """Boundary endpoints handle common If-None-Match header formats."""

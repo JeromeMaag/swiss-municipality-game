@@ -2,7 +2,6 @@
 
 import hashlib
 
-from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.http import Http404, HttpResponse, HttpResponseNotModified
 from django.utils.cache import patch_cache_control
@@ -25,11 +24,12 @@ from .serializers import (
 
 GEOJSON_CONTENT_TYPE = "application/geo+json"
 GEOJSON_CACHE_SECONDS = 60 * 60
+GEOJSON_PUBLIC_CACHE_SECONDS = 5 * 60
 EMPTY_FEATURE_COLLECTION = '{"type":"FeatureCollection","features":[]}'
 
 
 def geojson_response(data: str, etag: str = "") -> HttpResponse:
-    """Return a GeoJSON response.
+    """Return a publicly cacheable GeoJSON response.
 
     Args:
         data: Serialized GeoJSON response data.
@@ -41,7 +41,12 @@ def geojson_response(data: str, etag: str = "") -> HttpResponse:
     response = HttpResponse(data, content_type=GEOJSON_CONTENT_TYPE)
     if etag:
         response["ETag"] = etag
-    patch_cache_control(response, private=True, no_cache=True, max_age=0)
+    patch_cache_control(
+        response,
+        public=True,
+        max_age=GEOJSON_PUBLIC_CACHE_SECONDS,
+        stale_while_revalidate=GEOJSON_CACHE_SECONDS,
+    )
     return response
 
 
@@ -122,7 +127,12 @@ def cached_geojson_response(request, name: str, data_builder) -> HttpResponse:
     etag = etag_for_cache_key(cache_key)
     if request_etag_matches(request, etag):
         response = HttpResponseNotModified(headers={"ETag": etag})
-        patch_cache_control(response, private=True, no_cache=True, max_age=0)
+        patch_cache_control(
+            response,
+            public=True,
+            max_age=GEOJSON_PUBLIC_CACHE_SECONDS,
+            stale_while_revalidate=GEOJSON_CACHE_SECONDS,
+        )
         return response
 
     data = cache.get(cache_key)
@@ -160,7 +170,6 @@ def server_cached_geojson_response(name: str, data_builder) -> HttpResponse:
     return no_store_geojson_response(data)
 
 
-@login_required
 @require_GET
 def canton_boundaries(request):
     """Return current canton boundaries as GeoJSON.
@@ -180,7 +189,6 @@ def canton_boundaries(request):
     )
 
 
-@login_required
 @require_GET
 def municipality_boundaries(request):
     """Return current municipality boundaries without municipality names.
@@ -200,7 +208,6 @@ def municipality_boundaries(request):
     )
 
 
-@login_required
 @require_GET
 def municipality_labels(request):
     """Return current municipality label points for reveal mode.
@@ -221,13 +228,14 @@ def municipality_labels(request):
 
 
 def require_municipality_label_access(request) -> None:
-    """Require a revealed turn grant before returning municipality labels.
+    """Require a revealed turn grant for the current player identity.
 
     Args:
         request: The incoming HTTP request.
 
     Raises:
-        Http404: If the request is not tied to the current user's revealed turn.
+        Http404: If the request is not tied to the owning user or guest's
+            revealed turn.
     """
     raw_turn_id = request.GET.get("turn", "")
     try:
@@ -240,11 +248,16 @@ def require_municipality_label_access(request) -> None:
     if request.session.get(MUNICIPALITY_LABEL_ACCESS_SESSION_KEY) != turn_id:
         raise Http404("Municipality labels not found.")
 
+    from game.identity import get_player_identity
     from game.models import Turn
 
+    player = get_player_identity(request)
+    if not player.can_own_games:
+        raise Http404("Municipality labels not found.")
+
     if not Turn.objects.filter(
+        player.owner_query("game"),
         pk=turn_id,
-        game__user=request.user,
         revealed_at__isnull=False,
     ).exists():
         raise Http404("Municipality labels not found.")
