@@ -477,6 +477,10 @@ a {
   width: 100%;
 }
 
+.guest-start-form[hidden] {
+  display: none;
+}
+
 .guess-form button:disabled {
   background: rgba(255, 255, 255, 0.16);
   color: rgba(255, 255, 255, 0.42);
@@ -550,6 +554,10 @@ a {
 
 .auth-choice-modal .button-link-secondary:hover {
   background: rgba(255, 255, 255, 0.12);
+}
+
+.auth-choice-modal > button:not(.auth-choice-close) {
+  width: 100%;
 }
 
 .auth-choice-close {
@@ -757,15 +765,30 @@ a {
   padding-top: 0.42rem;
 }
 
-.summary-start-form {
+.summary-action-grid {
   align-self: end;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.summary-start-form {
   display: grid;
   margin: 0;
 }
 
-.summary-start-form button {
+.summary-start-form button,
+.summary-action-grid .button-link {
   min-height: 3rem;
   width: 100%;
+}
+
+.summary-action-grid .button-link-secondary {
+  border-color: var(--panel-border);
+  color: #ffffff;
+}
+
+.summary-action-grid .button-link-secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .history-panel {

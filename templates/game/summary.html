@@ -49,10 +49,15 @@
           {% include "game/includes/summary_round_list.html" %}
         </section>
 
-        <form class="summary-start-form" method="post" action="{% url 'game:start' %}">
-          {% csrf_token %}
-          <button type="submit">New game</button>
-        </form>
+        <div class="summary-action-grid">
+          <form class="summary-start-form" method="post" action="{% url 'game:start' %}">
+            {% csrf_token %}
+            <button type="submit">Play again</button>
+          </form>
+          <a class="button-link button-link-secondary" href="{% url 'game:index' %}">
+            Change game mode
+          </a>
+        </div>
       </aside>
     </div>
     {{ summary_reveals|json_script:"game-summary-reveals" }}

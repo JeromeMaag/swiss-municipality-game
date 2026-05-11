@@ -252,6 +252,16 @@
             <button type="button" class="button-link auth-choice-trigger" data-auth-modal-trigger>
               Start
             </button>
+            <form
+              class="guess-form guest-start-form"
+              method="post"
+              action="{% url 'game:start' %}"
+              data-guest-start-form
+              hidden
+            >
+              {% csrf_token %}
+              <button type="submit">Start</button>
+            </form>
             <div
               class="auth-choice-backdrop"
               data-auth-modal
@@ -281,10 +291,9 @@
                   Play now in this browser, or sign in if you want future history
                   and statistics.
                 </p>
-                <form class="guess-form" method="post" action="{% url 'game:start' %}">
-                  {% csrf_token %}
-                  <button type="submit" data-auth-primary>Play without account</button>
-                </form>
+                <button type="button" data-auth-primary data-guest-mode-choice>
+                  Play without account
+                </button>
                 <div class="auth-choice-actions">
                   <a class="button-link" href="{% url 'accounts:login' %}">Log in</a>
                   <a class="button-link button-link-secondary" href="{% url 'accounts:register' %}">

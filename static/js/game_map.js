@@ -723,6 +723,9 @@
     }
 
     const closeButtons = modal.querySelectorAll("[data-auth-modal-close]");
+    const guestModeChoice = modal.querySelector("[data-guest-mode-choice]");
+    const guestStartForm = document.querySelector("[data-guest-start-form]");
+    const modePicker = document.querySelector("[data-game-mode-picker]");
     let returnFocusElement = trigger;
 
     function modalFocusableElements() {
@@ -751,10 +754,33 @@
       }
     }
 
+    function showGuestModePicker() {
+      modal.hidden = true;
+      trigger.hidden = true;
+      if (guestStartForm) {
+        guestStartForm.hidden = false;
+      }
+
+      const firstModeChoice = modePicker
+        ? modePicker.querySelector("[data-mode-choice]")
+        : null;
+      if (firstModeChoice) {
+        firstModeChoice.focus();
+      } else if (guestStartForm) {
+        const submitButton = guestStartForm.querySelector("button");
+        if (submitButton) {
+          submitButton.focus();
+        }
+      }
+    }
+
     trigger.addEventListener("click", openModal);
     closeButtons.forEach(function (button) {
       button.addEventListener("click", closeModal);
     });
+    if (guestModeChoice) {
+      guestModeChoice.addEventListener("click", showGuestModePicker);
+    }
     modal.addEventListener("click", function (event) {
       if (event.target === modal) {
         closeModal();
