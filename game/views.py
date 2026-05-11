@@ -530,8 +530,8 @@ def render_game_index(
             ).name
     if last_guess is not None:
         boundary_point = nearest_boundary_point_for_guess(last_guess)
-        reveal_boundary_lat = f"{boundary_point.y:.6f}"
-        reveal_boundary_lng = f"{boundary_point.x:.6f}"
+        reveal_boundary_lat = str(boundary_point.y)
+        reveal_boundary_lng = str(boundary_point.x)
         reveal_guess_lat = f"{last_guess.point.y:.6f}"
         reveal_guess_lng = f"{last_guess.point.x:.6f}"
         request.session[MUNICIPALITY_LABEL_ACCESS_SESSION_KEY] = last_guess.turn_id

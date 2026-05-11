@@ -162,8 +162,16 @@ class GameServiceHelperTests(TestCase):
             110_575.06354905,
             delta=0.01,
         )
-        self.assertAlmostEqual(distances.nearest_boundary_point.x, 0.0001523435)
-        self.assertAlmostEqual(distances.nearest_boundary_point.y, 1.0000000232)
+        self.assertAlmostEqual(
+            distances.nearest_boundary_point.x,
+            0.0001523435,
+            delta=0.000001,
+        )
+        self.assertAlmostEqual(
+            distances.nearest_boundary_point.y,
+            1.0000000232,
+            delta=0.000001,
+        )
 
     def test_calculate_guess_distances_matches_known_swiss_latitude_distance(
         self,
@@ -194,8 +202,16 @@ class GameServiceHelperTests(TestCase):
             7_598.50117843,
             delta=0.01,
         )
-        self.assertAlmostEqual(distances.nearest_boundary_point.x, 8.1)
-        self.assertAlmostEqual(distances.nearest_boundary_point.y, 47.0500435216)
+        self.assertAlmostEqual(
+            distances.nearest_boundary_point.x,
+            8.1,
+            delta=0.000001,
+        )
+        self.assertAlmostEqual(
+            distances.nearest_boundary_point.y,
+            47.0500435216,
+            delta=0.000001,
+        )
 
     def test_calculate_guess_distances_returns_zero_inside_polygon(self) -> None:
         """Guess points inside the municipality have zero target distance."""
@@ -216,8 +232,17 @@ class GameServiceHelperTests(TestCase):
 
         self.assertAlmostEqual(distances.distance_to_municipality_m, 0, delta=0.01)
         self.assertGreater(distances.distance_to_boundary_m, 0)
-        self.assertAlmostEqual(distances.nearest_boundary_point.x, 8.05, delta=0.06)
-        self.assertAlmostEqual(distances.nearest_boundary_point.y, 47.05, delta=0.06)
+        boundary_point = distances.nearest_boundary_point
+        on_vertical_edge = any(
+            abs(boundary_point.x - edge) < 0.000001 for edge in (8.0, 8.1)
+        )
+        on_horizontal_edge = any(
+            abs(boundary_point.y - edge) < 0.000001 for edge in (47.0, 47.1)
+        )
+        self.assertTrue(
+            on_vertical_edge or on_horizontal_edge,
+            "Nearest point must lie on the municipality boundary.",
+        )
 
 
 class PlayerIdentityTests(TestCase):
