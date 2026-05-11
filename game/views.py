@@ -246,13 +246,14 @@ def build_summary_reveals(game: Game) -> list[dict]:
     """Return map reveal data for every guessed turn in a finished game.
 
     Args:
-        game: Finished game with prefetched turns and guesses.
+        game: Finished game with turns and guesses prefetched. Ordering is
+            enforced in memory so callers do not need to re-query.
 
     Returns:
         JSON-serializable reveal data for the summary map.
     """
     reveals = []
-    for turn in game.turns.all():
+    for turn in sorted(game.turns.all(), key=lambda turn: turn.turn_number):
         try:
             guess = turn.guess
         except Guess.DoesNotExist:

@@ -1458,6 +1458,19 @@ class GameSummaryTests(TestCase):
         self.assertNotContains(response, "Distance to municipality")
         self.assertNotContains(response, "Distance to boundary")
         self.assertContains(response, "Summary Municipality 5")
+        reveals = response.context["summary_reveals"]
+        self.assertEqual(len(reveals), 5)
+        self.assertEqual([reveal["turnNumber"] for reveal in reveals], [1, 2, 3, 4, 5])
+        for index, reveal in enumerate(reveals):
+            self.assertEqual(
+                set(reveal),
+                {"distance", "lat", "lng", "score", "targetId", "turnNumber"},
+            )
+            self.assertEqual(reveal["lat"], 47.05)
+            self.assertEqual(reveal["lng"], 8.05)
+            self.assertEqual(reveal["distance"], index * 1000)
+            self.assertEqual(reveal["score"], 1000 - (index * 100))
+            self.assertIsInstance(reveal["targetId"], int)
         self.assertContains(response, '"turnNumber": 5')
 
     def test_summary_rejects_other_users_game(self) -> None:

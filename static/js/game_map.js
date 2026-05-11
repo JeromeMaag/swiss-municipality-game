@@ -321,20 +321,33 @@
       rawReveals = [];
     }
 
-    const reveals = rawReveals
+    const reveals = (Array.isArray(rawReveals) ? rawReveals : [])
       .map(function (reveal) {
+        if (!reveal || typeof reveal !== "object") {
+          return null;
+        }
         const latitude = Number.parseFloat(reveal.lat);
         const longitude = Number.parseFloat(reveal.lng);
+        const distance = Number.parseFloat(reveal.distance);
+        const score = Number.parseInt(reveal.score, 10);
+        const turnNumber = Number.parseInt(reveal.turnNumber, 10);
         const targetId = reveal.targetId;
-        if (!targetId || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        if (
+          !targetId ||
+          !Number.isFinite(latitude) ||
+          !Number.isFinite(longitude) ||
+          !Number.isFinite(distance) ||
+          !Number.isInteger(score) ||
+          !Number.isInteger(turnNumber)
+        ) {
           return null;
         }
         return {
-          distance: Number.parseFloat(reveal.distance) || 0,
+          distance: distance,
           latlng: window.L.latLng(latitude, longitude),
-          score: Number.parseInt(reveal.score, 10) || 0,
+          score: score,
           targetId: String(targetId),
-          turnNumber: Number.parseInt(reveal.turnNumber, 10) || 0,
+          turnNumber: turnNumber,
         };
       })
       .filter(Boolean);
