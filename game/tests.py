@@ -1060,6 +1060,11 @@ class GameStartTests(TestCase):
         self.assertContains(response, "wmts.geo.admin.ch")
         self.assertContains(response, "Start game")
         self.assertContains(response, "Start")
+        self.assertContains(response, "Map setup")
+        self.assertContains(response, "Switzerland")
+        self.assertContains(response, "Single canton")
+        self.assertContains(response, "Zurich")
+        self.assertContains(response, "data-game-mode-picker")
         self.assertContains(response, reverse("game:start"))
 
     def test_game_index_shows_auth_prompt_for_anonymous_users(self) -> None:
@@ -1070,6 +1075,8 @@ class GameStartTests(TestCase):
         self.assertTemplateUsed(response, "game/index.html")
         self.assertContains(response, 'id="game-map"')
         self.assertContains(response, "Start game")
+        self.assertContains(response, "Map setup")
+        self.assertContains(response, "Single canton")
         self.assertContains(response, reverse("geo:cantons_geojson"))
         self.assertContains(response, reverse("geo:municipality_boundaries_geojson"))
         self.assertContains(response, "Play without account")

@@ -169,13 +169,78 @@
             </div>
             <div>
               <span>Map</span>
-              <strong>CH</strong>
+              <strong data-game-mode-map-label>CH</strong>
             </div>
           </div>
 
           <section class="target-panel" aria-labelledby="start-heading">
             <span class="state-label">GemeindeGuess CH</span>
             <h1 id="start-heading">Start game</h1>
+          </section>
+
+          <section class="mode-panel" aria-labelledby="mode-heading" data-game-mode-picker>
+            <div class="mode-panel-heading">
+              <span class="state-label">Mode</span>
+              <strong id="mode-heading">Map setup</strong>
+            </div>
+            <div class="mode-option-list" role="radiogroup" aria-labelledby="mode-heading">
+              <label class="mode-option">
+                <input
+                  type="radio"
+                  name="game_mode_preview"
+                  value="switzerland"
+                  checked
+                  data-mode-choice
+                >
+                <span>
+                  <strong>Switzerland</strong>
+                  <small>CH</small>
+                </span>
+              </label>
+              <label class="mode-option">
+                <input
+                  type="radio"
+                  name="game_mode_preview"
+                  value="canton"
+                  data-mode-choice
+                >
+                <span>
+                  <strong>Single canton</strong>
+                  <small data-selected-canton-label>ZH</small>
+                </span>
+              </label>
+            </div>
+            <label class="canton-picker">
+              <span>Canton</span>
+              <select data-canton-select disabled>
+                <option value="ZH">Zurich</option>
+                <option value="BE">Bern</option>
+                <option value="LU">Lucerne</option>
+                <option value="UR">Uri</option>
+                <option value="SZ">Schwyz</option>
+                <option value="OW">Obwalden</option>
+                <option value="NW">Nidwalden</option>
+                <option value="GL">Glarus</option>
+                <option value="ZG">Zug</option>
+                <option value="FR">Fribourg</option>
+                <option value="SO">Solothurn</option>
+                <option value="BS">Basel-Stadt</option>
+                <option value="BL">Basel-Landschaft</option>
+                <option value="SH">Schaffhausen</option>
+                <option value="AR">Appenzell Ausserrhoden</option>
+                <option value="AI">Appenzell Innerrhoden</option>
+                <option value="SG">St. Gallen</option>
+                <option value="GR">Graubunden</option>
+                <option value="AG">Aargau</option>
+                <option value="TG">Thurgau</option>
+                <option value="TI">Ticino</option>
+                <option value="VD">Vaud</option>
+                <option value="VS">Valais</option>
+                <option value="NE">Neuchatel</option>
+                <option value="GE">Geneva</option>
+                <option value="JU">Jura</option>
+              </select>
+            </label>
           </section>
 
           {% if request.user.is_authenticated %}

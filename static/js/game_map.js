@@ -802,8 +802,48 @@
     }
   }
 
+  function initializeGameModePicker() {
+    const picker = document.querySelector("[data-game-mode-picker]");
+    if (!picker) {
+      return;
+    }
+
+    const modeChoices = picker.querySelectorAll("[data-mode-choice]");
+    const cantonSelect = picker.querySelector("[data-canton-select]");
+    const selectedCantonLabel = picker.querySelector("[data-selected-canton-label]");
+    const mapLabel = document.querySelector("[data-game-mode-map-label]");
+    if (!modeChoices.length || !cantonSelect) {
+      return;
+    }
+
+    function selectedMode() {
+      const checkedChoice = picker.querySelector("[data-mode-choice]:checked");
+      return checkedChoice ? checkedChoice.value : "switzerland";
+    }
+
+    function updateModePreview() {
+      const cantonMode = selectedMode() === "canton";
+      const cantonCode = cantonSelect.value || "ZH";
+
+      cantonSelect.disabled = !cantonMode;
+      if (selectedCantonLabel) {
+        selectedCantonLabel.textContent = cantonCode;
+      }
+      if (mapLabel) {
+        mapLabel.textContent = cantonMode ? cantonCode : "CH";
+      }
+    }
+
+    modeChoices.forEach(function (choice) {
+      choice.addEventListener("change", updateModePreview);
+    });
+    cantonSelect.addEventListener("change", updateModePreview);
+    updateModePreview();
+  }
+
   function initializePage() {
     initializeGameMap();
+    initializeGameModePicker();
     initializeAuthChoiceModal();
   }
 
