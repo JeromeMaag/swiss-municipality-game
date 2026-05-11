@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}History - GemeindeGuess CH{% endblock %}
+{% block body_class %}game-page{% endblock %}
+
+{% block extra_head %}
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin="anonymous"
+  >
+{% endblock %}
+
+{% block content %}
+  <section class="game-panel game-shell">
+    <div class="game-layout">
+      <section class="map-panel" aria-label="Game history map">
+        <p class="map-status" data-map-status role="status" aria-live="polite" aria-atomic="true"></p>
+        <div
+          id="game-map"
+          class="game-map"
+          data-center-lat="46.8182"
+          data-center-lng="8.2275"
+          data-zoom="8"
+          data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
+          data-canton-boundaries-url="{% url 'geo:cantons_geojson' %}"
+          data-municipality-boundaries-url="{% url 'geo:municipality_boundaries_geojson' %}"
+          {% if selected_game %}
+            data-summary-map="true"
+          {% endif %}
+        ></div>
+      </section>
+
+      <aside class="game-sidebar history-sidebar" aria-label="Game history">
+        {% if selected_game %}
+          <div class="hud-row" aria-label="Selected game result">
+            <div>
+              <span>Score</span>
+              <strong>{{ selected_game.total_score }}</strong>
+            </div>
+            <div>
+              <span>Map</span>
+              <strong>{{ map_label }}</strong>
+            </div>
+          </div>
+
+          <section class="target-panel result-panel summary-results" aria-labelledby="history-detail-heading">
+            <span class="state-label">
+              {{ selected_game.finished_at|date:"M j, Y" }}
+            </span>
+            <h1 id="history-detail-heading">Game result</h1>
+            {% include "game/includes/summary_round_list.html" with game=selected_game %}
+          </section>
+
+          <a class="button-link" href="{% url 'game:history' %}">
+            Back to history
+          </a>
+        {% else %}
+          <div class="hud-row" aria-label="History statistics">
+            <div>
+              <span>Games</span>
+              <strong>{{ history_stats.played }}</strong>
+            </div>
+            <div>
+              <span>Best</span>
+              <strong>{{ history_stats.best_score }}</strong>
+            </div>
+          </div>
+
+          <section class="target-panel history-panel" aria-labelledby="history-heading">
+            <span class="state-label">Personal statistics</span>
+            <h1 id="history-heading">History</h1>
+            {% if history_games %}
+              <ol class="history-game-list">
+                {% for game in history_games %}
+                  <li>
+                    <a class="history-game-card" href="{% url 'game:history_detail' game.id %}">
+                      <header>
+                        <strong>{{ game.finished_at|date:"M j, Y" }}</strong>
+                        <span>{{ game.finished_at|date:"H:i" }}</span>
+                      </header>
+                      <dl>
+                        <div>
+                          <dt>Score</dt>
+                          <dd>{{ game.total_score }}</dd>
+                        </div>
+                        <div>
+                          <dt>Map</dt>
+                          <dd>{{ map_label }}</dd>
+                        </div>
+                      </dl>
+                    </a>
+                  </li>
+                {% endfor %}
+              </ol>
+            {% else %}
+              <div class="history-empty">
+                <p>No finished games yet.</p>
+                <a class="button-link" href="{% url 'game:index' %}">Start game</a>
+              </div>
+            {% endif %}
+          </section>
+        {% endif %}
+      </aside>
+    </div>
+    {% if selected_game %}
+      {{ summary_reveals|json_script:"game-summary-reveals" }}
+    {% endif %}
+  </section>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin="anonymous"
+    defer
+  ></script>
+  <script src="{% static 'js/game_map.js' %}?v=history-1" defer></script>
+{% endblock %}

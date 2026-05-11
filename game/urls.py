@@ -11,6 +11,8 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("start/", views.start, name="start"),
     path("guess/", views.guess, name="guess"),
+    path("history/", views.history, name="history"),
+    path("history/<int:game_id>/", views.history, name="history_detail"),
     path(
         "api/turn/<int:turn_id>/event/",
         views.track_turn_event,

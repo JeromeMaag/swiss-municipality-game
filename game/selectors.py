@@ -1,6 +1,6 @@
 """Query helpers for game views and services."""
 
-from django.db.models import Prefetch
+from django.db.models import Prefetch, QuerySet
 
 from .identity import PlayerIdentity
 from .models import Game, Turn
@@ -60,6 +60,30 @@ def get_finished_game_summary(user, game_id: int) -> Game | None:
         None when the game does not exist or is not available for summaries.
     """
     return get_finished_game_summary_for_player(PlayerIdentity.for_user(user), game_id)
+
+
+def get_finished_games_for_player(player: PlayerIdentity) -> QuerySet[Game]:
+    """Return finished games for a player ordered by newest first.
+
+    Args:
+        player: User or guest identity whose finished games should be returned.
+
+    Returns:
+        QuerySet of finished games owned by the player.
+    """
+    return (
+        Game.objects.filter(player.owner_query(), status=Game.Status.FINISHED)
+        .only(
+            "id",
+            "user",
+            "guest_key",
+            "status",
+            "total_score",
+            "started_at",
+            "finished_at",
+        )
+        .order_by("-finished_at", "-id")
+    )
 
 
 def get_finished_game_summary_for_player(

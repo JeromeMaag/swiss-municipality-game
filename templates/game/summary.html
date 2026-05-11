@@ -46,38 +46,7 @@
         <section class="target-panel result-panel summary-results" aria-labelledby="summary-heading">
           <span class="state-label">Summary</span>
           <h1 id="summary-heading">Game result</h1>
-          <ol class="summary-round-list">
-            {% for turn in game.turns.all %}
-              <li>
-                <article class="summary-round-card">
-                  <header>
-                    <span>{{ turn.turn_number }}</span>
-                    <strong>{{ turn.target.name }}</strong>
-                  </header>
-                  <dl class="result-list">
-                    <div class="result-list-primary">
-                      <dt>Score</dt>
-                      <dd>{{ turn.guess.score }}</dd>
-                    </div>
-                    <div>
-                      <dt>Distance</dt>
-                      <dd>{{ turn.guess.distance_to_municipality_m|floatformat:0 }} m</dd>
-                    </div>
-                    <div>
-                      <dt>Canton</dt>
-                      <dd>{{ turn.target.canton.abbreviation }}</dd>
-                    </div>
-                    {% if turn.target.population is not None %}
-                      <div>
-                        <dt>Population</dt>
-                        <dd>{{ turn.target.population }}</dd>
-                      </div>
-                    {% endif %}
-                  </dl>
-                </article>
-              </li>
-            {% endfor %}
-          </ol>
+          {% include "game/includes/summary_round_list.html" %}
         </section>
 
         <form class="summary-start-form" method="post" action="{% url 'game:start' %}">
@@ -97,5 +66,5 @@
     crossorigin="anonymous"
     defer
   ></script>
-  <script src="{% static 'js/game_map.js' %}?v=guest-entry-1" defer></script>
+  <script src="{% static 'js/game_map.js' %}?v=history-1" defer></script>
 {% endblock %}
