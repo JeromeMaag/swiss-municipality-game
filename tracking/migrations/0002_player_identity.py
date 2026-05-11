@@ -38,7 +38,7 @@ class Migration(migrations.Migration):
             model_name="gameevent",
             index=models.Index(
                 fields=["session_key", "created_at"],
-                name="tracking_ga_session_2d5_idx",
+                name="event_session_created_idx",
             ),
         ),
         migrations.AddConstraint(

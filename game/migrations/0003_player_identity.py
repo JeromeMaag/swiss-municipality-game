@@ -62,14 +62,14 @@ class Migration(migrations.Migration):
             model_name="game",
             index=models.Index(
                 fields=["session_key", "status"],
-                name="game_game_session_7b9f_idx",
+                name="game_session_status_idx",
             ),
         ),
         migrations.AddIndex(
             model_name="guess",
             index=models.Index(
                 fields=["session_key", "guessed_at"],
-                name="game_guess_session_9c31_idx",
+                name="guess_session_guessed_idx",
             ),
         ),
         migrations.AddConstraint(

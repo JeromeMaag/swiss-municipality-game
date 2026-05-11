@@ -60,7 +60,10 @@ class GameEvent(models.Model):
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["user", "created_at"]),
-            models.Index(fields=["session_key", "created_at"]),
+            models.Index(
+                fields=["session_key", "created_at"],
+                name="event_session_created_idx",
+            ),
             models.Index(fields=["event_type", "created_at"]),
         ]
         constraints = [

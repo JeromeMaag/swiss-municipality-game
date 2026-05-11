@@ -47,7 +47,10 @@ class Game(models.Model):
         ordering = ["-started_at"]
         indexes = [
             models.Index(fields=["user", "status"]),
-            models.Index(fields=["session_key", "status"]),
+            models.Index(
+                fields=["session_key", "status"],
+                name="game_session_status_idx",
+            ),
             models.Index(fields=["status", "started_at"]),
         ]
         constraints = [
@@ -205,7 +208,10 @@ class Guess(models.Model):
         verbose_name_plural = "guesses"
         indexes = [
             models.Index(fields=["user", "guessed_at"]),
-            models.Index(fields=["session_key", "guessed_at"]),
+            models.Index(
+                fields=["session_key", "guessed_at"],
+                name="guess_session_guessed_idx",
+            ),
         ]
         constraints = [
             models.CheckConstraint(

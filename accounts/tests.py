@@ -141,17 +141,20 @@ class AuthFlowTests(TestCase):
         post_response = self.client.post(reverse("accounts:logout"))
 
         self.assertEqual(get_response.status_code, 405)
-        self.assertRedirects(post_response, reverse("home"))
+        self.assertRedirects(
+            post_response,
+            reverse("home"),
+            fetch_redirect_response=False,
+        )
         self.assertNotIn("_auth_user_id", self.client.session)
 
-    def test_game_index_requires_login(self) -> None:
-        """Game index redirects anonymous users to login."""
+    def test_game_index_allows_anonymous_entry(self) -> None:
+        """Anonymous users can enter the game shell."""
         response = self.client.get(reverse("game:index"))
 
-        self.assertRedirects(
-            response,
-            f"{reverse('accounts:login')}?next={reverse('game:index')}",
-        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "game/index.html")
+        self.assertContains(response, "Play without account")
 
 
 class AuthCsrfTests(TestCase):
