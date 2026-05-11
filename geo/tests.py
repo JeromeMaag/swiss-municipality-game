@@ -610,14 +610,16 @@ class GeoJSONEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 404)
 
-    def test_boundary_responses_require_browser_revalidation(self) -> None:
-        """Boundary endpoints use ETags without allowing stale browser reuse."""
+    def test_boundary_responses_are_publicly_cacheable(self) -> None:
+        """Boundary endpoints allow browser and CDN caching."""
         response = self.client.get(reverse("geo:municipality_boundaries_geojson"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("private", response["Cache-Control"])
-        self.assertIn("no-cache", response["Cache-Control"])
-        self.assertIn("max-age=0", response["Cache-Control"])
+        self.assertIn("public", response["Cache-Control"])
+        self.assertIn("max-age=300", response["Cache-Control"])
+        self.assertIn("stale-while-revalidate=3600", response["Cache-Control"])
+        self.assertNotIn("private", response["Cache-Control"])
+        self.assertNotIn("no-cache", response["Cache-Control"])
         self.assertIn("ETag", response)
 
     def test_boundary_responses_support_conditional_gets(self) -> None:
@@ -632,6 +634,8 @@ class GeoJSONEndpointTests(TestCase):
 
         self.assertEqual(cached_response.status_code, 304)
         self.assertEqual(cached_response["ETag"], etag)
+        self.assertIn("public", cached_response["Cache-Control"])
+        self.assertIn("max-age=300", cached_response["Cache-Control"])
 
     def test_boundary_conditional_get_accepts_etag_lists_and_wildcards(self) -> None:
         """Boundary endpoints handle common If-None-Match header formats."""

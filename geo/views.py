@@ -24,11 +24,12 @@ from .serializers import (
 
 GEOJSON_CONTENT_TYPE = "application/geo+json"
 GEOJSON_CACHE_SECONDS = 60 * 60
+GEOJSON_PUBLIC_CACHE_SECONDS = 5 * 60
 EMPTY_FEATURE_COLLECTION = '{"type":"FeatureCollection","features":[]}'
 
 
 def geojson_response(data: str, etag: str = "") -> HttpResponse:
-    """Return a GeoJSON response.
+    """Return a publicly cacheable GeoJSON response.
 
     Args:
         data: Serialized GeoJSON response data.
@@ -40,7 +41,12 @@ def geojson_response(data: str, etag: str = "") -> HttpResponse:
     response = HttpResponse(data, content_type=GEOJSON_CONTENT_TYPE)
     if etag:
         response["ETag"] = etag
-    patch_cache_control(response, private=True, no_cache=True, max_age=0)
+    patch_cache_control(
+        response,
+        public=True,
+        max_age=GEOJSON_PUBLIC_CACHE_SECONDS,
+        stale_while_revalidate=GEOJSON_CACHE_SECONDS,
+    )
     return response
 
 
@@ -121,7 +127,12 @@ def cached_geojson_response(request, name: str, data_builder) -> HttpResponse:
     etag = etag_for_cache_key(cache_key)
     if request_etag_matches(request, etag):
         response = HttpResponseNotModified(headers={"ETag": etag})
-        patch_cache_control(response, private=True, no_cache=True, max_age=0)
+        patch_cache_control(
+            response,
+            public=True,
+            max_age=GEOJSON_PUBLIC_CACHE_SECONDS,
+            stale_while_revalidate=GEOJSON_CACHE_SECONDS,
+        )
         return response
 
     data = cache.get(cache_key)
@@ -217,13 +228,14 @@ def municipality_labels(request):
 
 
 def require_municipality_label_access(request) -> None:
-    """Require a revealed turn grant before returning municipality labels.
+    """Require a revealed turn grant for the current player identity.
 
     Args:
         request: The incoming HTTP request.
 
     Raises:
-        Http404: If the request is not tied to the current user's revealed turn.
+        Http404: If the request is not tied to the owning user or guest's
+            revealed turn.
     """
     raw_turn_id = request.GET.get("turn", "")
     try:
