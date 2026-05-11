@@ -26,6 +26,7 @@ class GameEvent(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         blank=True,
+        editable=False,
         null=True,
         on_delete=models.CASCADE,
         related_name="game_events",
@@ -34,6 +35,7 @@ class GameEvent(models.Model):
         max_length=32,
         blank=True,
         default="",
+        editable=False,
     )
     game = models.ForeignKey(
         "game.Game",
@@ -91,6 +93,23 @@ class GameEvent(models.Model):
         if self.guest_key:
             return f"guest {self.guest_key[:8]}"
         return "unowned player"
+
+    def sync_owner_from_relationships(self) -> None:
+        """Derive the event owner from linked turn or game relationships."""
+        game = None
+        if self.turn_id:
+            game = self.turn.game
+        elif self.game_id:
+            game = self.game
+        if game is None:
+            return
+        self.user_id = game.user_id
+        self.guest_key = game.guest_key
+
+    def save(self, *args, **kwargs) -> None:
+        """Persist the event after syncing owner fields from game context."""
+        self.sync_owner_from_relationships()
+        super().save(*args, **kwargs)
 
     def clean(self) -> None:
         """Validate optional event relationships.

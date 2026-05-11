@@ -129,6 +129,71 @@ class GameEventModelTests(TestCase):
                 with self.assertRaises(ValidationError):
                     event.full_clean()
 
+    def test_event_save_derives_user_owner_from_game(self) -> None:
+        """Direct event saves sync user ownership from the linked game."""
+        event = GameEvent.objects.create(
+            user=self.other_user,
+            guest_key="wrong-guest",
+            game=self.game,
+            event_type=GameEvent.Type.GAME_STARTED,
+        )
+
+        event.refresh_from_db()
+        self.assertEqual(event.user, self.user)
+        self.assertEqual(event.guest_key, "")
+
+    def test_event_save_derives_user_owner_from_turn(self) -> None:
+        """Direct event saves sync user ownership from the linked turn game."""
+        event = GameEvent.objects.create(
+            user=self.other_user,
+            guest_key="wrong-guest",
+            turn=self.turn,
+            event_type=GameEvent.Type.TURN_STARTED,
+        )
+
+        event.refresh_from_db()
+        self.assertEqual(event.user, self.user)
+        self.assertEqual(event.guest_key, "")
+
+    def test_event_save_derives_guest_owner_from_game(self) -> None:
+        """Direct event saves sync guest ownership from the linked game."""
+        guest_game = Game.objects.create(user=None, guest_key="guest-session")
+        event = GameEvent.objects.create(
+            user=self.user,
+            guest_key="wrong-guest",
+            game=guest_game,
+            event_type=GameEvent.Type.GAME_STARTED,
+        )
+
+        event.refresh_from_db()
+        self.assertIsNone(event.user_id)
+        self.assertEqual(event.guest_key, "guest-session")
+
+    def test_event_save_prefers_turn_owner_when_game_also_linked(self) -> None:
+        """Turn ownership wins when game and turn are both supplied."""
+        other_game = Game.objects.create(
+            user=self.user,
+            status=Game.Status.FINISHED,
+            finished_at=timezone.now(),
+        )
+        guest_game = Game.objects.create(user=None, guest_key="guest-session")
+        guest_turn = Turn.objects.create(
+            game=guest_game,
+            turn_number=1,
+            target=self.municipality,
+        )
+
+        event = GameEvent.objects.create(
+            user=self.user,
+            game=other_game,
+            turn=guest_turn,
+            event_type=GameEvent.Type.TURN_STARTED,
+        )
+
+        event.refresh_from_db()
+        self.assertIsNone(event.user_id)
+        self.assertEqual(event.guest_key, "guest-session")
+
 
 class TrackingServiceTests(TestCase):
     """Tests for tracking event persistence helpers."""
