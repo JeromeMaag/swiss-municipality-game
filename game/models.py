@@ -47,6 +47,10 @@ class Game(models.Model):
         indexes = [
             models.Index(fields=["user", "status"]),
             models.Index(
+                fields=["user", "status", "-finished_at", "-id"],
+                name="game_user_finished_idx",
+            ),
+            models.Index(
                 fields=["guest_key", "status"],
                 name="game_guest_status_idx",
             ),

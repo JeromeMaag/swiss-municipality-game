@@ -9,8 +9,6 @@ useful after a finished game.
 - Further visual polish for the game UI
 - Municipality games limited to one canton
 - Improved scoring calculation
-- Game history
-- Personal statistics
 - Distance calculation bug fixes
 - Multilingual support
 

@@ -735,6 +735,163 @@ a {
   margin: 0;
 }
 
+.profile-page {
+  background:
+    radial-gradient(circle at top left, rgba(14, 94, 99, 0.12), transparent 32rem),
+    var(--bg);
+}
+
+.profile-shell {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.profile-header {
+  align-items: end;
+  display: flex;
+  gap: 1.5rem;
+  justify-content: space-between;
+  padding: 1.5rem 0 0.5rem;
+}
+
+.profile-header h1 {
+  font-size: clamp(2.1rem, 4vw, 3.8rem);
+  line-height: 0.98;
+  margin: 0;
+}
+
+.profile-header p {
+  color: var(--muted);
+  font-size: 1.05rem;
+  font-weight: 760;
+  margin: 0.55rem 0 0;
+}
+
+.profile-actions {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.profile-metrics {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.profile-metric,
+.profile-section {
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 20px 55px rgba(20, 31, 38, 0.08);
+}
+
+.profile-metric {
+  display: grid;
+  gap: 0.5rem;
+  min-height: 8rem;
+  padding: 1rem;
+}
+
+.profile-metric span,
+.profile-stat-list dt,
+.profile-mode-list span,
+.profile-recent-list span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.profile-metric strong {
+  align-self: end;
+  font-size: 2.35rem;
+  line-height: 1;
+}
+
+.profile-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.profile-section {
+  padding: 1.1rem;
+}
+
+.profile-section h2 {
+  font-size: 1.05rem;
+  margin: 0 0 1rem;
+}
+
+.profile-stat-list,
+.profile-mode-list,
+.profile-recent-list {
+  display: grid;
+  gap: 0.7rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.profile-stat-list div,
+.profile-mode-list li,
+.profile-recent-list a {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding-top: 0.7rem;
+}
+
+.profile-stat-list dd {
+  font-size: 1.2rem;
+  font-weight: 850;
+  margin: 0;
+}
+
+.profile-mode-list strong {
+  font-size: 1.25rem;
+}
+
+.profile-recent {
+  grid-column: 1 / -1;
+}
+
+.profile-recent-list a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.profile-recent-list a:hover,
+.profile-recent-list a:focus-visible {
+  color: var(--accent);
+}
+
+.profile-recent-list strong {
+  font-size: 1.15rem;
+}
+
+.profile-empty {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.profile-empty p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.profile-section-empty {
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
 @media (max-width: 920px) {
   .game-page {
     overflow: auto;
@@ -755,5 +912,20 @@ a {
     right: 1rem;
     top: 1rem;
     width: auto;
+  }
+
+  .profile-header,
+  .profile-empty {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .profile-actions {
+    align-items: stretch;
+  }
+
+  .profile-metrics,
+  .profile-grid {
+    grid-template-columns: 1fr;
   }
 }
