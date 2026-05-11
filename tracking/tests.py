@@ -62,6 +62,18 @@ class GameEventModelTests(TestCase):
         self.assertEqual(event.payload["lat"], 47.05)
         self.assertEqual(str(event), "MAP_CLICKED for player")
 
+    def test_game_event_accepts_guest_session_owner(self) -> None:
+        """Game events can belong to a guest session."""
+        guest_game = Game.objects.create(user=None, session_key="guest-session")
+        event = GameEvent(
+            user=None,
+            session_key="guest-session",
+            game=guest_game,
+            event_type=GameEvent.Type.GAME_STARTED,
+        )
+
+        event.full_clean()
+
     def test_event_user_must_match_game_user(self) -> None:
         """Event validation rejects users that do not own the linked game."""
         event = GameEvent(
@@ -100,6 +112,22 @@ class GameEventModelTests(TestCase):
 
         with self.assertRaises(ValidationError):
             event.full_clean()
+
+    def test_event_requires_exactly_one_owner(self) -> None:
+        """Event validation rejects missing and mixed owners."""
+        invalid_events = [
+            GameEvent(event_type=GameEvent.Type.GAME_STARTED),
+            GameEvent(
+                user=self.user,
+                session_key="guest-session",
+                event_type=GameEvent.Type.GAME_STARTED,
+            ),
+        ]
+
+        for event in invalid_events:
+            with self.subTest(user=event.user, session_key=event.session_key):
+                with self.assertRaises(ValidationError):
+                    event.full_clean()
 
 
 class TrackingServiceTests(TestCase):
@@ -156,6 +184,19 @@ class TrackingServiceTests(TestCase):
                 event_type=GameEvent.Type.TURN_STARTED,
             ).exists()
         )
+
+    def test_track_event_accepts_guest_session_owner(self) -> None:
+        """Tracking helper persists events for guest session owners."""
+        guest_game = Game.objects.create(user=None, session_key="guest-session")
+
+        event = track_event(
+            session_key="guest-session",
+            game=guest_game,
+            event_type=GameEvent.Type.GAME_STARTED,
+        )
+
+        self.assertIsNone(event.user_id)
+        self.assertEqual(event.session_key, "guest-session")
 
     def test_track_event_validates_relationships_before_saving(self) -> None:
         """Tracking helper rejects invalid relationships without persisting data."""

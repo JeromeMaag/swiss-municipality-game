@@ -4,7 +4,9 @@ import json
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
 from django.contrib.gis.geos import Point
+from django.contrib.sessions.middleware import SessionMiddleware
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import Client, RequestFactory, TestCase
@@ -16,6 +18,7 @@ from geo.models import Canton, GeoDatasetVersion, Municipality
 from tests.utils import make_test_geometry
 from tracking.models import GameEvent
 
+from .identity import PlayerIdentity, get_player_identity
 from .models import Game, Guess, Turn
 from .scoring import calculate_score
 from .services import (
@@ -26,9 +29,16 @@ from .services import (
     _normalize_coordinate,
     _normalize_turn_id,
     start_game,
+    start_game_for_player,
     submit_guess,
+    submit_guess_for_player,
 )
-from .selectors import get_active_game, get_current_turn, get_finished_game_summary
+from .selectors import (
+    get_active_game,
+    get_active_game_for_player,
+    get_current_turn,
+    get_finished_game_summary,
+)
 from .views import get_last_guess_result, parse_tracking_request
 
 
@@ -104,6 +114,68 @@ class GameServiceHelperTests(TestCase):
             _calculate_guess_distances(point=Point(8.0, 47.0, srid=4326), target_id=0)
 
 
+class PlayerIdentityTests(TestCase):
+    """Tests for authenticated and guest player identity helpers."""
+
+    def setUp(self) -> None:
+        """Create shared identity fixtures."""
+        self.factory = RequestFactory()
+        self.user = get_user_model().objects.create_user(
+            username="player",
+            password="test",
+        )
+
+    def add_session(self, request, *, save: bool = False) -> None:
+        """Attach a writable session to a request factory request."""
+        middleware = SessionMiddleware(lambda _request: None)
+        middleware.process_request(request)
+        if save:
+            request.session.save()
+
+    def test_authenticated_identity_uses_user_owner_fields(self) -> None:
+        """Authenticated identities map to user-owned model fields."""
+        identity = PlayerIdentity.for_user(self.user)
+
+        self.assertTrue(identity.is_authenticated)
+        self.assertFalse(identity.is_guest)
+        self.assertEqual(
+            identity.model_fields(),
+            {"user": self.user, "session_key": ""},
+        )
+
+    def test_guest_identity_uses_session_owner_fields(self) -> None:
+        """Guest identities map to session-owned model fields."""
+        identity = PlayerIdentity.for_session("guest-session")
+
+        self.assertFalse(identity.is_authenticated)
+        self.assertTrue(identity.is_guest)
+        self.assertEqual(
+            identity.model_fields(),
+            {"user": None, "session_key": "guest-session"},
+        )
+
+    def test_request_identity_can_create_anonymous_session(self) -> None:
+        """Anonymous request identities can create a browser session key."""
+        request = self.factory.get("/game/")
+        request.user = AnonymousUser()
+        self.add_session(request)
+
+        identity = get_player_identity(request, create_session=True)
+
+        self.assertTrue(identity.is_guest)
+        self.assertTrue(identity.session_key)
+
+    def test_empty_anonymous_identity_cannot_own_games(self) -> None:
+        """Anonymous requests without a session key are not game owners yet."""
+        request = self.factory.get("/game/")
+        request.user = AnonymousUser()
+        self.add_session(request)
+
+        identity = get_player_identity(request)
+
+        self.assertFalse(identity.can_own_games)
+
+
 class GameModelTests(TestCase):
     """Tests for game, turn, and guess model behavior."""
 
@@ -149,6 +221,28 @@ class GameModelTests(TestCase):
         self.assertEqual(game.total_score, 0)
         self.assertIn("Game", str(game))
 
+    def test_guest_game_uses_session_owner(self) -> None:
+        """Games can belong to an anonymous browser session."""
+        game = Game.objects.create(user=None, session_key="guest-session")
+
+        game.full_clean()
+
+        self.assertIsNone(game.user_id)
+        self.assertEqual(game.session_key, "guest-session")
+        self.assertIn("session guest-se", str(game))
+
+    def test_game_requires_exactly_one_owner(self) -> None:
+        """Games must belong to either a user or a session, not both."""
+        invalid_games = [
+            Game(),
+            Game(user=self.user, session_key="guest-session"),
+        ]
+
+        for game in invalid_games:
+            with self.subTest(user=game.user, session_key=game.session_key):
+                with self.assertRaises(ValidationError):
+                    game.full_clean()
+
     def test_finished_game_requires_finished_at(self) -> None:
         """Finished games require a finish timestamp during validation."""
         game = Game(user=self.user, status=Game.Status.FINISHED)
@@ -162,6 +256,13 @@ class GameModelTests(TestCase):
 
         with self.assertRaises(IntegrityError), transaction.atomic():
             Game.objects.create(user=self.user)
+
+    def test_database_rejects_multiple_active_games_for_same_session(self) -> None:
+        """Only one active game can exist per guest session."""
+        Game.objects.create(user=None, session_key="guest-session")
+
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Game.objects.create(user=None, session_key="guest-session")
 
     def test_database_allows_finished_and_active_game_for_same_user(self) -> None:
         """A user can start a new game after a previous one is finished."""
@@ -250,6 +351,37 @@ class GameModelTests(TestCase):
 
         with self.assertRaises(ValidationError):
             guess.full_clean()
+
+    def test_guest_guess_must_match_game_session(self) -> None:
+        """Guest guess validation requires the same session as the game."""
+        game = Game.objects.create(user=None, session_key="guest-session")
+        turn = Turn.objects.create(game=game, turn_number=1, target=self.municipality)
+        guess = Guess(
+            turn=turn,
+            user=None,
+            session_key="other-session",
+            point=Point(8.05, 47.05, srid=4326),
+            distance_to_municipality_m=0,
+            score=1000,
+        )
+
+        with self.assertRaises(ValidationError):
+            guess.full_clean()
+
+    def test_guest_guess_accepts_matching_game_session(self) -> None:
+        """Guest guesses can belong to the same session as the game."""
+        game = Game.objects.create(user=None, session_key="guest-session")
+        turn = Turn.objects.create(game=game, turn_number=1, target=self.municipality)
+        guess = Guess(
+            turn=turn,
+            user=None,
+            session_key="guest-session",
+            point=Point(8.05, 47.05, srid=4326),
+            distance_to_municipality_m=0,
+            score=1000,
+        )
+
+        guess.full_clean()
 
 
 class GuessSubmissionServiceTests(TestCase):
@@ -349,6 +481,36 @@ class GuessSubmissionServiceTests(TestCase):
                 turn=turns[1],
                 event_type=GameEvent.Type.TURN_STARTED,
                 payload={"turn_number": 2},
+            ).exists()
+        )
+
+    def test_submit_guess_for_player_accepts_guest_owner(self) -> None:
+        """Guest identities can submit guesses for session-owned games."""
+        game = Game.objects.create(user=None, session_key="guest-session")
+        municipality = Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=261,
+            name="Zurich",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+        turn = Turn.objects.create(game=game, turn_number=1, target=municipality)
+
+        result = submit_guess_for_player(
+            PlayerIdentity.for_session("guest-session"),
+            turn.id,
+            47.05,
+            8.05,
+        )
+
+        self.assertIsNone(result.guess.user_id)
+        self.assertEqual(result.guess.session_key, "guest-session")
+        self.assertTrue(
+            GameEvent.objects.filter(
+                user__isnull=True,
+                session_key="guest-session",
+                game=game,
+                event_type=GameEvent.Type.GUESS_CONFIRMED,
             ).exists()
         )
 
@@ -563,6 +725,24 @@ class GameStartTests(TestCase):
             ).exists()
         )
 
+    def test_start_game_for_player_accepts_guest_owner(self) -> None:
+        """Guest identities can own active games at the service layer."""
+        self.create_municipalities(5)
+
+        game = start_game_for_player(PlayerIdentity.for_session("guest-session"))
+
+        self.assertIsNone(game.user_id)
+        self.assertEqual(game.session_key, "guest-session")
+        self.assertEqual(game.turns.count(), 5)
+        self.assertTrue(
+            GameEvent.objects.filter(
+                user__isnull=True,
+                session_key="guest-session",
+                game=game,
+                event_type=GameEvent.Type.GAME_STARTED,
+            ).exists()
+        )
+
     def test_start_game_reuses_existing_active_game(self) -> None:
         """Starting again returns the existing active game."""
         self.create_municipalities(5)
@@ -590,7 +770,7 @@ class GameStartTests(TestCase):
         existing_game = Game.objects.create(user=self.user)
 
         with patch(
-            "game.services.get_active_game",
+            "game.services.get_active_game_for_player",
             side_effect=[None, existing_game],
         ):
             game = start_game(self.user)
@@ -605,7 +785,7 @@ class GameStartTests(TestCase):
 
         with (
             patch(
-                "game.services.get_active_game",
+                "game.services.get_active_game_for_player",
                 side_effect=[None, existing_game],
             ),
             patch.object(Game.objects, "select_for_update") as select_for_update,
@@ -1561,6 +1741,16 @@ class GameSelectorTests(TestCase):
 
         self.assertEqual(get_active_game(self.user), active_game)
         self.assertIsNotNone(get_active_game(self.other_user))
+
+    def test_get_active_game_for_player_returns_session_game(self) -> None:
+        """Active game selector supports guest session ownership."""
+        active_game = Game.objects.create(user=None, session_key="guest-session")
+        Game.objects.create(user=None, session_key="other-session")
+
+        self.assertEqual(
+            get_active_game_for_player(PlayerIdentity.for_session("guest-session")),
+            active_game,
+        )
 
     def test_get_current_turn_returns_first_unrevealed_turn(self) -> None:
         """Current-turn selector chooses the earliest unrevealed turn."""

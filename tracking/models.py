@@ -25,8 +25,16 @@ class GameEvent(models.Model):
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
+        blank=True,
+        null=True,
         on_delete=models.CASCADE,
         related_name="game_events",
+    )
+    session_key = models.CharField(
+        max_length=40,
+        blank=True,
+        default="",
+        db_index=True,
     )
     game = models.ForeignKey(
         "game.Game",
@@ -52,7 +60,17 @@ class GameEvent(models.Model):
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["user", "created_at"]),
+            models.Index(fields=["session_key", "created_at"]),
             models.Index(fields=["event_type", "created_at"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(user__isnull=False, session_key="")
+                    | (models.Q(user__isnull=True) & ~models.Q(session_key=""))
+                ),
+                name="event_owned_by_user_or_session",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -61,7 +79,16 @@ class GameEvent(models.Model):
         Returns:
             A human-readable event type and user label.
         """
-        return f"{self.event_type} for {self.user}"
+        return f"{self.event_type} for {self.owner_label}"
+
+    @property
+    def owner_label(self) -> str:
+        """Return a compact display label for the event owner."""
+        if self.user_id:
+            return str(self.user)
+        if self.session_key:
+            return f"session {self.session_key[:8]}"
+        return "unowned player"
 
     def clean(self) -> None:
         """Validate optional event relationships.
@@ -72,16 +99,26 @@ class GameEvent(models.Model):
         """
         super().clean()
         errors = {}
-
-        if self.game_id and self.user_id != self.game.user_id:
+        if (self.user_id is None) == (not self.session_key):
             errors.setdefault("user", []).append(
-                "Event user must match the linked game user."
+                "Event must belong to exactly one user or guest session."
+            )
+
+        if self.game_id and (
+            self.user_id != self.game.user_id
+            or self.session_key != self.game.session_key
+        ):
+            errors.setdefault("user", []).append(
+                "Event owner must match the linked game owner."
             )
 
         if self.turn_id:
-            if self.user_id != self.turn.game.user_id:
+            if (
+                self.user_id != self.turn.game.user_id
+                or self.session_key != self.turn.game.session_key
+            ):
                 errors.setdefault("user", []).append(
-                    "Event user must match the linked turn game user."
+                    "Event owner must match the linked turn game owner."
                 )
             if self.game_id and self.turn.game_id != self.game_id:
                 errors.setdefault("turn", []).append(

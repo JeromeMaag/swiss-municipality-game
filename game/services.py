@@ -13,9 +13,10 @@ from geo.selectors import get_current_municipalities
 from tracking.models import GameEvent
 from tracking.services import track_event
 
+from .identity import PlayerIdentity
 from .models import Game, Guess, Turn
 from .scoring import calculate_score
-from .selectors import get_active_game
+from .selectors import get_active_game_for_player
 
 
 TURN_COUNT = 5
@@ -74,7 +75,26 @@ def start_game(user) -> Game:
         NotEnoughMunicipalitiesError: If fewer than five active municipalities exist
             in the current dataset version.
     """
-    existing_game = get_active_game(user)
+    return start_game_for_player(PlayerIdentity.for_user(user))
+
+
+def start_game_for_player(player: PlayerIdentity) -> Game:
+    """Return an active game for a player, creating one when needed.
+
+    Args:
+        player: User or guest session identity that starts or resumes a game.
+
+    Returns:
+        An active game with five turns.
+
+    Raises:
+        NotEnoughMunicipalitiesError: If fewer than five active municipalities exist
+            in the current dataset version.
+    """
+    if not player.can_own_games:
+        raise ValueError("Player identity cannot own games.")
+
+    existing_game = get_active_game_for_player(player)
     if existing_game is not None:
         return existing_game
 
@@ -82,7 +102,7 @@ def start_game(user) -> Game:
         with transaction.atomic():
             existing_game = (
                 Game.objects.select_for_update()
-                .filter(user=user, status=Game.Status.ACTIVE)
+                .filter(player.owner_query(), status=Game.Status.ACTIVE)
                 .order_by("-started_at", "-id")
                 .first()
             )
@@ -93,7 +113,7 @@ def start_game(user) -> Game:
                 get_current_municipalities().values_list("id", flat=True)
             )
             if len(municipality_ids) < TURN_COUNT:
-                existing_game = get_active_game(user)
+                existing_game = get_active_game_for_player(player)
                 if existing_game is not None:
                     return existing_game
                 raise NotEnoughMunicipalitiesError(
@@ -102,7 +122,7 @@ def start_game(user) -> Game:
                 )
 
             target_ids = random.SystemRandom().sample(municipality_ids, TURN_COUNT)
-            game = Game.objects.create(user=user)
+            game = Game.objects.create(**player.model_fields())
             turns = [
                 Turn(game=game, turn_number=turn_number, target_id=target_id)
                 for turn_number, target_id in enumerate(target_ids, start=1)
@@ -111,20 +131,20 @@ def start_game(user) -> Game:
             persisted_turns = list(game.turns.order_by("turn_number"))
             first_turn = persisted_turns[0]
             track_event(
-                user=user,
                 game=game,
                 event_type=GameEvent.Type.GAME_STARTED,
+                **player.model_fields(),
             )
             track_event(
-                user=user,
                 game=game,
                 turn=first_turn,
                 event_type=GameEvent.Type.TURN_STARTED,
                 payload={"turn_number": first_turn.turn_number},
+                **player.model_fields(),
             )
             return game
     except IntegrityError:
-        existing_game = get_active_game(user)
+        existing_game = get_active_game_for_player(player)
         if existing_game is not None:
             return existing_game
         raise
@@ -146,6 +166,38 @@ def submit_guess(user, turn_id, latitude, longitude) -> GuessSubmissionResult:
         GuessSubmissionError: If the turn is not guessable by this user.
         InvalidGuessCoordinatesError: If the coordinates are invalid.
     """
+    return submit_guess_for_player(
+        PlayerIdentity.for_user(user),
+        turn_id,
+        latitude,
+        longitude,
+    )
+
+
+def submit_guess_for_player(
+    player: PlayerIdentity,
+    turn_id,
+    latitude,
+    longitude,
+) -> GuessSubmissionResult:
+    """Submit and score a point guess for a player's current turn.
+
+    Args:
+        player: User or guest session identity submitting the guess.
+        turn_id: Turn being guessed.
+        latitude: WGS84 latitude value.
+        longitude: WGS84 longitude value.
+
+    Returns:
+        The persisted guess, revealed turn, and updated game.
+
+    Raises:
+        GuessSubmissionError: If the turn is not guessable by this player.
+        InvalidGuessCoordinatesError: If the coordinates are invalid.
+    """
+    if not player.can_own_games:
+        raise GuessSubmissionError("Player identity cannot submit guesses.")
+
     latitude = _normalize_coordinate(
         latitude,
         name="Latitude",
@@ -173,17 +225,17 @@ def submit_guess(user, turn_id, latitude, longitude) -> GuessSubmissionResult:
 
         game = Game.objects.select_for_update().get(pk=turn.game_id)
         turn.game = game
-        _validate_guessable_turn(user=user, game=game, turn=turn)
+        _validate_guessable_turn(player=player, game=game, turn=turn)
 
         distances = _calculate_guess_distances(point=point, target_id=turn.target_id)
         score = calculate_score(distances.distance_to_municipality_m)
         guess = Guess(
             turn=turn,
-            user=user,
             point=point,
             distance_to_municipality_m=distances.distance_to_municipality_m,
             distance_to_boundary_m=distances.distance_to_boundary_m,
             score=score,
+            **player.model_fields(),
         )
         guess.full_clean()
         guess.save()
@@ -205,7 +257,6 @@ def submit_guess(user, turn_id, latitude, longitude) -> GuessSubmissionResult:
         game.save(update_fields=update_fields)
 
         track_event(
-            user=user,
             game=game,
             turn=turn,
             event_type=GameEvent.Type.GUESS_CONFIRMED,
@@ -217,21 +268,22 @@ def submit_guess(user, turn_id, latitude, longitude) -> GuessSubmissionResult:
                 "distance_to_boundary_m": distances.distance_to_boundary_m,
                 "score": score,
             },
+            **player.model_fields(),
         )
         if next_turn is not None:
             track_event(
-                user=user,
                 game=game,
                 turn=next_turn,
                 event_type=GameEvent.Type.TURN_STARTED,
                 payload={"turn_number": next_turn.turn_number},
+                **player.model_fields(),
             )
         else:
             track_event(
-                user=user,
                 game=game,
                 event_type=GameEvent.Type.GAME_FINISHED,
                 payload={"total_score": game.total_score},
+                **player.model_fields(),
             )
 
         return GuessSubmissionResult(guess=guess, game=game, turn=turn)
@@ -289,19 +341,19 @@ def _normalize_turn_id(value) -> int:
     return turn_id
 
 
-def _validate_guessable_turn(*, user, game: Game, turn: Turn) -> None:
-    """Validate that a turn may receive a guess from a user.
+def _validate_guessable_turn(*, player: PlayerIdentity, game: Game, turn: Turn) -> None:
+    """Validate that a turn may receive a guess from a player.
 
     Args:
-        user: User submitting the guess.
+        player: Player submitting the guess.
         game: Locked game containing the turn.
         turn: Locked turn being guessed.
 
     Raises:
         GuessSubmissionError: If the turn cannot currently be guessed.
     """
-    if game.user_id != user.id:
-        raise GuessSubmissionError("Turn does not belong to this user.")
+    if not player.owns(game):
+        raise GuessSubmissionError("Turn does not belong to this player.")
     if game.status != Game.Status.ACTIVE:
         raise GuessSubmissionError("Game is not active.")
     if turn.revealed_at is not None or Guess.objects.filter(turn=turn).exists():

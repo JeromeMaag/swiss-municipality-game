@@ -2,6 +2,7 @@
 
 from django.db.models import Prefetch
 
+from .identity import PlayerIdentity
 from .models import Game, Turn
 
 
@@ -14,8 +15,20 @@ def get_active_game(user) -> Game | None:
     Returns:
         The active game or None.
     """
+    return get_active_game_for_player(PlayerIdentity.for_user(user))
+
+
+def get_active_game_for_player(player: PlayerIdentity) -> Game | None:
+    """Return the newest active game for a player identity.
+
+    Args:
+        player: User or guest session identity whose game should be returned.
+
+    Returns:
+        The active game or None.
+    """
     return (
-        Game.objects.filter(user=user, status=Game.Status.ACTIVE)
+        Game.objects.filter(player.owner_query(), status=Game.Status.ACTIVE)
         .order_by("-started_at", "-id")
         .first()
     )
@@ -46,6 +59,23 @@ def get_finished_game_summary(user, game_id: int) -> Game | None:
         The finished game with ordered turns, targets, cantons, and guesses, or
         None when the game does not exist or is not available for summaries.
     """
+    return get_finished_game_summary_for_player(PlayerIdentity.for_user(user), game_id)
+
+
+def get_finished_game_summary_for_player(
+    player: PlayerIdentity,
+    game_id: int,
+) -> Game | None:
+    """Return a finished summary game for a player identity.
+
+    Args:
+        player: User or guest session identity that owns the game.
+        game_id: Finished game primary key.
+
+    Returns:
+        The finished game with ordered turns, targets, cantons, and guesses, or
+        None when the game does not exist or is not available for summaries.
+    """
     turns = (
         Turn.objects.select_related("target__canton", "guess")
         .defer(
@@ -59,7 +89,11 @@ def get_finished_game_summary(user, game_id: int) -> Game | None:
         .order_by("turn_number")
     )
     return (
-        Game.objects.filter(user=user, status=Game.Status.FINISHED, pk=game_id)
+        Game.objects.filter(
+            player.owner_query(),
+            status=Game.Status.FINISHED,
+            pk=game_id,
+        )
         .prefetch_related(Prefetch("turns", queryset=turns))
         .first()
     )

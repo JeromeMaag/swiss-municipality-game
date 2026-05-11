@@ -9,8 +9,8 @@ from .models import GameEvent
 class GameEventAdmin(admin.ModelAdmin):
     """Admin configuration for game events."""
 
-    list_display = ("id", "event_type", "user", "game", "turn", "created_at")
+    list_display = ("id", "event_type", "owner_label", "game", "turn", "created_at")
     list_filter = ("event_type", "created_at")
-    search_fields = ("event_type", "user__username")
+    search_fields = ("event_type", "user__username", "session_key")
     autocomplete_fields = ("user", "game", "turn")
     readonly_fields = ("created_at",)

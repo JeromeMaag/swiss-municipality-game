@@ -13,8 +13,13 @@ from geo.models import Municipality
 from tracking.models import GameEvent
 from tracking.services import track_event
 
+from .identity import get_player_identity
 from .models import Game, Guess, Turn
-from .selectors import get_active_game, get_finished_game_summary
+from .selectors import (
+    get_active_game,
+    get_active_game_for_player,
+    get_finished_game_summary,
+)
 from .services import (
     TURN_COUNT,
     GuessSubmissionError,
@@ -46,8 +51,9 @@ def index(request):
     """
     active_game = None
     last_guess = None
-    if request.user.is_authenticated:
-        active_game = get_active_game(request.user)
+    player = get_player_identity(request)
+    if player.is_authenticated:
+        active_game = get_active_game_for_player(player)
         last_guess = get_last_guess_result(request)
     if active_game is None and last_guess is not None:
         active_game = last_guess.turn.game
