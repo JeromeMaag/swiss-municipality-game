@@ -836,6 +836,8 @@
 
     const modeChoices = picker.querySelectorAll("[data-mode-choice]");
     const cantonSelect = picker.querySelector("[data-canton-select]");
+    const modeFields = document.querySelectorAll("[data-game-mode-field]");
+    const cantonFields = document.querySelectorAll("[data-canton-field]");
     const selectedCantonLabel = picker.querySelector("[data-selected-canton-label]");
     const mapLabel = document.querySelector("[data-game-mode-map-label]");
     if (!modeChoices.length || !cantonSelect) {
@@ -849,15 +851,22 @@
 
     function updateModePreview() {
       const cantonMode = selectedMode() === "canton";
-      const cantonCode = cantonSelect.value || "ZH";
+      const cantonCode = cantonSelect.value || "";
+      const mapCode = cantonCode || "-";
 
       cantonSelect.disabled = !cantonMode;
       if (selectedCantonLabel) {
-        selectedCantonLabel.textContent = cantonCode;
+        selectedCantonLabel.textContent = mapCode;
       }
       if (mapLabel) {
-        mapLabel.textContent = cantonMode ? cantonCode : "CH";
+        mapLabel.textContent = cantonMode ? mapCode : "CH";
       }
+      modeFields.forEach(function (field) {
+        field.value = selectedMode();
+      });
+      cantonFields.forEach(function (field) {
+        field.value = cantonCode;
+      });
     }
 
     modeChoices.forEach(function (choice) {

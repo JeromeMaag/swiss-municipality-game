@@ -10,9 +10,12 @@ from django.views.decorators.http import require_GET
 from .constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
 from .models import GeoDatasetVersion
 from .selectors import (
+    get_canton_for_dataset_by_abbreviation,
     get_cantons_for_dataset,
     get_current_dataset_version,
+    get_municipalities_for_canton,
     get_municipalities_for_dataset,
+    get_municipality_labels_for_canton,
     get_municipality_labels_for_dataset,
 )
 from .serializers import (
@@ -110,7 +113,12 @@ def request_etag_matches(request, etag: str) -> bool:
     return "*" in client_etags or etag in client_etags
 
 
-def cached_geojson_response(request, name: str, data_builder) -> HttpResponse:
+def cached_geojson_response(
+    request,
+    name: str,
+    data_builder,
+    scope_key_builder=None,
+) -> HttpResponse:
     """Return cached GeoJSON for the current dataset.
 
     Args:
@@ -118,11 +126,17 @@ def cached_geojson_response(request, name: str, data_builder) -> HttpResponse:
         name: Boundary response name.
         data_builder: Callable receiving the current dataset version and returning
             serialized GeoJSON.
+        scope_key_builder: Optional callable receiving the current dataset version
+            and returning a cache-key suffix for filtered responses.
 
     Returns:
         A GeoJSON response, or 304 when the client's cached copy is current.
     """
     dataset_version = get_current_dataset_version()
+    if dataset_version is not None and scope_key_builder is not None:
+        scope_key = scope_key_builder(dataset_version)
+        if scope_key:
+            name = f"{name}:{scope_key}"
     cache_key = cache_key_for_boundaries(name, dataset_version)
     etag = etag_for_cache_key(cache_key)
     if request_etag_matches(request, etag):
@@ -170,6 +184,23 @@ def server_cached_geojson_response(name: str, data_builder) -> HttpResponse:
     return no_store_geojson_response(data)
 
 
+def requested_canton_filter(request, dataset_version: GeoDatasetVersion):
+    """Return an optional canton filter from request query parameters."""
+    abbreviation = request.GET.get("canton", "").strip().upper()
+    if not abbreviation:
+        return None
+    canton = get_canton_for_dataset_by_abbreviation(dataset_version, abbreviation)
+    if canton is None:
+        raise Http404("Canton boundaries not found.")
+    return canton
+
+
+def requested_canton_scope_key(request, dataset_version: GeoDatasetVersion) -> str:
+    """Return the cache-key suffix for an optional canton filter."""
+    canton = requested_canton_filter(request, dataset_version)
+    return f"canton:{canton.abbreviation}" if canton is not None else ""
+
+
 @require_GET
 def canton_boundaries(request):
     """Return current canton boundaries as GeoJSON.
@@ -184,8 +215,11 @@ def canton_boundaries(request):
         request,
         "cantons",
         lambda dataset_version: serialize_canton_boundaries(
-            get_cantons_for_dataset(dataset_version)
+            [canton]
+            if (canton := requested_canton_filter(request, dataset_version))
+            else get_cantons_for_dataset(dataset_version)
         ),
+        lambda dataset_version: requested_canton_scope_key(request, dataset_version),
     )
 
 
@@ -203,8 +237,11 @@ def municipality_boundaries(request):
         request,
         "municipalities",
         lambda dataset_version: serialize_municipality_boundaries(
-            get_municipalities_for_dataset(dataset_version)
+            get_municipalities_for_canton(canton)
+            if (canton := requested_canton_filter(request, dataset_version))
+            else get_municipalities_for_dataset(dataset_version)
         ),
+        lambda dataset_version: requested_canton_scope_key(request, dataset_version),
     )
 
 
@@ -218,16 +255,19 @@ def municipality_labels(request):
     Returns:
         A GeoJSON FeatureCollection response with municipality names.
     """
-    require_municipality_label_access(request)
+    turn = require_municipality_label_access(request)
+    game = turn.game
     return server_cached_geojson_response(
-        "municipality-labels",
+        f"municipality-labels:{game.map_label}",
         lambda dataset_version: serialize_municipality_labels(
-            get_municipality_labels_for_dataset(dataset_version)
+            get_municipality_labels_for_canton(game.canton)
+            if game.mode == game.Mode.CANTON and game.canton_id
+            else get_municipality_labels_for_dataset(dataset_version)
         ),
     )
 
 
-def require_municipality_label_access(request) -> None:
+def require_municipality_label_access(request):
     """Require a revealed turn grant for the current player identity.
 
     Args:
@@ -255,9 +295,15 @@ def require_municipality_label_access(request) -> None:
     if not player.can_own_games:
         raise Http404("Municipality labels not found.")
 
-    if not Turn.objects.filter(
-        player.owner_query("game"),
-        pk=turn_id,
-        revealed_at__isnull=False,
-    ).exists():
+    turn = (
+        Turn.objects.select_related("game__canton")
+        .filter(
+            player.owner_query("game"),
+            pk=turn_id,
+            revealed_at__isnull=False,
+        )
+        .first()
+    )
+    if turn is None:
         raise Http404("Municipality labels not found.")
+    return turn

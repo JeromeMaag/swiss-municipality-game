@@ -35,8 +35,8 @@
               data-center-lng="8.2275"
               data-zoom="8"
               data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
-              data-canton-boundaries-url="{% url 'geo:cantons_geojson' %}"
-              data-municipality-boundaries-url="{% url 'geo:municipality_boundaries_geojson' %}"
+              data-canton-boundaries-url="{{ canton_boundaries_url }}"
+              data-municipality-boundaries-url="{{ municipality_boundaries_url }}"
               {% if last_guess %}
                 data-municipality-labels-url="{% url 'geo:municipality_labels_geojson' %}?turn={{ last_guess.turn.id }}"
                 data-label-min-zoom="11"
@@ -156,8 +156,8 @@
             data-center-lng="8.2275"
             data-zoom="8"
             data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
-            data-canton-boundaries-url="{% url 'geo:cantons_geojson' %}"
-            data-municipality-boundaries-url="{% url 'geo:municipality_boundaries_geojson' %}"
+              data-canton-boundaries-url="{{ canton_boundaries_url }}"
+              data-municipality-boundaries-url="{{ municipality_boundaries_url }}"
           ></div>
         </section>
 
@@ -169,7 +169,7 @@
             </div>
             <div>
               <span>Map</span>
-              <strong data-game-mode-map-label>CH</strong>
+              <strong data-game-mode-map-label>{{ map_label }}</strong>
             </div>
           </div>
 
@@ -189,7 +189,7 @@
                   type="radio"
                   name="game_mode_preview"
                   value="switzerland"
-                  checked
+                  {% if selected_game_mode == "switzerland" %}checked{% endif %}
                   data-mode-choice
                 >
                 <span>
@@ -202,43 +202,28 @@
                   type="radio"
                   name="game_mode_preview"
                   value="canton"
+                  {% if selected_game_mode == "canton" %}checked{% endif %}
                   data-mode-choice
                 >
                 <span>
                   <strong>Single canton</strong>
-                  <small data-selected-canton-label>ZH</small>
+                  <small data-selected-canton-label>{{ selected_canton|default:"-" }}</small>
                 </span>
               </label>
             </div>
             <label class="canton-picker">
               <span>Canton</span>
-              <select data-canton-select disabled>
-                <option value="ZH">Zurich</option>
-                <option value="BE">Bern</option>
-                <option value="LU">Lucerne</option>
-                <option value="UR">Uri</option>
-                <option value="SZ">Schwyz</option>
-                <option value="OW">Obwalden</option>
-                <option value="NW">Nidwalden</option>
-                <option value="GL">Glarus</option>
-                <option value="ZG">Zug</option>
-                <option value="FR">Fribourg</option>
-                <option value="SO">Solothurn</option>
-                <option value="BS">Basel-Stadt</option>
-                <option value="BL">Basel-Landschaft</option>
-                <option value="SH">Schaffhausen</option>
-                <option value="AR">Appenzell Ausserrhoden</option>
-                <option value="AI">Appenzell Innerrhoden</option>
-                <option value="SG">St. Gallen</option>
-                <option value="GR">Graubunden</option>
-                <option value="AG">Aargau</option>
-                <option value="TG">Thurgau</option>
-                <option value="TI">Ticino</option>
-                <option value="VD">Vaud</option>
-                <option value="VS">Valais</option>
-                <option value="NE">Neuchatel</option>
-                <option value="GE">Geneva</option>
-                <option value="JU">Jura</option>
+              <select data-canton-select {% if selected_game_mode != "canton" %}disabled{% endif %}>
+                {% for canton in available_cantons %}
+                  <option
+                    value="{{ canton.abbreviation }}"
+                    {% if canton.abbreviation == selected_canton %}selected{% endif %}
+                  >
+                    {{ canton.name }}
+                  </option>
+                {% empty %}
+                  <option value="">No cantons available</option>
+                {% endfor %}
               </select>
             </label>
           </section>
@@ -246,6 +231,8 @@
           {% if request.user.is_authenticated %}
             <form class="guess-form" method="post" action="{% url 'game:start' %}">
               {% csrf_token %}
+              <input type="hidden" name="game_mode" value="{{ selected_game_mode }}" data-game-mode-field>
+              <input type="hidden" name="canton" value="{{ selected_canton }}" data-canton-field>
               <button type="submit">Start</button>
             </form>
           {% else %}
@@ -260,6 +247,8 @@
               hidden
             >
               {% csrf_token %}
+              <input type="hidden" name="game_mode" value="{{ selected_game_mode }}" data-game-mode-field>
+              <input type="hidden" name="canton" value="{{ selected_canton }}" data-canton-field>
               <button type="submit">Start</button>
             </form>
             <div

@@ -25,6 +25,7 @@ from .models import Game, Guess, Turn
 from .scoring import calculate_score
 from .services import (
     GuessSubmissionError,
+    InvalidGameModeError,
     InvalidGuessCoordinatesError,
     NotEnoughMunicipalitiesError,
     _calculate_guess_distances,
@@ -387,6 +388,25 @@ class GameModelTests(TestCase):
 
         for game in invalid_games:
             with self.subTest(user=game.user, guest_key=game.guest_key):
+                with self.assertRaises(ValidationError):
+                    game.full_clean()
+
+    def test_game_mode_and_canton_must_match(self) -> None:
+        """Games store a canton only for single-canton mode."""
+        valid_game = Game(
+            user=self.user,
+            mode=Game.Mode.CANTON,
+            canton=self.canton,
+        )
+
+        valid_game.full_clean()
+
+        invalid_games = [
+            Game(user=self.user, mode=Game.Mode.SWITZERLAND, canton=self.canton),
+            Game(user=self.user, mode=Game.Mode.CANTON),
+        ]
+        for game in invalid_games:
+            with self.subTest(mode=game.mode, canton=game.canton):
                 with self.assertRaises(ValidationError):
                     game.full_clean()
 
@@ -884,17 +904,20 @@ class GameStartTests(TestCase):
         self,
         count: int,
         is_active: bool = True,
+        canton: Canton | None = None,
     ) -> list[Municipality]:
         """Create municipalities for game target selection.
 
         Args:
             count: Number of municipalities to create.
             is_active: Whether created municipalities are active.
+            canton: Optional canton for created municipalities.
 
         Returns:
             Created municipality objects.
         """
         municipalities = []
+        canton = canton or self.canton
         existing_count = Municipality.objects.filter(
             dataset_version=self.dataset_version
         ).count()
@@ -904,12 +927,22 @@ class GameStartTests(TestCase):
                     dataset_version=self.dataset_version,
                     bfs_number=1000 + existing_count + index,
                     name=f"Municipality {existing_count + index + 1}",
-                    canton=self.canton,
+                    canton=canton,
                     geom=make_test_geometry(),
                     is_active=is_active,
                 )
             )
         return municipalities
+
+    def create_canton(self, abbreviation: str, name: str) -> Canton:
+        """Create another canton in the current dataset."""
+        return Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=100 + Canton.objects.count(),
+            abbreviation=abbreviation,
+            name=name,
+            geom=make_test_geometry(),
+        )
 
     def post_tracking_event(
         self,
@@ -955,6 +988,8 @@ class GameStartTests(TestCase):
         self.assertEqual(len(turns), 5)
         self.assertEqual([turn.turn_number for turn in turns], [1, 2, 3, 4, 5])
         self.assertEqual(len({turn.target_id for turn in turns}), 5)
+        self.assertEqual(game.mode, Game.Mode.SWITZERLAND)
+        self.assertIsNone(game.canton_id)
         self.assertTrue(
             GameEvent.objects.filter(
                 user=self.user,
@@ -1000,6 +1035,58 @@ class GameStartTests(TestCase):
         self.assertEqual(second_game, first_game)
         self.assertEqual(Game.objects.filter(user=self.user).count(), 1)
         self.assertEqual(GameEvent.objects.filter(game=first_game).count(), 2)
+
+    def test_start_game_for_player_uses_single_canton_scope(self) -> None:
+        """Single-canton games only target municipalities from that canton."""
+        bern = self.create_canton("BE", "Bern")
+        self.create_municipalities(5)
+        bern_municipalities = self.create_municipalities(5, canton=bern)
+
+        game = start_game_for_player(
+            PlayerIdentity.for_user(self.user),
+            mode=Game.Mode.CANTON,
+            canton_abbreviation="BE",
+        )
+
+        target_canton_ids = set(
+            game.turns.values_list("target__canton_id", flat=True)
+        )
+        self.assertEqual(game.mode, Game.Mode.CANTON)
+        self.assertEqual(game.canton, bern)
+        self.assertEqual(target_canton_ids, {bern.id})
+        self.assertTrue(
+            set(game.turns.values_list("target_id", flat=True)).issubset(
+                {municipality.id for municipality in bern_municipalities}
+            )
+        )
+        self.assertGreater(game.scoring_max_distance_m, 0)
+
+    def test_start_game_canton_scope_requires_enough_canton_municipalities(self) -> None:
+        """Single-canton games count only municipalities from the selected canton."""
+        bern = self.create_canton("BE", "Bern")
+        self.create_municipalities(4, canton=bern)
+        self.create_municipalities(5)
+
+        with self.assertRaises(NotEnoughMunicipalitiesError):
+            start_game_for_player(
+                PlayerIdentity.for_user(self.user),
+                mode=Game.Mode.CANTON,
+                canton_abbreviation="BE",
+            )
+
+        self.assertFalse(Game.objects.exists())
+
+    def test_start_game_rejects_invalid_mode(self) -> None:
+        """Unknown game modes are rejected before game creation."""
+        self.create_municipalities(5)
+
+        with self.assertRaises(InvalidGameModeError):
+            start_game_for_player(
+                PlayerIdentity.for_user(self.user),
+                mode="invalid",
+            )
+
+        self.assertFalse(Game.objects.exists())
 
     def test_start_game_requires_five_active_municipalities(self) -> None:
         """Starting a game requires five active municipalities."""
@@ -1112,6 +1199,7 @@ class GameStartTests(TestCase):
         self.assertIsNone(game.user)
         self.assertEqual(game.guest_key, guest_key)
         self.assertEqual(game.turns.count(), 5)
+        self.assertEqual(game.mode, Game.Mode.SWITZERLAND)
         self.assertTrue(
             GameEvent.objects.filter(
                 user__isnull=True,
@@ -1120,6 +1208,45 @@ class GameStartTests(TestCase):
                 event_type=GameEvent.Type.GAME_STARTED,
             ).exists()
         )
+
+    def test_start_view_starts_canton_game(self) -> None:
+        """Game start view accepts a single-canton scope."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("game:start"),
+            {"game_mode": "canton", "canton": "ZH"},
+        )
+
+        self.assertRedirects(response, reverse("game:index"))
+        game = Game.objects.get()
+        self.assertEqual(game.mode, Game.Mode.CANTON)
+        self.assertEqual(game.canton, self.canton)
+
+        game_response = self.client.get(reverse("game:index"))
+        self.assertContains(game_response, "ZH")
+        self.assertContains(
+            game_response,
+            (
+                'data-municipality-boundaries-url="'
+                f'{reverse("geo:municipality_boundaries_geojson")}?canton=ZH"'
+            ),
+        )
+
+    def test_start_view_rejects_invalid_canton(self) -> None:
+        """Game start view validates canton choices."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("game:start"),
+            {"game_mode": "canton", "canton": "XX"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, "Choose a valid canton.", status_code=400)
+        self.assertFalse(Game.objects.exists())
 
     def test_start_view_rejects_get(self) -> None:
         """Game start endpoint only accepts POST."""
@@ -1915,8 +2042,10 @@ class GameSummaryTests(TestCase):
         guest_key: str = "",
         *,
         bfs_offset: int = 9000,
+        canton: Canton | None = None,
         distances: list[float] | None = None,
         finished_at=None,
+        mode: str = Game.Mode.SWITZERLAND,
         scores: list[int] | None = None,
     ) -> Game:
         """Create a finished game with five guessed turns.
@@ -1925,8 +2054,10 @@ class GameSummaryTests(TestCase):
             user: Optional owner for the game.
             guest_key: Optional guest owner for the game.
             bfs_offset: First BFS number to use for generated municipalities.
+            canton: Optional canton used for the game and generated targets.
             distances: Optional per-turn municipality distances.
             finished_at: Optional finished timestamp.
+            mode: Game mode to store.
             scores: Optional per-turn scores.
 
         Returns:
@@ -1939,8 +2070,11 @@ class GameSummaryTests(TestCase):
             else {"user": game_user, "guest_key": ""}
         )
         total_score = 0
+        canton = canton or self.canton
         game = Game.objects.create(
             **owner_fields,
+            mode=mode,
+            canton=canton if mode == Game.Mode.CANTON else None,
             status=Game.Status.FINISHED,
             finished_at=finished_at or timezone.now(),
         )
@@ -1952,7 +2086,7 @@ class GameSummaryTests(TestCase):
                 dataset_version=self.dataset_version,
                 bfs_number=bfs_offset + index,
                 name=f"Summary Municipality {index + 1}",
-                canton=self.canton,
+                canton=canton,
                 population=10_000 + index,
                 geom=make_test_geometry(),
             )
@@ -2000,6 +2134,8 @@ class GameSummaryTests(TestCase):
         self.assertContains(response, "Change game mode")
         self.assertContains(response, reverse("game:start"))
         self.assertContains(response, reverse("game:index"))
+        self.assertContains(response, 'name="game_mode"')
+        self.assertContains(response, 'value="switzerland"')
         self.assertContains(response, 'method="post"')
         self.assertContains(response, 'id="game-map"')
         self.assertContains(response, 'data-summary-map="true"')
@@ -2040,6 +2176,25 @@ class GameSummaryTests(TestCase):
             self.assertEqual(reveal["score"], 1000 - (index * 100))
             self.assertIsInstance(reveal["targetId"], int)
         self.assertContains(response, '"turnNumber": 5')
+
+    def test_summary_uses_canton_game_scope(self) -> None:
+        """Summary maps and play-again form preserve single-canton games."""
+        game = self.create_finished_game(mode=Game.Mode.CANTON, canton=self.canton)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("game:summary", args=[game.id]))
+
+        self.assertContains(
+            response,
+            (
+                'data-municipality-boundaries-url="'
+                f'{reverse("geo:municipality_boundaries_geojson")}?canton=ZH"'
+            ),
+        )
+        self.assertContains(response, 'name="game_mode"')
+        self.assertContains(response, 'value="canton"')
+        self.assertContains(response, 'name="canton"')
+        self.assertContains(response, 'value="ZH"')
 
     def test_build_summary_reveals_uses_stored_boundary_point(self) -> None:
         """Summary reveal payloads reuse persisted nearest boundary points."""

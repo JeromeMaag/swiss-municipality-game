@@ -6,10 +6,16 @@ from dataclasses import dataclass
 
 from django.contrib.gis.geos import GEOSGeometry, Point
 from django.db import IntegrityError, connection, transaction
+from django.db.models import QuerySet
 from django.utils import timezone
 
-from geo.models import Municipality
-from geo.selectors import get_current_dataset_version, get_municipalities_for_dataset
+from geo.models import Canton, Municipality
+from geo.selectors import (
+    get_canton_for_dataset_by_abbreviation,
+    get_current_dataset_version,
+    get_municipalities_for_canton,
+    get_municipalities_for_dataset,
+)
 from tracking.models import GameEvent
 from tracking.services import track_event
 
@@ -34,6 +40,10 @@ class NotEnoughMunicipalitiesError(ValueError):
     """Raised when there are not enough active municipalities to start a game."""
 
 
+class InvalidGameModeError(ValueError):
+    """Raised when a requested game mode cannot be used."""
+
+
 class GuessSubmissionError(ValueError):
     """Raised when a guess cannot be submitted for the requested turn."""
 
@@ -42,12 +52,32 @@ class InvalidGuessCoordinatesError(GuessSubmissionError):
     """Raised when submitted guess coordinates are invalid."""
 
 
-def calculate_scoring_max_distance_m_for_dataset(dataset_version_id: int) -> float:
+@dataclass(frozen=True)
+class GameScope:
+    """Resolved playable map scope for a new game.
+
+    Attributes:
+        mode: Game mode value stored on Game.
+        canton: Optional canton when the game is scoped to one canton.
+        municipalities: QuerySet-like active municipality pool for target sampling.
+    """
+
+    mode: str
+    canton: Canton | None
+    municipalities: QuerySet[Municipality]
+
+
+def calculate_scoring_max_distance_m_for_dataset(
+    dataset_version_id: int,
+    *,
+    canton_id: int | None = None,
+) -> float:
     """Return the scoring distance scale for an active municipality dataset.
 
     Args:
         dataset_version_id: Dataset version whose active municipalities define
             the playable map scope.
+        canton_id: Optional canton restricting the playable map scope.
 
     Returns:
         The maximum geodesic distance between bounding-box corners in meters.
@@ -56,11 +86,12 @@ def calculate_scoring_max_distance_m_for_dataset(dataset_version_id: int) -> flo
         NotEnoughMunicipalitiesError: If the dataset has no usable map extent.
     """
     municipality_table = connection.ops.quote_name(Municipality._meta.db_table)
+    canton_filter = "AND canton_id = %s" if canton_id is not None else ""
     query = f"""
         WITH bounds AS (
             SELECT ST_Extent(geom) AS box
             FROM {municipality_table}
-            WHERE dataset_version_id = %s AND is_active = true
+            WHERE dataset_version_id = %s AND is_active = true {canton_filter}
         ),
         corners AS (
             SELECT
@@ -101,8 +132,11 @@ def calculate_scoring_max_distance_m_for_dataset(dataset_version_id: int) -> flo
         FROM points AS start_point
         JOIN points AS end_point ON start_point.label < end_point.label
     """
+    parameters = [dataset_version_id]
+    if canton_id is not None:
+        parameters.append(canton_id)
     with connection.cursor() as cursor:
-        cursor.execute(query, [dataset_version_id])
+        cursor.execute(query, parameters)
         row = cursor.fetchone()
 
     if row is None or row[0] is None or row[0] <= 0:
@@ -158,11 +192,18 @@ def start_game(user) -> Game:
     return start_game_for_player(PlayerIdentity.for_user(user))
 
 
-def start_game_for_player(player: PlayerIdentity) -> Game:
+def start_game_for_player(
+    player: PlayerIdentity,
+    *,
+    mode: str = Game.Mode.SWITZERLAND,
+    canton_abbreviation: str = "",
+) -> Game:
     """Return an active game for a player, creating one when needed.
 
     Args:
         player: User or guest identity that starts or resumes a game.
+        mode: Requested game mode.
+        canton_abbreviation: Requested canton abbreviation for single-canton mode.
 
     Returns:
         An active game with five turns.
@@ -199,7 +240,12 @@ def start_game_for_player(player: PlayerIdentity) -> Game:
                     "start a game."
                 )
 
-            current_municipalities = get_municipalities_for_dataset(dataset_version)
+            game_scope = resolve_game_scope(
+                dataset_version=dataset_version,
+                mode=mode,
+                canton_abbreviation=canton_abbreviation,
+            )
+            current_municipalities = game_scope.municipalities
             municipality_ids = list(current_municipalities.values_list("id", flat=True))
             if len(municipality_ids) < TURN_COUNT:
                 existing_game = get_active_game_for_player(player)
@@ -211,10 +257,13 @@ def start_game_for_player(player: PlayerIdentity) -> Game:
                 )
 
             scoring_max_distance_m = calculate_scoring_max_distance_m_for_dataset(
-                dataset_version.id
+                dataset_version.id,
+                canton_id=game_scope.canton.id if game_scope.canton else None,
             )
             target_ids = random.SystemRandom().sample(municipality_ids, TURN_COUNT)
             game = Game.objects.create(
+                mode=game_scope.mode,
+                canton=game_scope.canton,
                 scoring_max_distance_m=scoring_max_distance_m,
                 **player.model_fields(),
             )
@@ -243,6 +292,55 @@ def start_game_for_player(player: PlayerIdentity) -> Game:
         if existing_game is not None:
             return existing_game
         raise
+
+
+def resolve_game_scope(
+    *,
+    dataset_version,
+    mode: str,
+    canton_abbreviation: str = "",
+) -> GameScope:
+    """Resolve a requested game mode against the current geodata dataset.
+
+    Args:
+        dataset_version: Current geodata dataset version.
+        mode: Requested mode value.
+        canton_abbreviation: Requested canton abbreviation for canton mode.
+
+    Returns:
+        A game scope containing mode, canton, and municipality pool.
+
+    Raises:
+        InvalidGameModeError: If the requested mode or canton is invalid.
+    """
+    normalized_mode = normalize_game_mode(mode)
+    if normalized_mode == Game.Mode.SWITZERLAND:
+        return GameScope(
+            mode=Game.Mode.SWITZERLAND,
+            canton=None,
+            municipalities=get_municipalities_for_dataset(dataset_version),
+        )
+
+    canton = get_canton_for_dataset_by_abbreviation(
+        dataset_version,
+        canton_abbreviation,
+    )
+    if canton is None:
+        raise InvalidGameModeError("Choose a valid canton.")
+    return GameScope(
+        mode=Game.Mode.CANTON,
+        canton=canton,
+        municipalities=get_municipalities_for_canton(canton),
+    )
+
+
+def normalize_game_mode(mode: str) -> str:
+    """Normalize and validate a requested game mode."""
+    if not mode:
+        return Game.Mode.SWITZERLAND
+    if mode in Game.Mode.values:
+        return mode
+    raise InvalidGameModeError("Choose a valid game mode.")
 
 
 def submit_guess(user, turn_id, latitude, longitude) -> GuessSubmissionResult:
@@ -487,7 +585,8 @@ def _ensure_game_scoring_max_distance_m(*, game: Game, target_id: int) -> float:
         .dataset_version_id
     )
     scoring_max_distance_m = calculate_scoring_max_distance_m_for_dataset(
-        dataset_version_id
+        dataset_version_id,
+        canton_id=game.canton_id if game.mode == Game.Mode.CANTON else None,
     )
     game.scoring_max_distance_m = scoring_max_distance_m
     game.save(update_fields=["scoring_max_distance_m"])

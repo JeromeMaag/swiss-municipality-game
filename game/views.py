@@ -1,16 +1,19 @@
 """Views for game pages."""
 
 import json
+from urllib.parse import urlencode
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.gis.geos import Point
 from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from geo.constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
 from geo.models import Municipality
+from geo.selectors import get_current_cantons
 from tracking.models import GameEvent
 from tracking.services import track_event
 
@@ -24,6 +27,7 @@ from .selectors import (
 from .services import (
     TURN_COUNT,
     GuessSubmissionError,
+    InvalidGameModeError,
     NotEnoughMunicipalitiesError,
     calculate_nearest_boundary_point,
     start_game_for_player,
@@ -39,7 +43,8 @@ CLIENT_TRACKING_EVENT_TYPES = frozenset(
     }
 )
 MAX_TRACKING_REQUEST_BYTES = 4096
-HISTORY_MAP_LABEL = "CH"
+GAME_MODE_FORM_FIELD = "game_mode"
+CANTON_FORM_FIELD = "canton"
 
 
 @require_GET
@@ -85,9 +90,19 @@ def start(request):
     """
     player = get_player_identity(request, create_session=True)
     try:
-        start_game_for_player(player)
-    except NotEnoughMunicipalitiesError as error:
-        return render_game_index(request, error=str(error), status=400)
+        start_game_for_player(
+            player,
+            mode=request.POST.get(GAME_MODE_FORM_FIELD, ""),
+            canton_abbreviation=request.POST.get(CANTON_FORM_FIELD, ""),
+        )
+    except (InvalidGameModeError, NotEnoughMunicipalitiesError) as error:
+        return render_game_index(
+            request,
+            error=str(error),
+            selected_game_mode=request.POST.get(GAME_MODE_FORM_FIELD, ""),
+            selected_canton=request.POST.get(CANTON_FORM_FIELD, ""),
+            status=400,
+        )
     return redirect("game:index")
 
 
@@ -254,6 +269,7 @@ def summary(request, game_id: int):
         "game/summary.html",
         {
             "game": game,
+            **map_context_for_game(game),
             "summary_reveals": build_summary_reveals(game),
             "turn_count": TURN_COUNT,
         },
@@ -292,7 +308,7 @@ def history(request, game_id: int | None = None):
         {
             "history_games": history_games,
             "history_stats": history_stats,
-            "map_label": HISTORY_MAP_LABEL,
+            **map_context_for_game(selected_game),
             "selected_game": selected_game,
             "summary_reveals": (
                 build_summary_reveals(selected_game)
@@ -453,7 +469,7 @@ def get_last_guess_result(request, player=None) -> Guess | None:
         return None
 
     return (
-        Guess.objects.select_related("turn__game", "turn__target__canton")
+        Guess.objects.select_related("turn__game__canton", "turn__target__canton")
         .only(
             "id",
             "user",
@@ -466,6 +482,9 @@ def get_last_guess_result(request, player=None) -> Guess | None:
             "turn__id",
             "turn__turn_number",
             "turn__game__id",
+            "turn__game__mode",
+            "turn__game__canton",
+            "turn__game__canton__abbreviation",
             "turn__game__status",
             "turn__game__total_score",
             "turn__game__user",
@@ -493,6 +512,8 @@ def render_game_index(
     active_game=None,
     last_guess=None,
     error: str = "",
+    selected_game_mode: str = Game.Mode.SWITZERLAND,
+    selected_canton: str = "",
     status: int = 200,
 ):
     """Render the game index template.
@@ -514,7 +535,10 @@ def render_game_index(
     reveal_boundary_lng = ""
     reveal_guess_lat = ""
     reveal_guess_lng = ""
+    selected_game_mode = selected_game_mode or Game.Mode.SWITZERLAND
     if active_game is not None:
+        selected_game_mode = active_game.mode
+        selected_canton = active_game.canton.abbreviation if active_game.canton_id else ""
         turns = list(
             active_game.turns.only(
                 "id",
@@ -546,13 +570,17 @@ def render_game_index(
         "game/index.html",
         {
             "active_game": active_game,
+            "available_cantons": list(get_current_cantons()),
             "current_turn": current_turn,
             "current_target_name": current_target_name,
             "last_guess": last_guess,
+            **map_context_for_game(active_game),
             "reveal_boundary_lat": reveal_boundary_lat,
             "reveal_boundary_lng": reveal_boundary_lng,
             "reveal_guess_lat": reveal_guess_lat,
             "reveal_guess_lng": reveal_guess_lng,
+            "selected_canton": selected_canton,
+            "selected_game_mode": selected_game_mode,
             "show_game_map": active_game is None
             or (current_turn is not None or last_guess is not None),
             "open_auth_choice_modal": (
@@ -566,3 +594,22 @@ def render_game_index(
         },
         status=status,
     )
+
+
+def map_context_for_game(game: Game | None) -> dict[str, str]:
+    """Return map labels and GeoJSON URLs for a game scope."""
+    scope_query = map_scope_query_for_game(game)
+    return {
+        "canton_boundaries_url": reverse("geo:cantons_geojson") + scope_query,
+        "map_label": game.map_label if game is not None else "CH",
+        "municipality_boundaries_url": (
+            reverse("geo:municipality_boundaries_geojson") + scope_query
+        ),
+    }
+
+
+def map_scope_query_for_game(game: Game | None) -> str:
+    """Return a query string restricting map GeoJSON to a game's scope."""
+    if game is None or game.mode != Game.Mode.CANTON or game.canton_id is None:
+        return ""
+    return "?" + urlencode({"canton": game.canton.abbreviation})

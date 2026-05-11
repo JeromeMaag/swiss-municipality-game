@@ -53,6 +53,26 @@ def get_cantons_for_dataset(dataset_version: GeoDatasetVersion) -> QuerySet[Cant
     )
 
 
+def get_canton_for_dataset_by_abbreviation(
+    dataset_version: GeoDatasetVersion,
+    abbreviation: str,
+) -> Canton | None:
+    """Return one canton from a dataset by abbreviation.
+
+    Args:
+        dataset_version: Dataset version to query.
+        abbreviation: Canton abbreviation such as ``ZH``.
+
+    Returns:
+        The matching canton, or None.
+    """
+    return (
+        get_cantons_for_dataset(dataset_version)
+        .filter(abbreviation=abbreviation.strip().upper())
+        .first()
+    )
+
+
 def get_current_municipalities() -> QuerySet[Municipality]:
     """Return active municipalities for the current dataset version.
 
@@ -82,6 +102,18 @@ def get_municipalities_for_dataset(
     ).order_by("id")
 
 
+def get_municipalities_for_canton(canton: Canton) -> QuerySet[Municipality]:
+    """Return active municipalities for one canton.
+
+    Args:
+        canton: Canton to query.
+
+    Returns:
+        A queryset of active municipalities ordered by internal id.
+    """
+    return Municipality.objects.filter(canton=canton, is_active=True).order_by("id")
+
+
 def get_municipality_labels_for_dataset(
     dataset_version: GeoDatasetVersion,
 ) -> QuerySet[Municipality]:
@@ -96,6 +128,30 @@ def get_municipality_labels_for_dataset(
     return (
         Municipality.objects.filter(
             dataset_version=dataset_version,
+            is_active=True,
+            label_point__isnull=False,
+        )
+        .only(
+            "id",
+            "name",
+            "label_point",
+        )
+        .order_by("id")
+    )
+
+
+def get_municipality_labels_for_canton(canton: Canton) -> QuerySet[Municipality]:
+    """Return active municipality labels for one canton.
+
+    Args:
+        canton: Canton to query.
+
+    Returns:
+        A queryset of active municipalities prepared for label serialization.
+    """
+    return (
+        Municipality.objects.filter(
+            canton=canton,
             is_active=True,
             label_point__isnull=False,
         )

@@ -25,7 +25,15 @@ def build_player_statistics(user) -> dict:
         games_played=Count("id"),
     )
     recent_games = list(
-        finished_games.only("id", "total_score", "finished_at")
+        finished_games.only(
+            "id",
+            "mode",
+            "canton",
+            "canton__abbreviation",
+            "total_score",
+            "finished_at",
+        )
+        .select_related("canton")
         .order_by("-finished_at", "-id")[:RECENT_GAME_LIMIT]
     )
     finished_guesses = Guess.objects.filter(
@@ -40,16 +48,13 @@ def build_player_statistics(user) -> dict:
     )
     games_played = game_stats["games_played"] or 0
     average_score = round_or_zero(game_stats["average_score"])
-    map_modes = (
-        [
-            {
-                "average_score": average_score,
-                "games_played": games_played,
-                "label": DEFAULT_MAP_LABEL,
-            }
-        ]
-        if games_played
-        else []
+    map_modes = list(
+        finished_games.values("mode", "canton__abbreviation")
+        .annotate(
+            average_score=Avg("total_score"),
+            games_played=Count("id"),
+        )
+        .order_by("mode", "canton__abbreviation")
     )
     return {
         "average_distance_m": round_or_zero(distance_stats["average_distance_m"]),
@@ -57,7 +62,14 @@ def build_player_statistics(user) -> dict:
         "best_distance_m": round_or_zero(distance_stats["best_distance_m"]),
         "best_score": game_stats["best_score"] or 0,
         "games_played": games_played,
-        "map_modes": map_modes,
+        "map_modes": [
+            {
+                "average_score": round_or_zero(mode["average_score"]),
+                "games_played": mode["games_played"],
+                "label": map_mode_label(mode),
+            }
+            for mode in map_modes
+        ],
         "perfect_rounds": distance_stats["perfect_rounds"] or 0,
         "recent_games": recent_games,
         "rounds_played": distance_stats["rounds_played"] or 0,
@@ -67,3 +79,8 @@ def build_player_statistics(user) -> dict:
 def round_or_zero(value) -> int:
     """Round numeric aggregate values, using zero for empty result sets."""
     return round(value) if value is not None else 0
+
+
+def map_mode_label(mode: dict) -> str:
+    """Return a compact label for grouped map-mode statistics."""
+    return mode["canton__abbreviation"] or DEFAULT_MAP_LABEL
