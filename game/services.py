@@ -42,6 +42,76 @@ class InvalidGuessCoordinatesError(GuessSubmissionError):
     """Raised when submitted guess coordinates are invalid."""
 
 
+def calculate_scoring_max_distance_m_for_dataset(dataset_version_id: int) -> float:
+    """Return the scoring distance scale for an active municipality dataset.
+
+    Args:
+        dataset_version_id: Dataset version whose active municipalities define
+            the playable map scope.
+
+    Returns:
+        The maximum geodesic distance between bounding-box corners in meters.
+
+    Raises:
+        NotEnoughMunicipalitiesError: If the dataset has no usable map extent.
+    """
+    municipality_table = connection.ops.quote_name(Municipality._meta.db_table)
+    query = f"""
+        WITH bounds AS (
+            SELECT ST_Extent(geom) AS box
+            FROM {municipality_table}
+            WHERE dataset_version_id = %s AND is_active = true
+        ),
+        corners AS (
+            SELECT
+                ST_XMin(box)::float8 AS min_lng,
+                ST_YMin(box)::float8 AS min_lat,
+                ST_XMax(box)::float8 AS max_lng,
+                ST_YMax(box)::float8 AS max_lat
+            FROM bounds
+            WHERE box IS NOT NULL
+        ),
+        points AS (
+            SELECT * FROM (VALUES
+                (
+                    'SW',
+                    (SELECT ST_SetSRID(ST_MakePoint(min_lng, min_lat), 4326)
+                     FROM corners)
+                ),
+                (
+                    'SE',
+                    (SELECT ST_SetSRID(ST_MakePoint(max_lng, min_lat), 4326)
+                     FROM corners)
+                ),
+                (
+                    'NW',
+                    (SELECT ST_SetSRID(ST_MakePoint(min_lng, max_lat), 4326)
+                     FROM corners)
+                ),
+                (
+                    'NE',
+                    (SELECT ST_SetSRID(ST_MakePoint(max_lng, max_lat), 4326)
+                     FROM corners)
+                )
+            ) AS point(label, geom)
+        )
+        SELECT MAX(
+            ST_Distance(start_point.geom::geography, end_point.geom::geography)
+        )
+        FROM points AS start_point
+        JOIN points AS end_point ON start_point.label < end_point.label
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(query, [dataset_version_id])
+        row = cursor.fetchone()
+
+    if row is None or row[0] is None or row[0] <= 0:
+        raise NotEnoughMunicipalitiesError(
+            "Could not calculate a usable scoring map extent."
+        )
+    return float(row[0])
+
+
 @dataclass(frozen=True)
 class GuessDistances:
     """Measured distances between a guess point and the target municipality.
@@ -119,9 +189,8 @@ def start_game_for_player(player: PlayerIdentity) -> Game:
             if existing_game is not None:
                 return existing_game
 
-            municipality_ids = list(
-                get_current_municipalities().values_list("id", flat=True)
-            )
+            current_municipalities = get_current_municipalities()
+            municipality_ids = list(current_municipalities.values_list("id", flat=True))
             if len(municipality_ids) < TURN_COUNT:
                 existing_game = get_active_game_for_player(player)
                 if existing_game is not None:
@@ -131,8 +200,18 @@ def start_game_for_player(player: PlayerIdentity) -> Game:
                     "start a game."
                 )
 
+            dataset_version_id = current_municipalities.values_list(
+                "dataset_version_id",
+                flat=True,
+            ).first()
+            scoring_max_distance_m = calculate_scoring_max_distance_m_for_dataset(
+                dataset_version_id
+            )
             target_ids = random.SystemRandom().sample(municipality_ids, TURN_COUNT)
-            game = Game.objects.create(**player.model_fields())
+            game = Game.objects.create(
+                scoring_max_distance_m=scoring_max_distance_m,
+                **player.model_fields(),
+            )
             turns = [
                 Turn(game=game, turn_number=turn_number, target_id=target_id)
                 for turn_number, target_id in enumerate(target_ids, start=1)
@@ -237,8 +316,15 @@ def submit_guess_for_player(
         turn.game = game
         _validate_guessable_turn(player=player, game=game, turn=turn)
 
+        scoring_max_distance_m = _ensure_game_scoring_max_distance_m(
+            game=game,
+            target_id=turn.target_id,
+        )
         distances = _calculate_guess_distances(point=point, target_id=turn.target_id)
-        score = calculate_score(distances.distance_to_municipality_m)
+        score = calculate_score(
+            distances.distance_to_municipality_m,
+            scoring_max_distance_m,
+        )
         guess = Guess(
             turn=turn,
             point=point,
@@ -261,6 +347,9 @@ def submit_guess_for_player(
             .first()
         )
         update_fields = ["total_score"]
+        if game.scoring_max_distance_m is None or game.scoring_max_distance_m <= 0:
+            game.scoring_max_distance_m = scoring_max_distance_m
+            update_fields.append("scoring_max_distance_m")
         if next_turn is None:
             game.status = Game.Status.FINISHED
             game.finished_at = timezone.now()
@@ -378,6 +467,19 @@ def _validate_guessable_turn(*, player: PlayerIdentity, game: Game, turn: Turn) 
     )
     if current_turn_id != turn.id:
         raise GuessSubmissionError("Turn is not the current turn.")
+
+
+def _ensure_game_scoring_max_distance_m(*, game: Game, target_id: int) -> float:
+    """Return a game's scoring distance scale, calculating it for legacy games."""
+    if game.scoring_max_distance_m is not None and game.scoring_max_distance_m > 0:
+        return game.scoring_max_distance_m
+
+    dataset_version_id = (
+        Municipality.objects.only("dataset_version_id")
+        .get(pk=target_id)
+        .dataset_version_id
+    )
+    return calculate_scoring_max_distance_m_for_dataset(dataset_version_id)
 
 
 def calculate_nearest_boundary_point(*, point: Point, target_id: int) -> Point:

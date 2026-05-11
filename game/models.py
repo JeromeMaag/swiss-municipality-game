@@ -37,6 +37,11 @@ class Game(models.Model):
         default=Status.ACTIVE,
     )
     total_score = models.PositiveIntegerField(default=0)
+    scoring_max_distance_m = models.FloatField(
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(0)],
+    )
     started_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(blank=True, null=True)
 
