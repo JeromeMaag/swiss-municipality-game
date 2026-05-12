@@ -34,6 +34,7 @@ municipality labels can appear when zoomed in far enough.
 ## Map Settings
 
 The settings button on the map lets players switch between available background
-maps and adjust boundary line visibility. These choices are stored in the
-browser, so guest and signed-in players keep the same map preference on the same
-device.
+maps, choose a boundary line theme (`auto`, `white`, or `black`), and set which
+outlines are shown (`all`, `cantons`, `municipalities`, or `off`). These choices
+are stored in the browser, so guest and signed-in players keep the same map
+preference on the same device.

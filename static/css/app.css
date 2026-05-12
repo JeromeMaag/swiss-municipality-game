@@ -290,7 +290,7 @@ a {
 .map-settings-button svg {
   fill: none;
   height: 1.24rem;
-  stroke: currentColor;
+  stroke: currentcolor;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.85;
