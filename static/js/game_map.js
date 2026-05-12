@@ -3,10 +3,14 @@
 
   const BACKGROUND_MAP_STORAGE_KEY = "gemeindeguess.backgroundMap";
   const BOUNDARY_LINE_STORAGE_KEY = "gemeindeguess.boundaryLines";
+  const OUTLINE_STORAGE_KEY = "gemeindeguess.outlines";
   const DEFAULT_BACKGROUND_MAP_ID = "swissimage";
   const DEFAULT_BOUNDARY_LINE_MODE = "auto";
+  const DEFAULT_OUTLINE_MODE = "all";
   const BOUNDARY_LINE_MODES = new Set(["auto", "white", "black"]);
+  const OUTLINE_MODES = new Set(["all", "cantons", "municipalities", "off"]);
   const AUTO_BOUNDARY_LINE_THEME = {
+    cartoVoyager: "black",
     lightRelief: "black",
     none: "black",
     surfaceRelief: "black",
@@ -49,6 +53,16 @@
         "ch.swisstopo.leichte-basiskarte_reliefschattierung",
         "png"
       ),
+    },
+    cartoVoyager: {
+      attribution:
+        '&copy; <a href="https://carto.com/attributions">CARTO</a> ' +
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxNativeZoom: 20,
+      maxZoom: 20,
+      minZoom: 0,
+      subdomains: "abcd",
+      url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png",
     },
     none: {
       attribution: "",
@@ -260,6 +274,10 @@
     return BOUNDARY_LINE_MODES.has(mode) ? mode : DEFAULT_BOUNDARY_LINE_MODE;
   }
 
+  function normalizeOutlineMode(mode) {
+    return OUTLINE_MODES.has(mode) ? mode : DEFAULT_OUTLINE_MODE;
+  }
+
   function resolveBoundaryLineTheme(mapId, mode) {
     const normalizedMode = normalizeBoundaryLineMode(mode);
     if (normalizedMode !== "auto") {
@@ -288,6 +306,14 @@
     }
   }
 
+  function readStoredOutlineMode() {
+    try {
+      return normalizeOutlineMode(window.localStorage.getItem(OUTLINE_STORAGE_KEY));
+    } catch (error) {
+      return DEFAULT_OUTLINE_MODE;
+    }
+  }
+
   function storeBackgroundMapId(mapId) {
     try {
       window.localStorage.setItem(BACKGROUND_MAP_STORAGE_KEY, mapId);
@@ -299,6 +325,14 @@
   function storeBoundaryLineMode(mode) {
     try {
       window.localStorage.setItem(BOUNDARY_LINE_STORAGE_KEY, mode);
+    } catch (error) {
+      return;
+    }
+  }
+
+  function storeOutlineMode(mode) {
+    try {
+      window.localStorage.setItem(OUTLINE_STORAGE_KEY, mode);
     } catch (error) {
       return;
     }
@@ -320,15 +354,23 @@
     );
   }
 
+  function syncOutlinePickers(mode) {
+    document.querySelectorAll("[data-outline-picker]").forEach(
+      function (picker) {
+        picker.value = mode;
+      }
+    );
+  }
+
   function boundaryLineColors(theme) {
     if (theme === "black") {
       return {
-        canton: "#ffcf4a",
+        canton: "#e5322d",
         municipality: "#05080a",
       };
     }
     return {
-      canton: "#ffcf4a",
+      canton: "#e5322d",
       municipality: "#ffffff",
     };
   }
@@ -340,13 +382,21 @@
     );
     const colors = boundaryLineColors(theme);
     map.getContainer().dataset.boundaryLineTheme = theme;
+    map.getContainer().dataset.outlineMode = boundaryState.outlineMode;
     if (boundaryState.municipalityLayer !== null) {
       boundaryState.municipalityLayer.setStyle(
-        municipalityStyle(revealState, summaryState, colors)
+        municipalityStyle(
+          revealState,
+          summaryState,
+          colors,
+          boundaryState.outlineMode
+        )
       );
     }
     if (boundaryState.cantonLayer !== null) {
-      boundaryState.cantonLayer.setStyle(cantonStyle(colors));
+      boundaryState.cantonLayer.setStyle(
+        cantonStyle(colors, boundaryState.outlineMode)
+      );
     }
   }
 
@@ -361,12 +411,17 @@
       return null;
     }
 
-    return window.L.tileLayer(url, {
+    const layerOptions = {
       attribution: backgroundMap.attribution,
       maxNativeZoom: backgroundMap.maxNativeZoom,
       maxZoom: backgroundMap.maxZoom,
       minZoom: backgroundMap.minZoom,
-    }).addTo(map);
+    };
+    if (backgroundMap.subdomains) {
+      layerOptions.subdomains = backgroundMap.subdomains;
+    }
+
+    return window.L.tileLayer(url, layerOptions).addTo(map);
   }
 
   function initializeBackgroundMapPicker(
@@ -417,6 +472,29 @@
         storeBoundaryLineMode(lineMode);
         syncBoundaryLinePickers(lineMode);
         boundaryState.lineMode = lineMode;
+        applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
+      });
+    });
+  }
+
+  function initializeOutlinePicker(
+    map,
+    boundaryState,
+    revealState,
+    summaryState
+  ) {
+    const pickers = document.querySelectorAll("[data-outline-picker]");
+    if (!pickers.length) {
+      return;
+    }
+
+    syncOutlinePickers(boundaryState.outlineMode);
+    pickers.forEach(function (picker) {
+      picker.addEventListener("change", function () {
+        const outlineMode = normalizeOutlineMode(picker.value);
+        storeOutlineMode(outlineMode);
+        syncOutlinePickers(outlineMode);
+        boundaryState.outlineMode = outlineMode;
         applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
       });
     });
@@ -697,7 +775,15 @@
     );
   }
 
-  function municipalityStyle(revealState, summaryState, colors) {
+  function hiddenBoundaryStyle() {
+    return {
+      fillOpacity: 0,
+      opacity: 0,
+      weight: 0,
+    };
+  }
+
+  function municipalityStyle(revealState, summaryState, colors, outlineMode) {
     return function (feature) {
       if (
         (revealState && isTargetFeature(feature, revealState.targetId)) ||
@@ -711,6 +797,9 @@
           weight: 2,
         };
       }
+      if (outlineMode !== "all" && outlineMode !== "municipalities") {
+        return hiddenBoundaryStyle();
+      }
       return {
         color: colors.municipality,
         fillOpacity: 0,
@@ -720,12 +809,15 @@
     };
   }
 
-  function cantonStyle(colors) {
+  function cantonStyle(colors, outlineMode) {
+    if (outlineMode !== "all" && outlineMode !== "cantons") {
+      return hiddenBoundaryStyle();
+    }
     return {
       color: colors.canton,
       fillOpacity: 0,
-      opacity: colors.canton === "#ffcf4a" ? 0.9 : 0.82,
-      weight: colors.canton === "#ffcf4a" ? 1.4 : 1.1,
+      opacity: 0.9,
+      weight: 1.8,
     };
   }
 
@@ -931,6 +1023,7 @@
     map.setView([latitude, longitude], zoom);
     const backgroundMapId = readStoredBackgroundMapId();
     const boundaryLineMode = readStoredBoundaryLineMode();
+    const outlineMode = readStoredOutlineMode();
     const baseLayerState = {
       layer: addBaseMapLayer(
         map,
@@ -944,6 +1037,7 @@
       lineMode: boundaryLineMode,
       mapId: backgroundMapId,
       municipalityLayer: null,
+      outlineMode: outlineMode,
     };
     const initialBoundaryColors = boundaryLineColors(
       resolveBoundaryLineTheme(boundaryState.mapId, boundaryState.lineMode)
@@ -958,6 +1052,7 @@
       mapElement.dataset.baseMapUrl
     );
     initializeBoundaryLinePicker(map, boundaryState, revealState, summaryState);
+    initializeOutlinePicker(map, boundaryState, revealState, summaryState);
     initializeMapSettingsMenu();
     window.L.control.scale({ imperial: false, metric: true }).addTo(map);
     if (revealState) {
@@ -975,7 +1070,8 @@
       style: municipalityStyle(
         revealState,
         summaryState,
-        initialBoundaryColors
+        initialBoundaryColors,
+        boundaryState.outlineMode
       ),
     }).then(function (municipalityLayer) {
       boundaryState.municipalityLayer = municipalityLayer;
@@ -993,7 +1089,7 @@
       return addBoundaryLayer(map, mapElement.dataset.cantonBoundariesUrl, {
         errorMessage: "Canton boundaries could not be loaded.",
         fitBounds: false,
-        style: cantonStyle(initialBoundaryColors),
+        style: cantonStyle(initialBoundaryColors, boundaryState.outlineMode),
       });
     }).then(function (cantonLayer) {
       boundaryState.cantonLayer = cantonLayer;
