@@ -111,7 +111,11 @@ def get_municipalities_for_canton(canton: Canton) -> QuerySet[Municipality]:
     Returns:
         A queryset of active municipalities ordered by internal id.
     """
-    return Municipality.objects.filter(canton=canton, is_active=True).order_by("id")
+    return Municipality.objects.filter(
+        canton=canton,
+        dataset_version=canton.dataset_version,
+        is_active=True,
+    ).order_by("id")
 
 
 def get_municipality_labels_for_dataset(
@@ -152,6 +156,7 @@ def get_municipality_labels_for_canton(canton: Canton) -> QuerySet[Municipality]
     return (
         Municipality.objects.filter(
             canton=canton,
+            dataset_version=canton.dataset_version,
             is_active=True,
             label_point__isnull=False,
         )
