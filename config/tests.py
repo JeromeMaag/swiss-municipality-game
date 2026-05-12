@@ -179,8 +179,11 @@ class LanguagePreferenceTests(TestCase):
         self.assertContains(response, 'name="language"')
         self.assertContains(response, 'onchange="this.form.submit()"')
         self.assertContains(response, 'value="fr" selected')
+        self.assertContains(response, "English")
         self.assertContains(response, "Deutsch")
         self.assertContains(response, "Français")
+        self.assertNotContains(response, "Anglais")
+        self.assertNotContains(response, "Allemand")
 
     def test_language_switch_stores_cookie_and_redirects_back(self) -> None:
         """The profile language selector persists a manual language choice."""

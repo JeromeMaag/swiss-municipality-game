@@ -6,7 +6,6 @@
 
 {% block content %}
   {% get_current_language as LANGUAGE_CODE %}
-  {% get_available_languages as LANGUAGES %}
   <section class="profile-shell" aria-labelledby="profile-heading">
     <header class="profile-header">
       <div>
@@ -92,7 +91,7 @@
             name="language"
             onchange="this.form.submit()"
           >
-            {% for language_code, language_name in LANGUAGES %}
+            {% for language_code, language_name in available_languages %}
               <option value="{{ language_code }}"{% if language_code == LANGUAGE_CODE %} selected{% endif %}>
                 {{ language_name }}
               </option>

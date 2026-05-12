@@ -4,6 +4,7 @@ from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView as DjangoLoginView
 from django.contrib.auth.views import LogoutView as DjangoLogoutView
+from django.conf import settings
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
@@ -44,7 +45,10 @@ def profile(request):
     return render(
         request,
         "accounts/profile.html",
-        {"statistics": build_player_statistics(request.user)},
+        {
+            "available_languages": settings.LANGUAGES,
+            "statistics": build_player_statistics(request.user),
+        },
     )
 
 
