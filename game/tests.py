@@ -1268,6 +1268,8 @@ class GameStartTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertContains(response, "Choose a valid canton.", status_code=400)
+        self.assertEqual(response.context["selected_game_mode"], Game.Mode.CANTON)
+        self.assertEqual(response.context["selected_canton"], "")
         self.assertFalse(Game.objects.exists())
 
     def test_start_view_rejects_invalid_mode(self) -> None:
@@ -1282,6 +1284,11 @@ class GameStartTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertContains(response, "Choose a valid game mode.", status_code=400)
+        self.assertEqual(
+            response.context["selected_game_mode"],
+            Game.Mode.SWITZERLAND,
+        )
+        self.assertEqual(response.context["selected_canton"], "")
         self.assertFalse(Game.objects.exists())
 
     def test_start_view_rejects_get(self) -> None:

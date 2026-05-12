@@ -96,11 +96,15 @@ def start(request):
             canton_abbreviation=request.POST.get(CANTON_FORM_FIELD, ""),
         )
     except (InvalidGameModeError, NotEnoughMunicipalitiesError) as error:
+        selected_game_mode, selected_canton = normalize_start_form_selection(
+            mode=request.POST.get(GAME_MODE_FORM_FIELD, ""),
+            canton=request.POST.get(CANTON_FORM_FIELD, ""),
+        )
         return render_game_index(
             request,
             error=str(error),
-            selected_game_mode=request.POST.get(GAME_MODE_FORM_FIELD, ""),
-            selected_canton=request.POST.get(CANTON_FORM_FIELD, ""),
+            selected_game_mode=selected_game_mode,
+            selected_canton=selected_canton,
             status=400,
         )
     return redirect("game:index")
@@ -596,6 +600,19 @@ def render_game_index(
         },
         status=status,
     )
+
+
+def normalize_start_form_selection(*, mode: str, canton: str) -> tuple[str, str]:
+    """Return safe mode/canton values for re-rendering the start form."""
+    selected_mode = mode if mode in Game.Mode.values else Game.Mode.SWITZERLAND
+    if selected_mode != Game.Mode.CANTON:
+        return selected_mode, ""
+
+    selected_canton = canton.strip().upper()
+    valid_cantons = set(get_current_cantons().values_list("abbreviation", flat=True))
+    if selected_canton not in valid_cantons:
+        return selected_mode, ""
+    return selected_mode, selected_canton
 
 
 def map_context_for_game(game: Game | None) -> dict[str, str]:
