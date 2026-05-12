@@ -149,18 +149,22 @@
     {% else %}
       <div class="game-layout">
         <section class="map-panel" aria-label="Game preview map">
-          <p class="map-status" data-map-status role="status" aria-live="polite" aria-atomic="true"></p>
-          {% include "game/includes/map_settings.html" %}
-          <div
-            id="game-map"
-            class="game-map"
-            data-center-lat="46.8182"
-            data-center-lng="8.2275"
-            data-zoom="8"
-            data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
+          {% if show_game_map %}
+            <p class="map-status" data-map-status role="status" aria-live="polite" aria-atomic="true"></p>
+            {% include "game/includes/map_settings.html" %}
+            <div
+              id="game-map"
+              class="game-map"
+              data-center-lat="46.8182"
+              data-center-lng="8.2275"
+              data-zoom="8"
+              data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
               data-canton-boundaries-url="{{ canton_boundaries_url }}"
               data-municipality-boundaries-url="{{ municipality_boundaries_url }}"
-          ></div>
+            ></div>
+          {% else %}
+            <div class="map-placeholder"></div>
+          {% endif %}
         </section>
 
         <aside class="game-sidebar game-entry-sidebar" aria-label="Start game">
