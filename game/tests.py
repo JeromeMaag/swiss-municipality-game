@@ -1241,6 +1241,21 @@ class GameStartTests(TestCase):
             ),
         )
 
+    def test_start_view_ignores_canton_for_switzerland_mode(self) -> None:
+        """Switzerland mode ignores a posted canton from non-JS form controls."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("game:start"),
+            {"game_mode": "switzerland", "canton": "ZH"},
+        )
+
+        self.assertRedirects(response, reverse("game:index"))
+        game = Game.objects.get()
+        self.assertEqual(game.mode, Game.Mode.SWITZERLAND)
+        self.assertIsNone(game.canton)
+
     def test_start_view_rejects_invalid_canton(self) -> None:
         """Game start view validates canton choices."""
         self.create_municipalities(5)
