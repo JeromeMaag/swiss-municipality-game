@@ -1,6 +1,78 @@
 (function () {
   "use strict";
 
+  const BACKGROUND_MAP_STORAGE_KEY = "gemeindeguess.backgroundMap";
+  const BOUNDARY_LINE_STORAGE_KEY = "gemeindeguess.boundaryLines";
+  const OUTLINE_STORAGE_KEY = "gemeindeguess.outlines";
+  const DEFAULT_BACKGROUND_MAP_ID = "swissimage";
+  const DEFAULT_BOUNDARY_LINE_MODE = "auto";
+  const DEFAULT_OUTLINE_MODE = "all";
+  const BOUNDARY_LINE_MODES = new Set(["auto", "white", "black"]);
+  const OUTLINE_MODES = new Set(["all", "cantons", "municipalities", "off"]);
+  const AUTO_BOUNDARY_LINE_THEME = {
+    cartoVoyager: "black",
+    lightRelief: "black",
+    none: "black",
+    surfaceRelief: "black",
+    swissimage: "white",
+  };
+
+  function swisstopoWmtsUrl(layer, extension) {
+    return (
+      "https://wmts.geo.admin.ch/1.0.0/" +
+      layer +
+      "/default/current/3857/{z}/{x}/{y}." +
+      extension
+    );
+  }
+
+  const BACKGROUND_MAPS = {
+    swissimage: {
+      attribution: "Map data &copy; swisstopo",
+      maxNativeZoom: 18,
+      maxZoom: 18,
+      minZoom: 6,
+      url: swisstopoWmtsUrl("ch.swisstopo.swissimage", "jpeg"),
+    },
+    surfaceRelief: {
+      attribution: "Map data &copy; swisstopo",
+      maxNativeZoom: 18,
+      maxZoom: 18,
+      minZoom: 6,
+      url: swisstopoWmtsUrl(
+        "ch.swisstopo.swisssurface3d-reliefschattierung-multidirektional",
+        "png"
+      ),
+    },
+    lightRelief: {
+      attribution: "Map data &copy; swisstopo",
+      maxNativeZoom: 18,
+      maxZoom: 18,
+      minZoom: 6,
+      url: swisstopoWmtsUrl(
+        "ch.swisstopo.leichte-basiskarte_reliefschattierung",
+        "png"
+      ),
+    },
+    cartoVoyager: {
+      attribution:
+        '&copy; <a href="https://carto.com/attributions">CARTO</a> ' +
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxNativeZoom: 20,
+      maxZoom: 20,
+      minZoom: 0,
+      subdomains: "abcd",
+      url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png",
+    },
+    none: {
+      attribution: "",
+      maxNativeZoom: 18,
+      maxZoom: 18,
+      minZoom: 6,
+      url: "",
+    },
+  };
+
   function readNumber(element, name, fallback) {
     const value = Number.parseFloat(element.dataset[name]);
     return Number.isFinite(value) ? value : fallback;
@@ -192,17 +264,278 @@
     }
   }
 
-  function addBaseMapLayer(map, url) {
+  function normalizeBackgroundMapId(mapId) {
+    return Object.prototype.hasOwnProperty.call(BACKGROUND_MAPS, mapId)
+      ? mapId
+      : DEFAULT_BACKGROUND_MAP_ID;
+  }
+
+  function normalizeBoundaryLineMode(mode) {
+    return BOUNDARY_LINE_MODES.has(mode) ? mode : DEFAULT_BOUNDARY_LINE_MODE;
+  }
+
+  function normalizeOutlineMode(mode) {
+    return OUTLINE_MODES.has(mode) ? mode : DEFAULT_OUTLINE_MODE;
+  }
+
+  function resolveBoundaryLineTheme(mapId, mode) {
+    const normalizedMode = normalizeBoundaryLineMode(mode);
+    if (normalizedMode !== "auto") {
+      return normalizedMode;
+    }
+    return AUTO_BOUNDARY_LINE_THEME[normalizeBackgroundMapId(mapId)] || "black";
+  }
+
+  function readStoredBackgroundMapId() {
+    try {
+      return normalizeBackgroundMapId(
+        window.localStorage.getItem(BACKGROUND_MAP_STORAGE_KEY)
+      );
+    } catch (error) {
+      return DEFAULT_BACKGROUND_MAP_ID;
+    }
+  }
+
+  function readStoredBoundaryLineMode() {
+    try {
+      return normalizeBoundaryLineMode(
+        window.localStorage.getItem(BOUNDARY_LINE_STORAGE_KEY)
+      );
+    } catch (error) {
+      return DEFAULT_BOUNDARY_LINE_MODE;
+    }
+  }
+
+  function readStoredOutlineMode() {
+    try {
+      return normalizeOutlineMode(window.localStorage.getItem(OUTLINE_STORAGE_KEY));
+    } catch (error) {
+      return DEFAULT_OUTLINE_MODE;
+    }
+  }
+
+  function storeBackgroundMapId(mapId) {
+    try {
+      window.localStorage.setItem(BACKGROUND_MAP_STORAGE_KEY, mapId);
+    } catch (error) {
+      return;
+    }
+  }
+
+  function storeBoundaryLineMode(mode) {
+    try {
+      window.localStorage.setItem(BOUNDARY_LINE_STORAGE_KEY, mode);
+    } catch (error) {
+      return;
+    }
+  }
+
+  function storeOutlineMode(mode) {
+    try {
+      window.localStorage.setItem(OUTLINE_STORAGE_KEY, mode);
+    } catch (error) {
+      return;
+    }
+  }
+
+  function syncBackgroundMapPickers(mapId) {
+    document.querySelectorAll("[data-background-map-picker]").forEach(
+      function (picker) {
+        picker.value = mapId;
+      }
+    );
+  }
+
+  function syncBoundaryLinePickers(mode) {
+    document.querySelectorAll("[data-boundary-line-picker]").forEach(
+      function (picker) {
+        picker.value = mode;
+      }
+    );
+  }
+
+  function syncOutlinePickers(mode) {
+    document.querySelectorAll("[data-outline-picker]").forEach(
+      function (picker) {
+        picker.value = mode;
+      }
+    );
+  }
+
+  function boundaryLineColors(theme) {
+    if (theme === "black") {
+      return {
+        canton: "#e5322d",
+        municipality: "#05080a",
+      };
+    }
+    return {
+      canton: "#e5322d",
+      municipality: "#ffffff",
+    };
+  }
+
+  function applyBoundaryLineTheme(map, boundaryState, revealState, summaryState) {
+    const theme = resolveBoundaryLineTheme(
+      boundaryState.mapId,
+      boundaryState.lineMode
+    );
+    const colors = boundaryLineColors(theme);
+    if (boundaryState.municipalityLayer !== null) {
+      boundaryState.municipalityLayer.setStyle(
+        municipalityStyle(
+          revealState,
+          summaryState,
+          colors,
+          boundaryState.outlineMode
+        )
+      );
+    }
+    if (boundaryState.cantonLayer !== null) {
+      boundaryState.cantonLayer.setStyle(
+        cantonStyle(colors, boundaryState.outlineMode)
+      );
+    }
+  }
+
+  function addBaseMapLayer(map, mapId, fallbackUrl) {
+    const normalizedMapId = normalizeBackgroundMapId(mapId);
+    const backgroundMap = BACKGROUND_MAPS[normalizedMapId];
+    const url = backgroundMap.url || fallbackUrl;
+    if (normalizedMapId === "none") {
+      return null;
+    }
     if (!url) {
       return null;
     }
 
-    return window.L.tileLayer(url, {
-      attribution: "Map data &copy; swisstopo",
-      maxNativeZoom: 18,
-      maxZoom: 18,
-      minZoom: 6,
-    }).addTo(map);
+    const layerOptions = {
+      attribution: backgroundMap.attribution,
+      maxNativeZoom: backgroundMap.maxNativeZoom,
+      maxZoom: backgroundMap.maxZoom,
+      minZoom: backgroundMap.minZoom,
+    };
+    if (backgroundMap.subdomains) {
+      layerOptions.subdomains = backgroundMap.subdomains;
+    }
+
+    return window.L.tileLayer(url, layerOptions).addTo(map);
+  }
+
+  function initializeBackgroundMapPicker(
+    map,
+    baseLayerState,
+    boundaryState,
+    revealState,
+    summaryState,
+    fallbackUrl
+  ) {
+    const pickers = document.querySelectorAll("[data-background-map-picker]");
+    if (!pickers.length) {
+      return;
+    }
+
+    syncBackgroundMapPickers(baseLayerState.mapId);
+    pickers.forEach(function (picker) {
+      picker.addEventListener("change", function () {
+        const mapId = normalizeBackgroundMapId(picker.value);
+        storeBackgroundMapId(mapId);
+        syncBackgroundMapPickers(mapId);
+        if (baseLayerState.layer !== null) {
+          map.removeLayer(baseLayerState.layer);
+        }
+        baseLayerState.mapId = mapId;
+        boundaryState.mapId = mapId;
+        baseLayerState.layer = addBaseMapLayer(map, mapId, fallbackUrl);
+        applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
+      });
+    });
+  }
+
+  function initializeBoundaryLinePicker(
+    map,
+    boundaryState,
+    revealState,
+    summaryState
+  ) {
+    const pickers = document.querySelectorAll("[data-boundary-line-picker]");
+    if (!pickers.length) {
+      return;
+    }
+
+    syncBoundaryLinePickers(boundaryState.lineMode);
+    pickers.forEach(function (picker) {
+      picker.addEventListener("change", function () {
+        const lineMode = normalizeBoundaryLineMode(picker.value);
+        storeBoundaryLineMode(lineMode);
+        syncBoundaryLinePickers(lineMode);
+        boundaryState.lineMode = lineMode;
+        applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
+      });
+    });
+  }
+
+  function initializeOutlinePicker(
+    map,
+    boundaryState,
+    revealState,
+    summaryState
+  ) {
+    const pickers = document.querySelectorAll("[data-outline-picker]");
+    if (!pickers.length) {
+      return;
+    }
+
+    syncOutlinePickers(boundaryState.outlineMode);
+    pickers.forEach(function (picker) {
+      picker.addEventListener("change", function () {
+        const outlineMode = normalizeOutlineMode(picker.value);
+        storeOutlineMode(outlineMode);
+        syncOutlinePickers(outlineMode);
+        boundaryState.outlineMode = outlineMode;
+        applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
+      });
+    });
+  }
+
+  function initializeMapSettingsMenu() {
+    const toggle = document.querySelector("[data-map-settings-toggle]");
+    const panel = document.querySelector("[data-map-settings-panel]");
+    if (!toggle || !panel || toggle.dataset.initialized === "true") {
+      return;
+    }
+
+    function setOpen(isOpen) {
+      panel.hidden = !isOpen;
+      toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      if (isOpen) {
+        const picker = panel.querySelector("select");
+        if (picker) {
+          picker.focus();
+        }
+      }
+    }
+
+    toggle.addEventListener("click", function (event) {
+      event.stopPropagation();
+      setOpen(panel.hidden);
+    });
+    panel.addEventListener("click", function (event) {
+      event.stopPropagation();
+    });
+    document.addEventListener("click", function () {
+      if (!panel.hidden) {
+        setOpen(false);
+      }
+    });
+    document.addEventListener("keydown", function (event) {
+      if (panel.hidden || event.key !== "Escape") {
+        return;
+      }
+      setOpen(false);
+      toggle.focus();
+    });
+    toggle.dataset.initialized = "true";
   }
 
   function formatCoordinate(value) {
@@ -440,7 +773,15 @@
     );
   }
 
-  function municipalityStyle(revealState, summaryState) {
+  function hiddenBoundaryStyle() {
+    return {
+      fillOpacity: 0,
+      opacity: 0,
+      weight: 0,
+    };
+  }
+
+  function municipalityStyle(revealState, summaryState, colors, outlineMode) {
     return function (feature) {
       if (
         (revealState && isTargetFeature(feature, revealState.targetId)) ||
@@ -454,12 +795,27 @@
           weight: 2,
         };
       }
+      if (outlineMode !== "all" && outlineMode !== "municipalities") {
+        return hiddenBoundaryStyle();
+      }
       return {
-        color: "#ffffff",
+        color: colors.municipality,
         fillOpacity: 0,
-        opacity: 0.75,
-        weight: 0.6,
+        opacity: colors.municipality === "#ffffff" ? 0.75 : 0.84,
+        weight: colors.municipality === "#ffffff" ? 0.6 : 0.75,
       };
+    };
+  }
+
+  function cantonStyle(colors, outlineMode) {
+    if (outlineMode !== "all" && outlineMode !== "cantons") {
+      return hiddenBoundaryStyle();
+    }
+    return {
+      color: colors.canton,
+      fillOpacity: 0,
+      opacity: 0.9,
+      weight: 1.8,
     };
   }
 
@@ -663,7 +1019,39 @@
     });
 
     map.setView([latitude, longitude], zoom);
-    addBaseMapLayer(map, mapElement.dataset.baseMapUrl);
+    const backgroundMapId = readStoredBackgroundMapId();
+    const boundaryLineMode = readStoredBoundaryLineMode();
+    const outlineMode = readStoredOutlineMode();
+    const baseLayerState = {
+      layer: addBaseMapLayer(
+        map,
+        backgroundMapId,
+        mapElement.dataset.baseMapUrl
+      ),
+      mapId: backgroundMapId,
+    };
+    const boundaryState = {
+      cantonLayer: null,
+      lineMode: boundaryLineMode,
+      mapId: backgroundMapId,
+      municipalityLayer: null,
+      outlineMode: outlineMode,
+    };
+    const initialBoundaryColors = boundaryLineColors(
+      resolveBoundaryLineTheme(boundaryState.mapId, boundaryState.lineMode)
+    );
+    applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
+    initializeBackgroundMapPicker(
+      map,
+      baseLayerState,
+      boundaryState,
+      revealState,
+      summaryState,
+      mapElement.dataset.baseMapUrl
+    );
+    initializeBoundaryLinePicker(map, boundaryState, revealState, summaryState);
+    initializeOutlinePicker(map, boundaryState, revealState, summaryState);
+    initializeMapSettingsMenu();
     window.L.control.scale({ imperial: false, metric: true }).addTo(map);
     if (revealState) {
       initializeReveal(map, revealState, mapElement);
@@ -677,8 +1065,15 @@
     addBoundaryLayer(map, mapElement.dataset.municipalityBoundariesUrl, {
       errorMessage: "Municipality boundaries could not be loaded.",
       fitBounds: !revealState && !summaryState,
-      style: municipalityStyle(revealState, summaryState),
+      style: municipalityStyle(
+        revealState,
+        summaryState,
+        initialBoundaryColors,
+        boundaryState.outlineMode
+      ),
     }).then(function (municipalityLayer) {
+      boundaryState.municipalityLayer = municipalityLayer;
+      applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
       if (revealState && municipalityLayer !== null) {
         fitRevealBounds(map, municipalityLayer, revealState);
         drawRevealDistanceLine(map, municipalityLayer, revealState);
@@ -692,14 +1087,11 @@
       return addBoundaryLayer(map, mapElement.dataset.cantonBoundariesUrl, {
         errorMessage: "Canton boundaries could not be loaded.",
         fitBounds: false,
-        style: {
-          color: "#ffcf4a",
-          fillOpacity: 0,
-          opacity: 0.9,
-          weight: 1.4,
-        },
+        style: cantonStyle(initialBoundaryColors, boundaryState.outlineMode),
       });
-    }).then(function () {
+    }).then(function (cantonLayer) {
+      boundaryState.cantonLayer = cantonLayer;
+      applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
       if (revealState) {
         initializeLabelLayer(
           map,

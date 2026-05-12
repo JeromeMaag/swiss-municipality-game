@@ -1,0 +1,52 @@
+<section class="map-settings-control" aria-label="Map settings">
+  <button
+    class="map-settings-button"
+    type="button"
+    aria-label="Map settings"
+    aria-expanded="false"
+    aria-controls="map-settings-panel"
+    title="Map settings"
+    data-map-settings-toggle
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6Z" />
+      <path d="M18.1 13.7c.1-.5.1-1.1 0-1.7l2-1.5-1.9-3.2-2.3 1a7.5 7.5 0 0 0-1.5-.9L14.1 5h-3.8L10 7.4c-.5.2-1 .5-1.5.9l-2.3-1-1.9 3.2 2 1.5a8 8 0 0 0 0 1.7l-2 1.5 1.9 3.2 2.3-1c.5.4 1 .7 1.5.9l.3 2.4h3.8l.3-2.4c.5-.2 1-.5 1.5-.9l2.3 1 1.9-3.2-2-1.5Z" />
+    </svg>
+  </button>
+  <div
+    class="map-settings-panel"
+    id="map-settings-panel"
+    aria-labelledby="map-settings-heading"
+    hidden
+    data-map-settings-panel
+  >
+    <strong id="map-settings-heading">Map settings</strong>
+    <label class="map-settings-field">
+      <span>Map</span>
+      <select data-background-map-picker>
+        <option value="swissimage" selected>Swissimage</option>
+        <option value="surfaceRelief">Surface relief</option>
+        <option value="lightRelief">Light relief</option>
+        <option value="cartoVoyager">CARTO Voyager</option>
+        <option value="none">No map</option>
+      </select>
+    </label>
+    <label class="map-settings-field">
+      <span>Boundary lines</span>
+      <select data-boundary-line-picker>
+        <option value="auto" selected>Auto</option>
+        <option value="white">White</option>
+        <option value="black">Black</option>
+      </select>
+    </label>
+    <label class="map-settings-field">
+      <span>Outlines</span>
+      <select data-outline-picker>
+        <option value="all" selected>All outlines</option>
+        <option value="cantons">Cantons only</option>
+        <option value="municipalities">Municipalities only</option>
+        <option value="off">Off</option>
+      </select>
+    </label>
+  </div>
+</section>

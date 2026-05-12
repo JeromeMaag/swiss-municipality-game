@@ -18,6 +18,7 @@
     <div class="game-layout">
       <section class="map-panel" aria-label="Game summary map">
         <p class="map-status" data-map-status role="status" aria-live="polite" aria-atomic="true"></p>
+        {% include "game/includes/map_settings.html" %}
         <div
           id="game-map"
           class="game-map"
@@ -73,5 +74,5 @@
     crossorigin="anonymous"
     defer
   ></script>
-  <script src="{% static 'js/game_map.js' %}?v=boundary-point-1" defer></script>
+  <script src="{% static 'js/game_map.js' %}?v=map-layers-1" defer></script>
 {% endblock %}
