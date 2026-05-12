@@ -1855,7 +1855,7 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Population")
         self.assertContains(response, "12345")
         self.assertContains(response, "Distance")
-        self.assertNotContains(response, "Boundary")
+        self.assertNotContains(response, "Distance to boundary")
         self.assertContains(response, "0 m")
         self.assertContains(response, "Next")
         self.assertContains(response, "data-next-turn-link")
