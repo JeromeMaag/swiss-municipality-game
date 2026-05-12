@@ -28,6 +28,7 @@ from .services import (
     InvalidGameModeError,
     InvalidGuessCoordinatesError,
     NotEnoughMunicipalitiesError,
+    TURN_COUNT,
     _calculate_guess_distances,
     _ensure_game_scoring_max_distance_m,
     _normalize_coordinate,

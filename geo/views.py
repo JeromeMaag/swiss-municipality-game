@@ -287,6 +287,9 @@ def require_municipality_label_access(request):
     Args:
         request: The incoming HTTP request.
 
+    Returns:
+        The revealed turn that grants label access.
+
     Raises:
         Http404: If the request is not tied to the owning user or guest's
             revealed turn.
