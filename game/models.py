@@ -9,6 +9,8 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 
 
 GAME_STATUS_ACTIVE = "active"
+GAME_MODE_SWITZERLAND = "switzerland"
+GAME_MODE_CANTON = "canton"
 
 
 class Game(models.Model):
@@ -20,6 +22,12 @@ class Game(models.Model):
         ACTIVE = GAME_STATUS_ACTIVE, "Active"
         FINISHED = "finished", "Finished"
         ABANDONED = "abandoned", "Abandoned"
+
+    class Mode(models.TextChoices):
+        """Allowed map scopes for a game."""
+
+        SWITZERLAND = GAME_MODE_SWITZERLAND, "Switzerland"
+        CANTON = GAME_MODE_CANTON, "Single canton"
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -37,6 +45,18 @@ class Game(models.Model):
         max_length=20,
         choices=Status.choices,
         default=Status.ACTIVE,
+    )
+    mode = models.CharField(
+        max_length=20,
+        choices=Mode.choices,
+        default=Mode.SWITZERLAND,
+    )
+    canton = models.ForeignKey(
+        "geo.Canton",
+        blank=True,
+        null=True,
+        on_delete=models.PROTECT,
+        related_name="games",
     )
     total_score = models.PositiveIntegerField(default=0)
     scoring_max_distance_m = models.FloatField(
@@ -61,6 +81,7 @@ class Game(models.Model):
                 fields=["guest_key", "status"],
                 name="game_guest_status_idx",
             ),
+            models.Index(fields=["mode", "canton"], name="game_mode_canton_idx"),
             models.Index(fields=["status", "started_at"]),
         ]
         constraints = [
@@ -97,6 +118,13 @@ class Game(models.Model):
                 ),
                 name="game_scoring_max_distance_positive",
             ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(mode=GAME_MODE_SWITZERLAND, canton__isnull=True)
+                    | models.Q(mode=GAME_MODE_CANTON, canton__isnull=False)
+                ),
+                name="game_mode_canton_consistency",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -116,6 +144,13 @@ class Game(models.Model):
             return f"guest {self.guest_key[:8]}"
         return "unowned player"
 
+    @property
+    def map_label(self) -> str:
+        """Return the compact map scope label."""
+        if self.mode == self.Mode.CANTON and self.canton_id:
+            return self.canton.abbreviation
+        return "CH"
+
     def clean(self) -> None:
         """Validate game ownership, scoring extent, and lifecycle consistency.
 
@@ -127,6 +162,14 @@ class Game(models.Model):
         if (self.user_id is None) == (not self.guest_key):
             raise ValidationError(
                 "Games must belong to exactly one user or guest."
+            )
+        if self.mode == self.Mode.SWITZERLAND and self.canton_id is not None:
+            raise ValidationError(
+                {"canton": "Switzerland games must not store a canton."}
+            )
+        if self.mode == self.Mode.CANTON and self.canton_id is None:
+            raise ValidationError(
+                {"canton": "Single-canton games require a canton."}
             )
         if (
             self.scoring_max_distance_m is not None

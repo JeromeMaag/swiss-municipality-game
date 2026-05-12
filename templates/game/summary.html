@@ -25,8 +25,8 @@
           data-center-lng="8.2275"
           data-zoom="8"
           data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
-          data-canton-boundaries-url="{% url 'geo:cantons_geojson' %}"
-          data-municipality-boundaries-url="{% url 'geo:municipality_boundaries_geojson' %}"
+          data-canton-boundaries-url="{{ canton_boundaries_url }}"
+          data-municipality-boundaries-url="{{ municipality_boundaries_url }}"
           data-summary-map="true"
         ></div>
       </section>
@@ -49,10 +49,17 @@
           {% include "game/includes/summary_round_list.html" %}
         </section>
 
-        <form class="summary-start-form" method="post" action="{% url 'game:start' %}">
-          {% csrf_token %}
-          <button type="submit">New game</button>
-        </form>
+        <div class="summary-action-grid">
+          <form class="summary-start-form" method="post" action="{% url 'game:start' %}">
+            {% csrf_token %}
+            <input type="hidden" name="game_mode" value="{{ game.mode }}">
+            <input type="hidden" name="canton" value="{{ game.canton.abbreviation|default:'' }}">
+            <button type="submit">Play again</button>
+          </form>
+          <a class="button-link button-link-secondary" href="{% url 'game:index' %}">
+            Change game mode
+          </a>
+        </div>
       </aside>
     </div>
     {{ summary_reveals|json_script:"game-summary-reveals" }}

@@ -723,6 +723,9 @@
     }
 
     const closeButtons = modal.querySelectorAll("[data-auth-modal-close]");
+    const guestModeChoice = modal.querySelector("[data-guest-mode-choice]");
+    const guestStartForm = document.querySelector("[data-guest-start-form]");
+    const modePicker = document.querySelector("[data-game-mode-picker]");
     let returnFocusElement = trigger;
 
     function modalFocusableElements() {
@@ -751,10 +754,36 @@
       }
     }
 
+    function showGuestModePicker() {
+      modal.hidden = true;
+      trigger.hidden = true;
+      if (guestStartForm) {
+        guestStartForm.hidden = false;
+      }
+
+      const firstModeChoice = modePicker
+        ? modePicker.querySelector("[data-mode-choice]")
+        : null;
+      if (firstModeChoice) {
+        firstModeChoice.focus();
+      } else if (guestStartForm) {
+        const submitButton = guestStartForm.querySelector("button");
+        if (submitButton) {
+          submitButton.focus();
+        }
+      }
+    }
+
     trigger.addEventListener("click", openModal);
     closeButtons.forEach(function (button) {
       button.addEventListener("click", closeModal);
     });
+    if (guestModeChoice) {
+      guestModeChoice.addEventListener("click", function (event) {
+        event.preventDefault();
+        showGuestModePicker();
+      });
+    }
     modal.addEventListener("click", function (event) {
       if (event.target === modal) {
         closeModal();
@@ -802,8 +831,49 @@
     }
   }
 
+  function initializeGameModePicker() {
+    const picker = document.querySelector("[data-game-mode-picker]");
+    if (!picker) {
+      return;
+    }
+
+    const modeChoices = picker.querySelectorAll("[data-mode-choice]");
+    const cantonSelect = picker.querySelector("[data-canton-select]");
+    const selectedCantonLabel = picker.querySelector("[data-selected-canton-label]");
+    const mapLabel = document.querySelector("[data-game-mode-map-label]");
+    if (!modeChoices.length || !cantonSelect) {
+      return;
+    }
+
+    function selectedMode() {
+      const checkedChoice = picker.querySelector("[data-mode-choice]:checked");
+      return checkedChoice ? checkedChoice.value : "switzerland";
+    }
+
+    function updateModePreview() {
+      const cantonMode = selectedMode() === "canton";
+      const cantonCode = cantonSelect.value || "";
+      const mapCode = cantonCode || "-";
+
+      cantonSelect.disabled = !cantonMode;
+      if (selectedCantonLabel) {
+        selectedCantonLabel.textContent = mapCode;
+      }
+      if (mapLabel) {
+        mapLabel.textContent = cantonMode ? mapCode : "CH";
+      }
+    }
+
+    modeChoices.forEach(function (choice) {
+      choice.addEventListener("change", updateModePreview);
+    });
+    cantonSelect.addEventListener("change", updateModePreview);
+    updateModePreview();
+  }
+
   function initializePage() {
     initializeGameMap();
+    initializeGameModePicker();
     initializeAuthChoiceModal();
   }
 

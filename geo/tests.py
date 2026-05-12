@@ -520,6 +520,22 @@ class GeoJSONEndpointTests(TestCase):
         self.assertEqual(data["features"][0]["properties"]["name"], "Zurich")
         self.assertEqual(data["features"][0]["geometry"]["type"], "MultiPolygon")
 
+    def test_canton_boundaries_support_canton_filter(self) -> None:
+        """Canton boundary endpoint can return one selected canton."""
+        Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=2,
+            abbreviation="BE",
+            name="Bern",
+            geom=make_test_geometry(),
+        )
+
+        response = self.client.get(reverse("geo:cantons_geojson"), {"canton": "ZH"})
+        data = self.assert_geojson_response(response)
+
+        self.assertEqual(len(data["features"]), 1)
+        self.assertEqual(data["features"][0]["properties"]["abbreviation"], "ZH")
+
     def test_municipality_boundaries_do_not_include_names(self) -> None:
         """Municipality boundary endpoint does not reveal municipality names."""
         response = self.client.get(reverse("geo:municipality_boundaries_geojson"))
@@ -531,6 +547,32 @@ class GeoJSONEndpointTests(TestCase):
         self.assertNotIn("name", properties)
         self.assertNotIn("canton", properties)
         self.assertNotIn("canton_abbreviation", properties)
+
+    def test_municipality_boundaries_support_canton_filter(self) -> None:
+        """Municipality boundary endpoint can return one selected canton."""
+        other_canton = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=2,
+            abbreviation="BE",
+            name="Bern",
+            geom=make_test_geometry(),
+        )
+        other_municipality = Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=351,
+            name="Bern",
+            canton=other_canton,
+            geom=make_test_geometry(),
+        )
+
+        response = self.client.get(
+            reverse("geo:municipality_boundaries_geojson"),
+            {"canton": "BE"},
+        )
+        data = self.assert_geojson_response(response)
+
+        self.assertEqual(len(data["features"]), 1)
+        self.assertEqual(data["features"][0]["properties"]["id"], other_municipality.id)
 
     def test_municipality_labels_include_reveal_properties(self) -> None:
         """Municipality label endpoint returns names for reveal mode."""
@@ -546,6 +588,34 @@ class GeoJSONEndpointTests(TestCase):
         self.assertEqual(feature["properties"]["id"], self.municipality.id)
         self.assertEqual(feature["properties"]["name"], "Zurich")
         self.assertNotIn("canton_abbreviation", feature["properties"])
+
+    def test_municipality_labels_use_game_canton_scope(self) -> None:
+        """Single-canton games reveal labels only for the game's canton."""
+        other_canton = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=2,
+            abbreviation="BE",
+            name="Bern",
+            geom=make_test_geometry(),
+        )
+        Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=351,
+            name="Bern",
+            canton=other_canton,
+            geom=make_test_geometry(),
+            label_point=Point(7.45, 46.95, srid=4326),
+        )
+        turn = self.grant_label_access()
+        turn.game.mode = Game.Mode.CANTON
+        turn.game.canton = self.canton
+        turn.game.save(update_fields=["mode", "canton"])
+
+        response = self.client.get(self.municipality_labels_url(turn))
+        data = self.assert_geojson_response(response)
+
+        self.assertEqual(len(data["features"]), 1)
+        self.assertEqual(data["features"][0]["properties"]["name"], "Zurich")
 
     def test_municipality_labels_allow_guest_reveal_access(self) -> None:
         """Guest players can load labels for their own revealed turn."""

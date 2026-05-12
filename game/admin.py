@@ -21,16 +21,21 @@ class GameAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "owner_label",
+        "map_label",
         "status",
         "total_score",
         "started_at",
         "finished_at",
     )
-    list_filter = ("status", "started_at", "finished_at")
+    list_filter = ("mode", "canton", "status", "started_at", "finished_at")
     search_fields = ("user__username", "guest_key")
-    autocomplete_fields = ("user",)
+    autocomplete_fields = ("user", "canton")
     readonly_fields = ("started_at",)
     inlines = (TurnInline,)
+
+    def get_queryset(self, request):
+        """Return games with canton data for changelist map labels."""
+        return super().get_queryset(request).select_related("canton")
 
 
 @admin.register(Turn)

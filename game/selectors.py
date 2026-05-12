@@ -29,6 +29,7 @@ def get_active_game_for_player(player: PlayerIdentity) -> Game | None:
     """
     return (
         Game.objects.filter(player.owner_query(), status=Game.Status.ACTIVE)
+        .select_related("canton")
         .order_by("-started_at", "-id")
         .first()
     )
@@ -77,11 +78,15 @@ def get_finished_games_for_player(player: PlayerIdentity) -> QuerySet[Game]:
             "id",
             "user",
             "guest_key",
+            "mode",
+            "canton",
+            "canton__abbreviation",
             "status",
             "total_score",
             "started_at",
             "finished_at",
         )
+        .select_related("canton")
         .order_by("-finished_at", "-id")
     )
 
@@ -118,6 +123,7 @@ def get_finished_game_summary_for_player(
             status=Game.Status.FINISHED,
             pk=game_id,
         )
+        .select_related("canton")
         .prefetch_related(Prefetch("turns", queryset=turns))
         .first()
     )

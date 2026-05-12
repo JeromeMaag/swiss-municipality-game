@@ -35,8 +35,8 @@
               data-center-lng="8.2275"
               data-zoom="8"
               data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
-              data-canton-boundaries-url="{% url 'geo:cantons_geojson' %}"
-              data-municipality-boundaries-url="{% url 'geo:municipality_boundaries_geojson' %}"
+              data-canton-boundaries-url="{{ canton_boundaries_url }}"
+              data-municipality-boundaries-url="{{ municipality_boundaries_url }}"
               {% if last_guess %}
                 data-municipality-labels-url="{% url 'geo:municipality_labels_geojson' %}?turn={{ last_guess.turn.id }}"
                 data-label-min-zoom="11"
@@ -156,8 +156,8 @@
             data-center-lng="8.2275"
             data-zoom="8"
             data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
-            data-canton-boundaries-url="{% url 'geo:cantons_geojson' %}"
-            data-municipality-boundaries-url="{% url 'geo:municipality_boundaries_geojson' %}"
+              data-canton-boundaries-url="{{ canton_boundaries_url }}"
+              data-municipality-boundaries-url="{{ municipality_boundaries_url }}"
           ></div>
         </section>
 
@@ -169,7 +169,7 @@
             </div>
             <div>
               <span>Map</span>
-              <strong>CH</strong>
+              <strong data-game-mode-map-label>{{ map_label }}</strong>
             </div>
           </div>
 
@@ -178,8 +178,69 @@
             <h1 id="start-heading">Start game</h1>
           </section>
 
+          <section class="mode-panel" aria-labelledby="mode-heading" data-game-mode-picker>
+            <div class="mode-panel-heading">
+              <span class="state-label">Mode</span>
+              <strong id="mode-heading">Map setup</strong>
+            </div>
+            <div class="mode-option-list" role="radiogroup" aria-labelledby="mode-heading">
+              <label class="mode-option">
+                <input
+                  type="radio"
+                  name="game_mode"
+                  value="switzerland"
+                  form="{% if request.user.is_authenticated %}game-start-form{% else %}guest-start-form{% endif %}"
+                  {% if selected_game_mode == "switzerland" %}checked{% endif %}
+                  data-mode-choice
+                >
+                <span>
+                  <strong>Switzerland</strong>
+                  <small>CH</small>
+                </span>
+              </label>
+              <label class="mode-option">
+                <input
+                  type="radio"
+                  name="game_mode"
+                  value="canton"
+                  form="{% if request.user.is_authenticated %}game-start-form{% else %}guest-start-form{% endif %}"
+                  {% if selected_game_mode == "canton" %}checked{% endif %}
+                  data-mode-choice
+                >
+                <span>
+                  <strong>Single canton</strong>
+                  <small data-selected-canton-label>{{ selected_canton|default:"-" }}</small>
+                </span>
+              </label>
+            </div>
+            <label class="canton-picker">
+              <span>Canton</span>
+              <select
+                name="canton"
+                form="{% if request.user.is_authenticated %}game-start-form{% else %}guest-start-form{% endif %}"
+                data-canton-select
+              >
+                {% for canton in available_cantons %}
+                  <option
+                    value="{{ canton.abbreviation }}"
+                    {% if canton.abbreviation == selected_canton %}selected{% endif %}
+                  >
+                    {{ canton.name }}
+                  </option>
+                {% empty %}
+                  <option value="">No cantons available</option>
+                {% endfor %}
+              </select>
+            </label>
+          </section>
+
           {% if request.user.is_authenticated %}
-            <form class="guess-form" method="post" action="{% url 'game:start' %}">
+            <form
+              id="game-start-form"
+              class="guess-form"
+              method="post"
+              action="{% url 'game:start' %}"
+            >
               {% csrf_token %}
               <button type="submit">Start</button>
             </form>
@@ -187,6 +248,17 @@
             <button type="button" class="button-link auth-choice-trigger" data-auth-modal-trigger>
               Start
             </button>
+            <form
+              id="guest-start-form"
+              class="guess-form guest-start-form"
+              method="post"
+              action="{% url 'game:start' %}"
+              data-guest-start-form
+              hidden
+            >
+              {% csrf_token %}
+              <button type="submit">Start</button>
+            </form>
             <div
               class="auth-choice-backdrop"
               data-auth-modal
@@ -216,10 +288,14 @@
                   Play now in this browser, or sign in if you want future history
                   and statistics.
                 </p>
-                <form class="guess-form" method="post" action="{% url 'game:start' %}">
-                  {% csrf_token %}
-                  <button type="submit" data-auth-primary>Play without account</button>
-                </form>
+                <button
+                  type="submit"
+                  form="guest-start-form"
+                  data-auth-primary
+                  data-guest-mode-choice
+                >
+                  Play without account
+                </button>
                 <div class="auth-choice-actions">
                   <a class="button-link" href="{% url 'accounts:login' %}">Log in</a>
                   <a class="button-link button-link-secondary" href="{% url 'accounts:register' %}">
