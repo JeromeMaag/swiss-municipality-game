@@ -28,7 +28,6 @@ from .services import (
     InvalidGameModeError,
     InvalidGuessCoordinatesError,
     NotEnoughMunicipalitiesError,
-    TURN_COUNT,
     _calculate_guess_distances,
     _ensure_game_scoring_max_distance_m,
     _normalize_coordinate,
@@ -1054,7 +1053,7 @@ class GameStartTests(TestCase):
         )
         self.assertEqual(game.mode, Game.Mode.CANTON)
         self.assertEqual(game.canton, bern)
-        self.assertEqual(game.turns.count(), TURN_COUNT)
+        self.assertEqual(game.turns.count(), 5)
         self.assertEqual(target_canton_ids, {bern.id})
         self.assertTrue(
             set(game.turns.values_list("target_id", flat=True)).issubset(
