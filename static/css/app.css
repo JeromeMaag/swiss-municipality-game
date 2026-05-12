@@ -481,10 +481,6 @@ a {
   width: 100%;
 }
 
-.guest-start-form[hidden] {
-  display: none;
-}
-
 .guess-form button:disabled {
   background: rgba(255, 255, 255, 0.16);
   color: rgba(255, 255, 255, 0.42);

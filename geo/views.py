@@ -117,6 +117,7 @@ def cached_geojson_response(
     request,
     name: str,
     data_builder,
+    scope_builder=None,
     scope_key_builder=None,
 ) -> HttpResponse:
     """Return cached GeoJSON for the current dataset.
@@ -124,17 +125,21 @@ def cached_geojson_response(
     Args:
         request: The incoming HTTP request.
         name: Boundary response name.
-        data_builder: Callable receiving the current dataset version and returning
-            serialized GeoJSON.
-        scope_key_builder: Optional callable receiving the current dataset version
-            and returning a cache-key suffix for filtered responses.
+        data_builder: Callable receiving the current dataset version and optional
+            resolved scope and returning serialized GeoJSON.
+        scope_builder: Optional callable receiving the current dataset version
+            and returning a resolved response scope.
+        scope_key_builder: Optional callable receiving the resolved scope and
+            returning a cache-key suffix for filtered responses.
 
     Returns:
         A GeoJSON response, or 304 when the client's cached copy is current.
     """
     dataset_version = get_current_dataset_version()
-    if dataset_version is not None and scope_key_builder is not None:
-        scope_key = scope_key_builder(dataset_version)
+    scope = None
+    if dataset_version is not None and scope_builder is not None:
+        scope = scope_builder(dataset_version)
+        scope_key = scope_key_builder(scope) if scope_key_builder is not None else ""
         if scope_key:
             name = f"{name}:{scope_key}"
     cache_key = cache_key_for_boundaries(name, dataset_version)
@@ -154,7 +159,7 @@ def cached_geojson_response(
         data = (
             EMPTY_FEATURE_COLLECTION
             if dataset_version is None
-            else data_builder(dataset_version)
+            else data_builder(dataset_version, scope)
         )
         cache.set(cache_key, data, GEOJSON_CACHE_SECONDS)
     return geojson_response(data, etag=etag)
@@ -191,13 +196,12 @@ def requested_canton_filter(request, dataset_version: GeoDatasetVersion):
         return None
     canton = get_canton_for_dataset_by_abbreviation(dataset_version, abbreviation)
     if canton is None:
-        raise Http404("Canton boundaries not found.")
+        raise Http404("Canton not found.")
     return canton
 
 
-def requested_canton_scope_key(request, dataset_version: GeoDatasetVersion) -> str:
+def canton_scope_key(canton) -> str:
     """Return the cache-key suffix for an optional canton filter."""
-    canton = requested_canton_filter(request, dataset_version)
     return f"canton:{canton.abbreviation}" if canton is not None else ""
 
 
@@ -214,12 +218,11 @@ def canton_boundaries(request):
     return cached_geojson_response(
         request,
         "cantons",
-        lambda dataset_version: serialize_canton_boundaries(
-            [canton]
-            if (canton := requested_canton_filter(request, dataset_version))
-            else get_cantons_for_dataset(dataset_version)
+        lambda dataset_version, canton: serialize_canton_boundaries(
+            [canton] if canton else get_cantons_for_dataset(dataset_version)
         ),
-        lambda dataset_version: requested_canton_scope_key(request, dataset_version),
+        lambda dataset_version: requested_canton_filter(request, dataset_version),
+        canton_scope_key,
     )
 
 
@@ -236,12 +239,13 @@ def municipality_boundaries(request):
     return cached_geojson_response(
         request,
         "municipalities",
-        lambda dataset_version: serialize_municipality_boundaries(
+        lambda dataset_version, canton: serialize_municipality_boundaries(
             get_municipalities_for_canton(canton)
-            if (canton := requested_canton_filter(request, dataset_version))
+            if canton
             else get_municipalities_for_dataset(dataset_version)
         ),
-        lambda dataset_version: requested_canton_scope_key(request, dataset_version),
+        lambda dataset_version: requested_canton_filter(request, dataset_version),
+        canton_scope_key,
     )
 
 
@@ -258,13 +262,23 @@ def municipality_labels(request):
     turn = require_municipality_label_access(request)
     game = turn.game
     return server_cached_geojson_response(
-        f"municipality-labels:{game.map_label}",
+        municipality_label_cache_name(game),
         lambda dataset_version: serialize_municipality_labels(
             get_municipality_labels_for_canton(game.canton)
             if game.mode == game.Mode.CANTON and game.canton_id
             else get_municipality_labels_for_dataset(dataset_version)
         ),
     )
+
+
+def municipality_label_cache_name(game) -> str:
+    """Return a dataset-stable municipality label cache name for a game scope."""
+    if game.mode == game.Mode.CANTON and game.canton_id:
+        return (
+            "municipality-labels:canton:"
+            f"{game.canton.dataset_version_id}:{game.canton_id}"
+        )
+    return "municipality-labels:switzerland"
 
 
 def require_municipality_label_access(request):

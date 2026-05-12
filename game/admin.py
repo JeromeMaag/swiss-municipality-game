@@ -33,6 +33,10 @@ class GameAdmin(admin.ModelAdmin):
     readonly_fields = ("started_at",)
     inlines = (TurnInline,)
 
+    def get_queryset(self, request):
+        """Return games with canton data for changelist map labels."""
+        return super().get_queryset(request).select_related("canton")
+
 
 @admin.register(Turn)
 class TurnAdmin(admin.ModelAdmin):

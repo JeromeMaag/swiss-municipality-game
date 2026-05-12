@@ -865,7 +865,7 @@
         field.value = selectedMode();
       });
       cantonFields.forEach(function (field) {
-        field.value = cantonCode;
+        field.value = cantonMode ? cantonCode : "";
       });
     }
 
