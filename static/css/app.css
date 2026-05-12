@@ -1135,7 +1135,6 @@ a {
 }
 
 .profile-language-select {
-  appearance: none;
   background: #ffffff;
   border: 1px solid var(--border);
   border-radius: 6px;

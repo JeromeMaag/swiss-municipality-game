@@ -63,6 +63,22 @@ The frontend is plain Django templates, CSS, and a small `game_map.js` file.
 Leaflet handles the map interaction. The browser only places pins and renders
 layers; the backend owns validation, scoring, and persistence.
 
+## Internationalization
+
+User-facing UI strings use Django's translation system. English is the source
+language, and supported languages are configured in `LANGUAGES` in
+`config/settings.py`.
+
+Templates use `{% trans %}` or `{% blocktrans %}`. Python code uses
+`gettext()` at the point where user-facing messages are created. Profile
+language choices are built from `settings.LANGUAGES` so language names stay in
+their native form.
+
+When adding or changing UI strings, update the relevant
+`locale/<language>/LC_MESSAGES/django.po` files and commit the compiled
+`django.mo` files as well, so deployments do not depend on gettext tooling
+being available at runtime.
+
 ## Tracking
 
 Tracking events are stored from both backend actions and lightweight frontend
