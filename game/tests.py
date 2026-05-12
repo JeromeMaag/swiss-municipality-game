@@ -1053,6 +1053,7 @@ class GameStartTests(TestCase):
         )
         self.assertEqual(game.mode, Game.Mode.CANTON)
         self.assertEqual(game.canton, bern)
+        self.assertEqual(game.turns.count(), TURN_COUNT)
         self.assertEqual(target_canton_ids, {bern.id})
         self.assertTrue(
             set(game.turns.values_list("target_id", flat=True)).issubset(
@@ -1233,6 +1234,13 @@ class GameStartTests(TestCase):
 
         game_response = self.client.get(reverse("game:index"))
         self.assertContains(game_response, "ZH")
+        self.assertContains(
+            game_response,
+            (
+                'data-canton-boundaries-url="'
+                f'{reverse("geo:cantons_geojson")}?canton=ZH"'
+            ),
+        )
         self.assertContains(
             game_response,
             (
@@ -2227,6 +2235,13 @@ class GameSummaryTests(TestCase):
 
         response = self.client.get(reverse("game:summary", args=[game.id]))
 
+        self.assertContains(
+            response,
+            (
+                'data-canton-boundaries-url="'
+                f'{reverse("geo:cantons_geojson")}?canton=ZH"'
+            ),
+        )
         self.assertContains(
             response,
             (
