@@ -570,7 +570,9 @@ def render_game_index(
         "game/index.html",
         {
             "active_game": active_game,
-            "available_cantons": list(get_current_cantons()),
+            "available_cantons": (
+                list(get_current_cantons()) if active_game is None else []
+            ),
             "current_turn": current_turn,
             "current_target_name": current_target_name,
             "last_guess": last_guess,
