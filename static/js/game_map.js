@@ -3,20 +3,50 @@
 
   const BACKGROUND_MAP_STORAGE_KEY = "gemeindeguess.backgroundMap";
   const DEFAULT_BACKGROUND_MAP_ID = "swissimage";
+
+  function swisstopoWmtsUrl(layer, extension) {
+    return (
+      "https://wmts.geo.admin.ch/1.0.0/" +
+      layer +
+      "/default/current/3857/{z}/{x}/{y}." +
+      extension
+    );
+  }
+
   const BACKGROUND_MAPS = {
+    swissimage: {
+      attribution: "Map data &copy; swisstopo",
+      maxNativeZoom: 18,
+      maxZoom: 18,
+      minZoom: 6,
+      url: swisstopoWmtsUrl("ch.swisstopo.swissimage", "jpeg"),
+    },
+    surfaceRelief: {
+      attribution: "Map data &copy; swisstopo",
+      maxNativeZoom: 18,
+      maxZoom: 18,
+      minZoom: 6,
+      url: swisstopoWmtsUrl(
+        "ch.swisstopo.swisssurface3d-reliefschattierung-multidirektional",
+        "png"
+      ),
+    },
+    lightRelief: {
+      attribution: "Map data &copy; swisstopo",
+      maxNativeZoom: 18,
+      maxZoom: 18,
+      minZoom: 6,
+      url: swisstopoWmtsUrl(
+        "ch.swisstopo.leichte-basiskarte_reliefschattierung",
+        "png"
+      ),
+    },
     none: {
       attribution: "",
       maxNativeZoom: 18,
       maxZoom: 18,
       minZoom: 6,
       url: "",
-    },
-    swissimage: {
-      attribution: "Map data &copy; swisstopo",
-      maxNativeZoom: 18,
-      maxZoom: 18,
-      minZoom: 6,
-      url: "https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg",
     },
   };
 
