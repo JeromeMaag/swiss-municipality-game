@@ -333,12 +333,12 @@ a {
   }
 }
 
-.background-map-picker {
+.map-settings-field {
   display: grid;
   gap: 0.45rem;
 }
 
-.background-map-picker span {
+.map-settings-field span {
   color: rgba(255, 255, 255, 0.72);
   font-size: 0.7rem;
   font-weight: 820;
@@ -346,7 +346,7 @@ a {
   text-transform: uppercase;
 }
 
-.background-map-picker select {
+.map-settings-field select {
   appearance: none;
   background:
     linear-gradient(45deg, transparent 50%, #ffffff 50%) calc(100% - 1rem) 50% / 0.42rem 0.42rem no-repeat,
@@ -362,13 +362,13 @@ a {
   width: 100%;
 }
 
-.background-map-picker select:focus {
+.map-settings-field select:focus {
   border-color: rgba(255, 255, 255, 0.56);
   outline: 2px solid rgba(255, 255, 255, 0.35);
   outline-offset: 2px;
 }
 
-.background-map-picker option {
+.map-settings-field option {
   color: #101a20;
 }
 

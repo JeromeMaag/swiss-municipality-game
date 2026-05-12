@@ -2,7 +2,16 @@
   "use strict";
 
   const BACKGROUND_MAP_STORAGE_KEY = "gemeindeguess.backgroundMap";
+  const BOUNDARY_LINE_STORAGE_KEY = "gemeindeguess.boundaryLines";
   const DEFAULT_BACKGROUND_MAP_ID = "swissimage";
+  const DEFAULT_BOUNDARY_LINE_MODE = "auto";
+  const BOUNDARY_LINE_MODES = new Set(["auto", "white", "black"]);
+  const AUTO_BOUNDARY_LINE_THEME = {
+    lightRelief: "black",
+    none: "black",
+    surfaceRelief: "black",
+    swissimage: "white",
+  };
 
   function swisstopoWmtsUrl(layer, extension) {
     return (
@@ -247,6 +256,18 @@
       : DEFAULT_BACKGROUND_MAP_ID;
   }
 
+  function normalizeBoundaryLineMode(mode) {
+    return BOUNDARY_LINE_MODES.has(mode) ? mode : DEFAULT_BOUNDARY_LINE_MODE;
+  }
+
+  function resolveBoundaryLineTheme(mapId, mode) {
+    const normalizedMode = normalizeBoundaryLineMode(mode);
+    if (normalizedMode !== "auto") {
+      return normalizedMode;
+    }
+    return AUTO_BOUNDARY_LINE_THEME[normalizeBackgroundMapId(mapId)] || "black";
+  }
+
   function readStoredBackgroundMapId() {
     try {
       return normalizeBackgroundMapId(
@@ -254,6 +275,16 @@
       );
     } catch (error) {
       return DEFAULT_BACKGROUND_MAP_ID;
+    }
+  }
+
+  function readStoredBoundaryLineMode() {
+    try {
+      return normalizeBoundaryLineMode(
+        window.localStorage.getItem(BOUNDARY_LINE_STORAGE_KEY)
+      );
+    } catch (error) {
+      return DEFAULT_BOUNDARY_LINE_MODE;
     }
   }
 
@@ -265,12 +296,58 @@
     }
   }
 
+  function storeBoundaryLineMode(mode) {
+    try {
+      window.localStorage.setItem(BOUNDARY_LINE_STORAGE_KEY, mode);
+    } catch (error) {
+      return;
+    }
+  }
+
   function syncBackgroundMapPickers(mapId) {
     document.querySelectorAll("[data-background-map-picker]").forEach(
       function (picker) {
         picker.value = mapId;
       }
     );
+  }
+
+  function syncBoundaryLinePickers(mode) {
+    document.querySelectorAll("[data-boundary-line-picker]").forEach(
+      function (picker) {
+        picker.value = mode;
+      }
+    );
+  }
+
+  function boundaryLineColors(theme) {
+    if (theme === "black") {
+      return {
+        canton: "#ffcf4a",
+        municipality: "#05080a",
+      };
+    }
+    return {
+      canton: "#ffcf4a",
+      municipality: "#ffffff",
+    };
+  }
+
+  function applyBoundaryLineTheme(map, boundaryState, revealState, summaryState) {
+    const theme = resolveBoundaryLineTheme(
+      boundaryState.mapId,
+      boundaryState.lineMode
+    );
+    const colors = boundaryLineColors(theme);
+    map.getContainer().dataset.boundaryLineTheme = theme;
+    if (boundaryState.municipalityLayer !== null) {
+      boundaryState.municipalityLayer.setStyle(
+        municipalityStyle(revealState, summaryState, colors)
+      );
+    }
+    if (boundaryState.cantonLayer !== null) {
+      boundaryState.cantonLayer.setStyle(cantonStyle(colors));
+    }
   }
 
   function addBaseMapLayer(map, mapId, fallbackUrl) {
@@ -292,7 +369,14 @@
     }).addTo(map);
   }
 
-  function initializeBackgroundMapPicker(map, baseLayerState, fallbackUrl) {
+  function initializeBackgroundMapPicker(
+    map,
+    baseLayerState,
+    boundaryState,
+    revealState,
+    summaryState,
+    fallbackUrl
+  ) {
     const pickers = document.querySelectorAll("[data-background-map-picker]");
     if (!pickers.length) {
       return;
@@ -308,7 +392,32 @@
           map.removeLayer(baseLayerState.layer);
         }
         baseLayerState.mapId = mapId;
+        boundaryState.mapId = mapId;
         baseLayerState.layer = addBaseMapLayer(map, mapId, fallbackUrl);
+        applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
+      });
+    });
+  }
+
+  function initializeBoundaryLinePicker(
+    map,
+    boundaryState,
+    revealState,
+    summaryState
+  ) {
+    const pickers = document.querySelectorAll("[data-boundary-line-picker]");
+    if (!pickers.length) {
+      return;
+    }
+
+    syncBoundaryLinePickers(boundaryState.lineMode);
+    pickers.forEach(function (picker) {
+      picker.addEventListener("change", function () {
+        const lineMode = normalizeBoundaryLineMode(picker.value);
+        storeBoundaryLineMode(lineMode);
+        syncBoundaryLinePickers(lineMode);
+        boundaryState.lineMode = lineMode;
+        applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
       });
     });
   }
@@ -324,7 +433,7 @@
       panel.hidden = !isOpen;
       toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
       if (isOpen) {
-        const picker = panel.querySelector("[data-background-map-picker]");
+        const picker = panel.querySelector("select");
         if (picker) {
           picker.focus();
         }
@@ -588,7 +697,7 @@
     );
   }
 
-  function municipalityStyle(revealState, summaryState) {
+  function municipalityStyle(revealState, summaryState, colors) {
     return function (feature) {
       if (
         (revealState && isTargetFeature(feature, revealState.targetId)) ||
@@ -603,11 +712,20 @@
         };
       }
       return {
-        color: "#ffffff",
+        color: colors.municipality,
         fillOpacity: 0,
-        opacity: 0.75,
-        weight: 0.6,
+        opacity: colors.municipality === "#ffffff" ? 0.75 : 0.84,
+        weight: colors.municipality === "#ffffff" ? 0.6 : 0.75,
       };
+    };
+  }
+
+  function cantonStyle(colors) {
+    return {
+      color: colors.canton,
+      fillOpacity: 0,
+      opacity: colors.canton === "#ffcf4a" ? 0.9 : 0.82,
+      weight: colors.canton === "#ffcf4a" ? 1.4 : 1.1,
     };
   }
 
@@ -812,6 +930,7 @@
 
     map.setView([latitude, longitude], zoom);
     const backgroundMapId = readStoredBackgroundMapId();
+    const boundaryLineMode = readStoredBoundaryLineMode();
     const baseLayerState = {
       layer: addBaseMapLayer(
         map,
@@ -820,11 +939,25 @@
       ),
       mapId: backgroundMapId,
     };
+    const boundaryState = {
+      cantonLayer: null,
+      lineMode: boundaryLineMode,
+      mapId: backgroundMapId,
+      municipalityLayer: null,
+    };
+    const initialBoundaryColors = boundaryLineColors(
+      resolveBoundaryLineTheme(boundaryState.mapId, boundaryState.lineMode)
+    );
+    applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
     initializeBackgroundMapPicker(
       map,
       baseLayerState,
+      boundaryState,
+      revealState,
+      summaryState,
       mapElement.dataset.baseMapUrl
     );
+    initializeBoundaryLinePicker(map, boundaryState, revealState, summaryState);
     initializeMapSettingsMenu();
     window.L.control.scale({ imperial: false, metric: true }).addTo(map);
     if (revealState) {
@@ -839,8 +972,14 @@
     addBoundaryLayer(map, mapElement.dataset.municipalityBoundariesUrl, {
       errorMessage: "Municipality boundaries could not be loaded.",
       fitBounds: !revealState && !summaryState,
-      style: municipalityStyle(revealState, summaryState),
+      style: municipalityStyle(
+        revealState,
+        summaryState,
+        initialBoundaryColors
+      ),
     }).then(function (municipalityLayer) {
+      boundaryState.municipalityLayer = municipalityLayer;
+      applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
       if (revealState && municipalityLayer !== null) {
         fitRevealBounds(map, municipalityLayer, revealState);
         drawRevealDistanceLine(map, municipalityLayer, revealState);
@@ -854,14 +993,11 @@
       return addBoundaryLayer(map, mapElement.dataset.cantonBoundariesUrl, {
         errorMessage: "Canton boundaries could not be loaded.",
         fitBounds: false,
-        style: {
-          color: "#ffcf4a",
-          fillOpacity: 0,
-          opacity: 0.9,
-          weight: 1.4,
-        },
+        style: cantonStyle(initialBoundaryColors),
       });
-    }).then(function () {
+    }).then(function (cantonLayer) {
+      boundaryState.cantonLayer = cantonLayer;
+      applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
       if (revealState) {
         initializeLabelLayer(
           map,
