@@ -253,17 +253,89 @@ a {
   width: 100%;
 }
 
-.background-map-control {
+.map-settings-control {
   position: absolute;
   right: 1rem;
   top: 1rem;
-  width: 12rem;
   z-index: 920;
+}
+
+.map-settings-button {
+  align-items: center;
+  appearance: none;
+  background: rgba(11, 20, 25, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  height: 2.75rem;
+  justify-content: center;
+  padding: 0;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+  width: 2.75rem;
+}
+
+.map-settings-button:hover,
+.map-settings-button[aria-expanded="true"] {
+  background: rgba(11, 20, 25, 0.94);
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.map-settings-button:focus-visible {
+  border-color: rgba(255, 255, 255, 0.56);
+  outline: 2px solid rgba(255, 255, 255, 0.35);
+  outline-offset: 2px;
+}
+
+.map-settings-button:hover {
+  transform: translateY(-1px);
+}
+
+.map-settings-button svg {
+  fill: none;
+  height: 1.24rem;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.85;
+  width: 1.24rem;
+}
+
+.map-settings-panel {
+  background: rgba(11, 20, 25, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
+  color: #ffffff;
+  display: grid;
+  gap: 0.85rem;
+  padding: 0.85rem;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.6rem);
+  width: 14rem;
+}
+
+.map-settings-panel strong {
+  font-size: 0.82rem;
+  letter-spacing: 0;
+}
+
+@supports (backdrop-filter: blur(18px)) {
+  .map-settings-button,
+  .map-settings-panel {
+    backdrop-filter: blur(18px);
+  }
 }
 
 .background-map-picker {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.45rem;
 }
 
 .background-map-picker span {
@@ -1099,8 +1171,13 @@ a {
     left: 1rem;
   }
 
-  .background-map-control {
+  .map-settings-control {
     bottom: 1rem;
+    top: auto;
+  }
+
+  .map-settings-panel {
+    bottom: calc(100% + 0.6rem);
     top: auto;
   }
 

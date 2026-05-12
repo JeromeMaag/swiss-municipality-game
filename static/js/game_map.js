@@ -313,6 +313,46 @@
     });
   }
 
+  function initializeMapSettingsMenu() {
+    const toggle = document.querySelector("[data-map-settings-toggle]");
+    const panel = document.querySelector("[data-map-settings-panel]");
+    if (!toggle || !panel || toggle.dataset.initialized === "true") {
+      return;
+    }
+
+    function setOpen(isOpen) {
+      panel.hidden = !isOpen;
+      toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      if (isOpen) {
+        const picker = panel.querySelector("[data-background-map-picker]");
+        if (picker) {
+          picker.focus();
+        }
+      }
+    }
+
+    toggle.addEventListener("click", function (event) {
+      event.stopPropagation();
+      setOpen(panel.hidden);
+    });
+    panel.addEventListener("click", function (event) {
+      event.stopPropagation();
+    });
+    document.addEventListener("click", function () {
+      if (!panel.hidden) {
+        setOpen(false);
+      }
+    });
+    document.addEventListener("keydown", function (event) {
+      if (panel.hidden || event.key !== "Escape") {
+        return;
+      }
+      setOpen(false);
+      toggle.focus();
+    });
+    toggle.dataset.initialized = "true";
+  }
+
   function formatCoordinate(value) {
     return value.toFixed(5);
   }
@@ -785,6 +825,7 @@
       baseLayerState,
       mapElement.dataset.baseMapUrl
     );
+    initializeMapSettingsMenu();
     window.L.control.scale({ imperial: false, metric: true }).addTo(map);
     if (revealState) {
       initializeReveal(map, revealState, mapElement);
