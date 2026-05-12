@@ -28,6 +28,7 @@
         <section class="map-panel" aria-label="Guess map">
           {% if show_game_map %}
             <p class="map-status" data-map-status role="status" aria-live="polite" aria-atomic="true"></p>
+            {% include "game/includes/background_map_picker.html" %}
             <div
               id="game-map"
               class="game-map"
@@ -149,6 +150,7 @@
       <div class="game-layout">
         <section class="map-panel" aria-label="Game preview map">
           <p class="map-status" data-map-status role="status" aria-live="polite" aria-atomic="true"></p>
+          {% include "game/includes/background_map_picker.html" %}
           <div
             id="game-map"
             class="game-map"

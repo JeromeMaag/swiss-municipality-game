@@ -24,6 +24,15 @@
   display: none !important;
 }
 
+.sr-only {
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+  clip: rect(0, 0, 0, 0);
+}
+
 html,
 body {
   min-height: 100%;
@@ -242,6 +251,53 @@ a {
   overflow: hidden;
   position: relative;
   width: 100%;
+}
+
+.background-map-control {
+  position: absolute;
+  right: 1rem;
+  top: 1rem;
+  width: 12rem;
+  z-index: 920;
+}
+
+.background-map-picker {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.background-map-picker span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.7rem;
+  font-weight: 820;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  text-transform: uppercase;
+}
+
+.background-map-picker select {
+  appearance: none;
+  background:
+    linear-gradient(45deg, transparent 50%, #ffffff 50%) calc(100% - 1rem) 50% / 0.42rem 0.42rem no-repeat,
+    linear-gradient(135deg, #ffffff 50%, transparent 50%) calc(100% - 0.72rem) 50% / 0.42rem 0.42rem no-repeat,
+    rgba(11, 20, 25, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
+  color: #ffffff;
+  font: inherit;
+  min-height: 2.6rem;
+  padding: 0 2.1rem 0 0.75rem;
+  width: 100%;
+}
+
+.background-map-picker select:focus {
+  border-color: rgba(255, 255, 255, 0.56);
+  outline: 2px solid rgba(255, 255, 255, 0.35);
+  outline-offset: 2px;
+}
+
+.background-map-picker option {
+  color: #101a20;
 }
 
 .game-sidebar {
@@ -1041,6 +1097,11 @@ a {
 
   .game-page .leaflet-left {
     left: 1rem;
+  }
+
+  .background-map-control {
+    bottom: 1rem;
+    top: auto;
   }
 
   .game-sidebar {
