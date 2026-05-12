@@ -1,6 +1,18 @@
 (function () {
   "use strict";
 
+  const BACKGROUND_MAP_STORAGE_KEY = "gemeindeguess.backgroundMap";
+  const DEFAULT_BACKGROUND_MAP_ID = "swissimage";
+  const BACKGROUND_MAPS = {
+    swissimage: {
+      attribution: "Map data &copy; swisstopo",
+      maxNativeZoom: 18,
+      maxZoom: 18,
+      minZoom: 6,
+      url: "https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg",
+    },
+  };
+
   function readNumber(element, name, fallback) {
     const value = Number.parseFloat(element.dataset[name]);
     return Number.isFinite(value) ? value : fallback;
@@ -192,17 +204,73 @@
     }
   }
 
-  function addBaseMapLayer(map, url) {
+  function normalizeBackgroundMapId(mapId) {
+    return Object.prototype.hasOwnProperty.call(BACKGROUND_MAPS, mapId)
+      ? mapId
+      : DEFAULT_BACKGROUND_MAP_ID;
+  }
+
+  function readStoredBackgroundMapId() {
+    try {
+      return normalizeBackgroundMapId(
+        window.localStorage.getItem(BACKGROUND_MAP_STORAGE_KEY)
+      );
+    } catch (error) {
+      return DEFAULT_BACKGROUND_MAP_ID;
+    }
+  }
+
+  function storeBackgroundMapId(mapId) {
+    try {
+      window.localStorage.setItem(BACKGROUND_MAP_STORAGE_KEY, mapId);
+    } catch (error) {
+      return;
+    }
+  }
+
+  function syncBackgroundMapPickers(mapId) {
+    document.querySelectorAll("[data-background-map-picker]").forEach(
+      function (picker) {
+        picker.value = mapId;
+      }
+    );
+  }
+
+  function addBaseMapLayer(map, mapId, fallbackUrl) {
+    const normalizedMapId = normalizeBackgroundMapId(mapId);
+    const backgroundMap = BACKGROUND_MAPS[normalizedMapId];
+    const url = backgroundMap.url || fallbackUrl;
     if (!url) {
       return null;
     }
 
     return window.L.tileLayer(url, {
-      attribution: "Map data &copy; swisstopo",
-      maxNativeZoom: 18,
-      maxZoom: 18,
-      minZoom: 6,
+      attribution: backgroundMap.attribution,
+      maxNativeZoom: backgroundMap.maxNativeZoom,
+      maxZoom: backgroundMap.maxZoom,
+      minZoom: backgroundMap.minZoom,
     }).addTo(map);
+  }
+
+  function initializeBackgroundMapPicker(map, baseLayerState, fallbackUrl) {
+    const pickers = document.querySelectorAll("[data-background-map-picker]");
+    if (!pickers.length) {
+      return;
+    }
+
+    syncBackgroundMapPickers(baseLayerState.mapId);
+    pickers.forEach(function (picker) {
+      picker.addEventListener("change", function () {
+        const mapId = normalizeBackgroundMapId(picker.value);
+        storeBackgroundMapId(mapId);
+        syncBackgroundMapPickers(mapId);
+        if (baseLayerState.layer !== null) {
+          map.removeLayer(baseLayerState.layer);
+        }
+        baseLayerState.mapId = mapId;
+        baseLayerState.layer = addBaseMapLayer(map, mapId, fallbackUrl);
+      });
+    });
   }
 
   function formatCoordinate(value) {
@@ -663,7 +731,20 @@
     });
 
     map.setView([latitude, longitude], zoom);
-    addBaseMapLayer(map, mapElement.dataset.baseMapUrl);
+    const backgroundMapId = readStoredBackgroundMapId();
+    const baseLayerState = {
+      layer: addBaseMapLayer(
+        map,
+        backgroundMapId,
+        mapElement.dataset.baseMapUrl
+      ),
+      mapId: backgroundMapId,
+    };
+    initializeBackgroundMapPicker(
+      map,
+      baseLayerState,
+      mapElement.dataset.baseMapUrl
+    );
     window.L.control.scale({ imperial: false, metric: true }).addTo(map);
     if (revealState) {
       initializeReveal(map, revealState, mapElement);
