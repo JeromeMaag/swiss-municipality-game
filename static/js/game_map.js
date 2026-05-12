@@ -381,8 +381,6 @@
       boundaryState.lineMode
     );
     const colors = boundaryLineColors(theme);
-    map.getContainer().dataset.boundaryLineTheme = theme;
-    map.getContainer().dataset.outlineMode = boundaryState.outlineMode;
     if (boundaryState.municipalityLayer !== null) {
       boundaryState.municipalityLayer.setStyle(
         municipalityStyle(
