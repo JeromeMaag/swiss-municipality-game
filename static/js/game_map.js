@@ -4,6 +4,13 @@
   const BACKGROUND_MAP_STORAGE_KEY = "gemeindeguess.backgroundMap";
   const DEFAULT_BACKGROUND_MAP_ID = "swissimage";
   const BACKGROUND_MAPS = {
+    none: {
+      attribution: "",
+      maxNativeZoom: 18,
+      maxZoom: 18,
+      minZoom: 6,
+      url: "",
+    },
     swissimage: {
       attribution: "Map data &copy; swisstopo",
       maxNativeZoom: 18,
@@ -240,6 +247,9 @@
     const normalizedMapId = normalizeBackgroundMapId(mapId);
     const backgroundMap = BACKGROUND_MAPS[normalizedMapId];
     const url = backgroundMap.url || fallbackUrl;
+    if (normalizedMapId === "none") {
+      return null;
+    }
     if (!url) {
       return null;
     }
