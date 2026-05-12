@@ -187,8 +187,9 @@
               <label class="mode-option">
                 <input
                   type="radio"
-                  name="game_mode_preview"
+                  name="game_mode"
                   value="switzerland"
+                  form="{% if request.user.is_authenticated %}game-start-form{% else %}guest-start-form{% endif %}"
                   {% if selected_game_mode == "switzerland" %}checked{% endif %}
                   data-mode-choice
                 >
@@ -200,8 +201,9 @@
               <label class="mode-option">
                 <input
                   type="radio"
-                  name="game_mode_preview"
+                  name="game_mode"
                   value="canton"
+                  form="{% if request.user.is_authenticated %}game-start-form{% else %}guest-start-form{% endif %}"
                   {% if selected_game_mode == "canton" %}checked{% endif %}
                   data-mode-choice
                 >
@@ -213,7 +215,11 @@
             </div>
             <label class="canton-picker">
               <span>Canton</span>
-              <select data-canton-select {% if selected_game_mode != "canton" %}disabled{% endif %}>
+              <select
+                name="canton"
+                form="{% if request.user.is_authenticated %}game-start-form{% else %}guest-start-form{% endif %}"
+                data-canton-select
+              >
                 {% for canton in available_cantons %}
                   <option
                     value="{{ canton.abbreviation }}"
@@ -229,10 +235,13 @@
           </section>
 
           {% if request.user.is_authenticated %}
-            <form class="guess-form" method="post" action="{% url 'game:start' %}">
+            <form
+              id="game-start-form"
+              class="guess-form"
+              method="post"
+              action="{% url 'game:start' %}"
+            >
               {% csrf_token %}
-              <input type="hidden" name="game_mode" value="{{ selected_game_mode }}" data-game-mode-field>
-              <input type="hidden" name="canton" value="{{ selected_canton }}" data-canton-field>
               <button type="submit">Start</button>
             </form>
           {% else %}
@@ -240,6 +249,7 @@
               Start
             </button>
             <form
+              id="guest-start-form"
               class="guess-form guest-start-form"
               method="post"
               action="{% url 'game:start' %}"
@@ -247,8 +257,6 @@
               hidden
             >
               {% csrf_token %}
-              <input type="hidden" name="game_mode" value="{{ selected_game_mode }}" data-game-mode-field>
-              <input type="hidden" name="canton" value="{{ selected_canton }}" data-canton-field>
               <button type="submit">Start</button>
             </form>
             <div
@@ -280,7 +288,12 @@
                   Play now in this browser, or sign in if you want future history
                   and statistics.
                 </p>
-                <button type="button" data-auth-primary data-guest-mode-choice>
+                <button
+                  type="submit"
+                  form="guest-start-form"
+                  data-auth-primary
+                  data-guest-mode-choice
+                >
                   Play without account
                 </button>
                 <div class="auth-choice-actions">

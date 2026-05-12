@@ -779,7 +779,10 @@
       button.addEventListener("click", closeModal);
     });
     if (guestModeChoice) {
-      guestModeChoice.addEventListener("click", showGuestModePicker);
+      guestModeChoice.addEventListener("click", function (event) {
+        event.preventDefault();
+        showGuestModePicker();
+      });
     }
     modal.addEventListener("click", function (event) {
       if (event.target === modal) {
@@ -836,8 +839,6 @@
 
     const modeChoices = picker.querySelectorAll("[data-mode-choice]");
     const cantonSelect = picker.querySelector("[data-canton-select]");
-    const modeFields = document.querySelectorAll("[data-game-mode-field]");
-    const cantonFields = document.querySelectorAll("[data-canton-field]");
     const selectedCantonLabel = picker.querySelector("[data-selected-canton-label]");
     const mapLabel = document.querySelector("[data-game-mode-map-label]");
     if (!modeChoices.length || !cantonSelect) {
@@ -861,12 +862,6 @@
       if (mapLabel) {
         mapLabel.textContent = cantonMode ? mapCode : "CH";
       }
-      modeFields.forEach(function (field) {
-        field.value = selectedMode();
-      });
-      cantonFields.forEach(function (field) {
-        field.value = cantonMode ? cantonCode : "";
-      });
     }
 
     modeChoices.forEach(function (choice) {

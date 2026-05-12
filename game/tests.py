@@ -1152,6 +1152,10 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Single canton")
         self.assertContains(response, "Zurich")
         self.assertContains(response, "data-game-mode-picker")
+        self.assertContains(response, 'id="game-start-form"')
+        self.assertContains(response, 'name="game_mode"')
+        self.assertContains(response, 'name="canton"')
+        self.assertContains(response, 'form="game-start-form"')
         self.assertContains(response, reverse("game:start"))
 
     def test_game_index_shows_auth_prompt_for_anonymous_users(self) -> None:
@@ -1169,6 +1173,9 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Play without account")
         self.assertContains(response, "data-guest-mode-choice")
         self.assertContains(response, "data-guest-start-form")
+        self.assertContains(response, 'name="game_mode"')
+        self.assertContains(response, 'name="canton"')
+        self.assertContains(response, 'form="guest-start-form"')
         self.assertContains(response, "data-auth-modal-open")
         self.assertContains(response, reverse("accounts:login"))
         self.assertContains(response, reverse("accounts:register"))
