@@ -1,11 +1,13 @@
-<section class="map-settings-control" aria-label="Map settings">
+{% load i18n %}
+
+<section class="map-settings-control" aria-label="{% trans 'Map settings' %}">
   <button
     class="map-settings-button"
     type="button"
-    aria-label="Map settings"
+    aria-label="{% trans 'Map settings' %}"
     aria-expanded="false"
     aria-controls="map-settings-panel"
-    title="Map settings"
+    title="{% trans 'Map settings' %}"
     data-map-settings-toggle
   >
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -20,32 +22,32 @@
     hidden
     data-map-settings-panel
   >
-    <strong id="map-settings-heading">Map settings</strong>
+    <strong id="map-settings-heading">{% trans "Map settings" %}</strong>
     <label class="map-settings-field">
-      <span>Map</span>
+      <span>{% trans "Map" %}</span>
       <select data-background-map-picker>
         <option value="swissimage" selected>Swissimage</option>
-        <option value="surfaceRelief">Surface relief</option>
-        <option value="lightRelief">Light relief</option>
+        <option value="surfaceRelief">{% trans "Surface relief" %}</option>
+        <option value="lightRelief">{% trans "Light relief" %}</option>
         <option value="cartoVoyager">CARTO Voyager</option>
-        <option value="none">No map</option>
+        <option value="none">{% trans "No map" %}</option>
       </select>
     </label>
     <label class="map-settings-field">
-      <span>Boundary lines</span>
+      <span>{% trans "Boundary lines" %}</span>
       <select data-boundary-line-picker>
-        <option value="auto" selected>Auto</option>
-        <option value="white">White</option>
-        <option value="black">Black</option>
+        <option value="auto" selected>{% trans "Auto" %}</option>
+        <option value="white">{% trans "White" %}</option>
+        <option value="black">{% trans "Black" %}</option>
       </select>
     </label>
     <label class="map-settings-field">
-      <span>Outlines</span>
+      <span>{% trans "Outlines" %}</span>
       <select data-outline-picker>
-        <option value="all" selected>All outlines</option>
-        <option value="cantons">Cantons only</option>
-        <option value="municipalities">Municipalities only</option>
-        <option value="off">Off</option>
+        <option value="all" selected>{% trans "All outlines" %}</option>
+        <option value="cantons">{% trans "Cantons only" %}</option>
+        <option value="municipalities">{% trans "Municipalities only" %}</option>
+        <option value="off">{% trans "Off" %}</option>
       </select>
     </label>
   </div>

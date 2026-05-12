@@ -38,3 +38,9 @@ maps, choose a boundary line theme (`auto`, `white`, or `black`), and set which
 outlines are shown (`all`, `cantons`, `municipalities`, or `off`). These choices
 are stored in the browser, so guest and signed-in players keep the same map
 preference on the same device.
+
+## Language
+
+The interface language follows the browser preference by default. Signed-in
+players can override it from their profile settings; the choice is stored in
+Django's language cookie and applies to the same browser.

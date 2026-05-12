@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% load static %}
+{% load i18n static %}
 
-{% block title %}Game summary - GemeindeGuess CH{% endblock %}
+{% block title %}{% trans "Game summary" %} - {% trans "Find the municipality!" %}{% endblock %}
 {% block body_class %}game-page{% endblock %}
 
 {% block extra_head %}
@@ -16,7 +16,7 @@
 {% block content %}
   <section class="game-panel game-shell">
     <div class="game-layout">
-      <section class="map-panel" aria-label="Game summary map">
+      <section class="map-panel" aria-label="{% trans 'Game summary map' %}">
         <p class="map-status" data-map-status role="status" aria-live="polite" aria-atomic="true"></p>
         {% include "game/includes/map_settings.html" %}
         <div
@@ -32,21 +32,21 @@
         ></div>
       </section>
 
-      <aside class="game-sidebar" aria-label="Game result">
-        <div class="hud-row" aria-label="Game result">
+      <aside class="game-sidebar" aria-label="{% trans 'Game result' %}">
+        <div class="hud-row" aria-label="{% trans 'Game result' %}">
           <div>
-            <span>Rounds</span>
+            <span>{% trans "Rounds" %}</span>
             <strong>{{ game.turns.all|length }}/{{ turn_count }}</strong>
           </div>
           <div>
-            <span>Score</span>
+            <span>{% trans "Score" %}</span>
             <strong>{{ game.total_score }}</strong>
           </div>
         </div>
 
         <section class="target-panel result-panel summary-results" aria-labelledby="summary-heading">
-          <span class="state-label">Summary</span>
-          <h1 id="summary-heading">Game result</h1>
+          <span class="state-label">{% trans "Summary" %}</span>
+          <h1 id="summary-heading">{% trans "Game result" %}</h1>
           {% include "game/includes/summary_round_list.html" %}
         </section>
 
@@ -55,10 +55,10 @@
             {% csrf_token %}
             <input type="hidden" name="game_mode" value="{{ game.mode }}">
             <input type="hidden" name="canton" value="{{ game.canton.abbreviation|default:'' }}">
-            <button type="submit">Play again</button>
+            <button type="submit">{% trans "Play again" %}</button>
           </form>
           <a class="button-link button-link-secondary" href="{% url 'game:index' %}">
-            Change game mode
+            {% trans "Change game mode" %}
           </a>
         </div>
       </aside>

@@ -9,6 +9,7 @@ from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
 from geo.constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
@@ -160,7 +161,7 @@ def track_turn_event(request, turn_id: int):
     """
     player = get_player_identity(request)
     if not player.can_own_games:
-        raise Http404("Turn not found.")
+        raise Http404(_("Turn not found."))
 
     try:
         event_type, payload = parse_tracking_request(request)
@@ -173,7 +174,7 @@ def track_turn_event(request, turn_id: int):
             pk=turn_id,
         )
     except Turn.DoesNotExist as error:
-        raise Http404("Turn not found.") from error
+        raise Http404(_("Turn not found.")) from error
 
     try:
         validate_tracking_event_state(event_type=event_type, turn=turn)
@@ -211,12 +212,12 @@ def validate_tracking_event_state(*, event_type: str, turn: Turn) -> None:
             .first()
         )
         if turn.game.status != Game.Status.ACTIVE or current_turn_id != turn.id:
-            raise ValueError("Tracking event is not valid for this turn state.")
+            raise ValueError(_("Tracking event is not valid for this turn state."))
         return
 
     if event_type == GameEvent.Type.REVEAL_SHOWN:
         if turn.revealed_at is None or not is_latest_revealed_turn(turn):
-            raise ValueError("Tracking event is not valid for this turn state.")
+            raise ValueError(_("Tracking event is not valid for this turn state."))
         return
 
     if event_type == GameEvent.Type.NEXT_TURN_CLICKED:
@@ -230,7 +231,7 @@ def validate_tracking_event_state(*, event_type: str, turn: Turn) -> None:
             or turn.game.status != Game.Status.ACTIVE
             or not next_turn_exists
         ):
-            raise ValueError("Tracking event is not valid for this turn state.")
+            raise ValueError(_("Tracking event is not valid for this turn state."))
 
 
 def is_latest_revealed_turn(turn: Turn) -> bool:
@@ -264,10 +265,10 @@ def summary(request, game_id: int):
     """
     player = get_player_identity(request)
     if not player.can_own_games:
-        raise Http404("Game summary not found.")
+        raise Http404(_("Game summary not found."))
     game = get_finished_game_summary_for_player(player, game_id)
     if game is None:
-        raise Http404("Game summary not found.")
+        raise Http404(_("Game summary not found."))
     return render(
         request,
         "game/summary.html",
@@ -299,7 +300,7 @@ def history(request, game_id: int | None = None):
     if game_id is not None:
         selected_game = get_finished_game_summary_for_player(player, game_id)
         if selected_game is None:
-            raise Http404("Game history not found.")
+            raise Http404(_("Game history not found."))
         history_games = []
         history_stats = build_history_stats(history_games)
     else:
@@ -400,22 +401,22 @@ def parse_tracking_request(request) -> tuple[str, dict]:
     """
     body = get_tracking_request_body(request)
     if len(body) > MAX_TRACKING_REQUEST_BYTES:
-        raise ValueError("Tracking payload is too large.")
+        raise ValueError(_("Tracking payload is too large."))
     try:
         data = json.loads(body.decode("utf-8") or "{}")
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise ValueError("Tracking payload must be valid JSON.") from error
+        raise ValueError(_("Tracking payload must be valid JSON.")) from error
 
     if not isinstance(data, dict):
-        raise ValueError("Tracking payload must be a JSON object.")
+        raise ValueError(_("Tracking payload must be a JSON object."))
 
     event_type = data.get("event_type")
     if event_type not in CLIENT_TRACKING_EVENT_TYPES:
-        raise ValueError("Tracking event type is not allowed.")
+        raise ValueError(_("Tracking event type is not allowed."))
 
     payload = data.get("payload", {})
     if not isinstance(payload, dict):
-        raise ValueError("Tracking event payload must be a JSON object.")
+        raise ValueError(_("Tracking event payload must be a JSON object."))
 
     return event_type, payload
 
@@ -435,15 +436,15 @@ def get_tracking_request_body(request) -> bytes:
     """
     content_length = request.META.get("CONTENT_LENGTH")
     if not content_length:
-        raise ValueError("Tracking content length is required.")
+        raise ValueError(_("Tracking content length is required."))
     try:
         declared_length = int(content_length)
     except ValueError:
-        raise ValueError("Tracking content length is invalid.") from None
+        raise ValueError(_("Tracking content length is invalid.")) from None
     if declared_length < 0:
-        raise ValueError("Tracking content length is invalid.")
+        raise ValueError(_("Tracking content length is invalid."))
     if declared_length > MAX_TRACKING_REQUEST_BYTES:
-        raise ValueError("Tracking payload is too large.")
+        raise ValueError(_("Tracking payload is too large."))
     return request.body
 
 

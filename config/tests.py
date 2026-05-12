@@ -5,9 +5,11 @@ import subprocess
 import sys
 from unittest import mock
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
+from django.utils.translation import deactivate
 
 from .settings import get_bool_env, get_list_env
 
@@ -136,3 +138,75 @@ class HomeViewTests(TestCase):
         response = self.client.post(reverse("home"))
 
         self.assertEqual(response.status_code, 405)
+
+
+class LanguagePreferenceTests(TestCase):
+    """Tests for browser and manual language selection."""
+
+    def setUp(self) -> None:
+        """Create a user for profile language settings."""
+        self.user = get_user_model().objects.create_user(
+            username="language-player",
+            password="StrongPass123!",
+        )
+
+    def tearDown(self) -> None:
+        """Reset the active thread language after language tests."""
+        deactivate()
+
+    def test_browser_language_sets_active_template_language(self) -> None:
+        """Locale middleware uses the browser language before a manual choice."""
+        response = self.client.get(
+            reverse("accounts:login"),
+            HTTP_ACCEPT_LANGUAGE="fr",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<html lang="fr">')
+        self.assertContains(response, "Trouve la commune !")
+        self.assertContains(response, "Connexion")
+
+    def test_profile_renders_language_setting(self) -> None:
+        """Profile settings expose the language selector for signed-in users."""
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("profile"), HTTP_ACCEPT_LANGUAGE="fr")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Paramètres")
+        self.assertContains(response, 'action="/i18n/setlang/"')
+        self.assertContains(response, 'id="profile-language-select"')
+        self.assertContains(response, 'name="language"')
+        self.assertContains(response, 'onchange="this.form.submit()"')
+        self.assertContains(response, 'value="fr" selected')
+        self.assertContains(response, "Deutsch")
+        self.assertContains(response, "Français")
+
+    def test_language_switch_stores_cookie_and_redirects_back(self) -> None:
+        """The profile language selector persists a manual language choice."""
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("set_language"),
+            {
+                "language": "de",
+                "next": reverse("accounts:login"),
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("accounts:login"),
+            fetch_redirect_response=False,
+        )
+        self.assertEqual(
+            self.client.cookies[settings.LANGUAGE_COOKIE_NAME].value,
+            "de",
+        )
+
+        followup_response = self.client.get(reverse("profile"))
+
+        self.assertContains(followup_response, '<html lang="de">')
+        self.assertContains(followup_response, "Finde die Gemeinde!")
+        self.assertContains(followup_response, "Einstellungen")
+        self.assertContains(followup_response, 'value="de" selected')

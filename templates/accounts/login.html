@@ -1,17 +1,18 @@
 {% extends "base.html" %}
+{% load i18n %}
 
-{% block title %}Login | GemeindeGuess CH{% endblock %}
+{% block title %}{% trans "Login" %} | {% trans "Find the municipality!" %}{% endblock %}
 
 {% block content %}
   <section class="auth-panel">
-    <h1>Login</h1>
+    <h1>{% trans "Login" %}</h1>
     <form method="post" class="auth-form">
       {% csrf_token %}
       {{ form.as_p }}
-      <button type="submit">Login</button>
+      <button type="submit">{% trans "Login" %}</button>
     </form>
     <p class="auth-note">
-      No account yet? <a href="{% url 'accounts:register' %}">Register</a>.
+      {% trans "No account yet?" %} <a href="{% url 'accounts:register' %}">{% trans "Register" %}</a>.
     </p>
   </section>
 {% endblock %}

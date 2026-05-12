@@ -1,0 +1,436 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: swiss-municipality-guess\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-05-12 00:00+0000\n"
+"PO-Revision-Date: 2026-05-12 00:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Find the municipality!"
+msgstr "Trouve la commune !"
+
+msgid "Main navigation"
+msgstr "Navigation principale"
+
+msgid "Profile"
+msgstr "Profil"
+
+msgid "History"
+msgstr "Historique"
+
+msgid "Logout"
+msgstr "Déconnexion"
+
+msgid "Login"
+msgstr "Connexion"
+
+msgid "Register"
+msgstr "Créer un compte"
+
+msgid "No account yet?"
+msgstr "Pas encore de compte ?"
+
+msgid "Already registered?"
+msgstr "Déjà inscrit ?"
+
+msgid "Play"
+msgstr "Jouer"
+
+msgid "Main statistics"
+msgstr "Statistiques principales"
+
+msgid "Games played"
+msgstr "Parties jouées"
+
+msgid "Average score"
+msgstr "Score moyen"
+
+msgid "Best score"
+msgstr "Meilleur score"
+
+msgid "Perfect rounds"
+msgstr "Manches parfaites"
+
+msgid "Distance"
+msgstr "Distance"
+
+msgid "Rounds played"
+msgstr "Manches jouées"
+
+msgid "Average distance"
+msgstr "Distance moyenne"
+
+msgid "Best distance"
+msgstr "Meilleure distance"
+
+msgid "Map performance"
+msgstr "Performance par carte"
+
+msgid "%(games)s game"
+msgstr "%(games)s partie"
+
+msgid "%(games)s games"
+msgstr "%(games)s parties"
+
+msgid "%(score)s avg score"
+msgstr "%(score)s score moyen"
+
+msgid "Play a finished game to unlock map stats."
+msgstr "Termine une partie pour débloquer les statistiques par carte."
+
+msgid "Settings"
+msgstr "Paramètres"
+
+msgid "Language"
+msgstr "Langue"
+
+msgid "The selected language is stored for this browser."
+msgstr "La langue choisie est enregistrée pour ce navigateur."
+
+msgid "Recent games"
+msgstr "Dernières parties"
+
+msgid "No finished games yet."
+msgstr "Aucune partie terminée."
+
+msgid "Start game"
+msgstr "Commencer"
+
+msgid "Game"
+msgstr "Jeu"
+
+msgid "Guess map"
+msgstr "Carte de jeu"
+
+msgid "Current game"
+msgstr "Partie en cours"
+
+msgid "Game progress"
+msgstr "Progression"
+
+msgid "Round"
+msgstr "Manche"
+
+msgid "Score"
+msgstr "Score"
+
+msgid "Finished game"
+msgstr "Partie terminée"
+
+msgid "Result"
+msgstr "Résultat"
+
+msgid "Canton"
+msgstr "Canton"
+
+msgid "Population"
+msgstr "Population"
+
+msgid "Summary"
+msgstr "Résumé"
+
+msgid "Next"
+msgstr "Suivant"
+
+msgid "Guess"
+msgstr "Valider"
+
+msgid "No active turn is available for this game."
+msgstr "Aucune manche active n'est disponible pour cette partie."
+
+msgid "Game preview map"
+msgstr "Carte d'aperçu"
+
+msgid "Game setup"
+msgstr "Configuration de la partie"
+
+msgid "Rounds"
+msgstr "Manches"
+
+msgid "Map"
+msgstr "Carte"
+
+msgid "Mode"
+msgstr "Mode"
+
+msgid "Map setup"
+msgstr "Mode de jeu"
+
+msgid "Switzerland"
+msgstr "Suisse"
+
+msgid "Single canton"
+msgstr "Canton unique"
+
+msgid "No cantons available"
+msgstr "Aucun canton disponible"
+
+msgid "Start"
+msgstr "Commencer"
+
+msgid "Close"
+msgstr "Fermer"
+
+msgid "Account optional"
+msgstr "Compte facultatif"
+
+msgid "Start playing"
+msgstr "Commencer à jouer"
+
+msgid "Play now in this browser, or sign in if you want future history and statistics."
+msgstr "Joue directement dans ce navigateur, ou connecte-toi si tu veux conserver ton historique et tes statistiques."
+
+msgid "Play without account"
+msgstr "Jouer sans compte"
+
+msgid "Log in"
+msgstr "Se connecter"
+
+msgid "Create account"
+msgstr "Créer un compte"
+
+msgid "Game summary"
+msgstr "Résumé de la partie"
+
+msgid "Game summary map"
+msgstr "Carte du résumé"
+
+msgid "Game result"
+msgstr "Résultat de la partie"
+
+msgid "Play again"
+msgstr "Rejouer"
+
+msgid "Change game mode"
+msgstr "Changer de mode"
+
+msgid "Game history map"
+msgstr "Carte de l'historique"
+
+msgid "Game history"
+msgstr "Historique des parties"
+
+msgid "Selected game result"
+msgstr "Résultat de la partie sélectionnée"
+
+msgid "Back to history"
+msgstr "Retour à l'historique"
+
+msgid "History statistics"
+msgstr "Statistiques de l'historique"
+
+msgid "Games"
+msgstr "Parties"
+
+msgid "Best"
+msgstr "Meilleur"
+
+msgid "Personal statistics"
+msgstr "Statistiques personnelles"
+
+msgid "Map settings"
+msgstr "Paramètres de carte"
+
+msgid "Surface relief"
+msgstr "Relief"
+
+msgid "Light relief"
+msgstr "Relief clair"
+
+msgid "No map"
+msgstr "Sans carte"
+
+msgid "Boundary lines"
+msgstr "Limites"
+
+msgid "Auto"
+msgstr "Auto"
+
+msgid "White"
+msgstr "Blanc"
+
+msgid "Black"
+msgstr "Noir"
+
+msgid "Outlines"
+msgstr "Contours"
+
+msgid "All outlines"
+msgstr "Tous les contours"
+
+msgid "Cantons only"
+msgstr "Cantons seulement"
+
+msgid "Municipalities only"
+msgstr "Communes seulement"
+
+msgid "Off"
+msgstr "Désactivé"
+
+msgid "Geodata"
+msgstr "Géodonnées"
+
+msgid "Current dataset:"
+msgstr "Jeu de données actuel :"
+
+msgid "%(count)s active municipalities"
+msgstr "%(count)s communes actives"
+
+msgid "%(count)s without population"
+msgstr "%(count)s sans population"
+
+msgid "No geodata has been imported yet."
+msgstr "Aucune géodonnée n'a encore été importée."
+
+msgid "Open geodata setup"
+msgstr "Ouvrir la configuration des géodonnées"
+
+msgid "Home"
+msgstr "Accueil"
+
+msgid "Geodata setup"
+msgstr "Configuration des géodonnées"
+
+msgid "Current geodata"
+msgstr "Géodonnées actuelles"
+
+msgid "Dataset"
+msgstr "Jeu de données"
+
+msgid "Imported at"
+msgstr "Importé le"
+
+msgid "Cantons"
+msgstr "Cantons"
+
+msgid "Municipalities"
+msgstr "Communes"
+
+msgid "Active municipalities"
+msgstr "Communes actives"
+
+msgid "Inactive municipalities"
+msgstr "Communes inactives"
+
+msgid "Active municipalities without population"
+msgstr "Communes actives sans population"
+
+msgid "Update geodata"
+msgstr "Mettre à jour les géodonnées"
+
+msgid "Official geodata setup downloads swissBOUNDARIES3D boundaries and BFS STATPOP population data. It can take a while and should not be interrupted."
+msgstr "La configuration officielle télécharge les limites swissBOUNDARIES3D et les données de population STATPOP de l'OFS. Cela peut prendre un certain temps et ne doit pas être interrompu."
+
+msgid "Update official geodata"
+msgstr "Mettre à jour les géodonnées officielles"
+
+msgid "Load development geodata"
+msgstr "Charger les géodonnées de développement"
+
+msgid "Geodata update is running. This can take several minutes."
+msgstr "La mise à jour des géodonnées est en cours. Cela peut prendre plusieurs minutes."
+
+msgid "Geodata update progress"
+msgstr "Progression de la mise à jour des géodonnées"
+
+msgid "Could not calculate a usable scoring map extent."
+msgstr "Impossible de calculer une étendue de carte utilisable pour le score."
+
+msgid "Player identity cannot own games."
+msgstr "Cette identité de joueur ne peut pas posséder de parties."
+
+msgid "At least %(count)s active municipalities are required to start a game."
+msgstr "Il faut au moins %(count)s communes actives pour commencer une partie."
+
+msgid "Choose a valid canton."
+msgstr "Choisis un canton valide."
+
+msgid "Choose a valid game mode."
+msgstr "Choisis un mode de jeu valide."
+
+msgid "Player identity cannot submit guesses."
+msgstr "Cette identité de joueur ne peut pas valider de choix."
+
+msgid "Latitude"
+msgstr "Latitude"
+
+msgid "Longitude"
+msgstr "Longitude"
+
+msgid "Turn does not exist."
+msgstr "Cette manche n'existe pas."
+
+msgid "%(name)s must be a number."
+msgstr "%(name)s doit être un nombre."
+
+msgid "%(name)s must be finite."
+msgstr "%(name)s doit être fini."
+
+msgid "%(name)s must be between %(minimum)s and %(maximum)s."
+msgstr "%(name)s doit être compris entre %(minimum)s et %(maximum)s."
+
+msgid "Turn is invalid."
+msgstr "La manche est invalide."
+
+msgid "Turn does not belong to this player."
+msgstr "Cette manche n'appartient pas à ce joueur."
+
+msgid "Game is not active."
+msgstr "La partie n'est pas active."
+
+msgid "Turn has already been guessed."
+msgstr "Cette manche a déjà été jouée."
+
+msgid "Turn is not the current turn."
+msgstr "Ce n'est pas la manche actuelle."
+
+msgid "Target municipality does not exist."
+msgstr "La commune cible n'existe pas."
+
+msgid "Turn not found."
+msgstr "Manche introuvable."
+
+msgid "Tracking event is not valid for this turn state."
+msgstr "Cet événement de suivi n'est pas valide pour l'état actuel de la manche."
+
+msgid "Game summary not found."
+msgstr "Résumé de partie introuvable."
+
+msgid "Game history not found."
+msgstr "Historique de partie introuvable."
+
+msgid "Tracking payload is too large."
+msgstr "La charge de suivi est trop volumineuse."
+
+msgid "Tracking payload must be valid JSON."
+msgstr "La charge de suivi doit être un JSON valide."
+
+msgid "Tracking payload must be a JSON object."
+msgstr "La charge de suivi doit être un objet JSON."
+
+msgid "Tracking event type is not allowed."
+msgstr "Ce type d'événement de suivi n'est pas autorisé."
+
+msgid "Tracking event payload must be a JSON object."
+msgstr "La charge de l'événement de suivi doit être un objet JSON."
+
+msgid "Tracking content length is required."
+msgstr "La longueur du contenu de suivi est requise."
+
+msgid "Tracking content length is invalid."
+msgstr "La longueur du contenu de suivi est invalide."
+
+msgid "Canton not found."
+msgstr "Canton introuvable."
+
+msgid "Municipality labels not found."
+msgstr "Libellés de communes introuvables."
+
+msgid "Events must belong to exactly one user or guest."
+msgstr "Les événements doivent appartenir exactement à un utilisateur ou à un invité."
