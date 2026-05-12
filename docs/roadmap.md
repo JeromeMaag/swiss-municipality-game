@@ -5,7 +5,6 @@
 The next release should make the game easier to try, more replayable, and more
 useful after a finished game.
 
-- Switchable background maps
 - Further visual polish for the game UI
 - Multilingual support
 
