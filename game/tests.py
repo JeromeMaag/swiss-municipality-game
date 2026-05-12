@@ -1270,6 +1270,20 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Choose a valid canton.", status_code=400)
         self.assertFalse(Game.objects.exists())
 
+    def test_start_view_rejects_invalid_mode(self) -> None:
+        """Game start view validates posted game modes."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("game:start"),
+            {"game_mode": "invalid"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, "Choose a valid game mode.", status_code=400)
+        self.assertFalse(Game.objects.exists())
+
     def test_start_view_rejects_get(self) -> None:
         """Game start endpoint only accepts POST."""
         self.client.force_login(self.user)
@@ -2341,6 +2355,31 @@ class GameSummaryTests(TestCase):
         self.assertNotContains(response, "New game")
         self.assertEqual(response.context["selected_game"], game)
         self.assertEqual(len(response.context["summary_reveals"]), 5)
+
+    def test_history_detail_uses_canton_game_scope(self) -> None:
+        """History replay maps preserve a single-canton game scope."""
+        game = self.create_finished_game(mode=Game.Mode.CANTON, canton=self.canton)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("game:history_detail", args=[game.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "ZH")
+        self.assertContains(
+            response,
+            (
+                'data-canton-boundaries-url="'
+                f'{reverse("geo:cantons_geojson")}?canton=ZH"'
+            ),
+        )
+        self.assertContains(
+            response,
+            (
+                'data-municipality-boundaries-url="'
+                f'{reverse("geo:municipality_boundaries_geojson")}?canton=ZH"'
+            ),
+        )
+        self.assertEqual(response.context["selected_game"], game)
 
     def test_history_detail_rejects_other_users_game(self) -> None:
         """Users cannot review another user's game from history."""
