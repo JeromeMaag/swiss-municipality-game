@@ -153,19 +153,16 @@
     };
   }
 
-  function calculateResponsiveMinZoom(map, bounds) {
-    const boundsZoom = map.getBoundsZoom(bounds, true);
-    if (!Number.isFinite(boundsZoom)) {
-      return DEFAULT_MIN_ZOOM;
+  function fitBoundaryLayerBounds(map, layer) {
+    if (layer.getLayers().length > 0) {
+      map.fitBounds(layer.getBounds(), mapFitOptions(map, 10, 24));
     }
-    return Math.max(DEFAULT_MIN_ZOOM, Math.ceil(boundsZoom));
   }
 
   function constrainMapToBounds(map, bounds) {
-    const minZoom = calculateResponsiveMinZoom(map, bounds);
-    map.setMinZoom(minZoom);
-    if (map.getZoom() < minZoom) {
-      map.setZoom(minZoom, { animate: false });
+    map.setMinZoom(DEFAULT_MIN_ZOOM);
+    if (map.getZoom() < DEFAULT_MIN_ZOOM) {
+      map.setZoom(DEFAULT_MIN_ZOOM, { animate: false });
     }
     map.panInsideBounds(bounds, { animate: false });
   }
@@ -232,7 +229,7 @@
         }).addTo(map);
 
         if (options.fitBounds && layer.getLayers().length > 0) {
-          map.fitBounds(layer.getBounds(), mapFitOptions(map, 10, 24));
+          fitBoundaryLayerBounds(map, layer);
         }
 
         return layer;
@@ -1063,6 +1060,19 @@
     }
   }
 
+  function refitMapView(map, municipalityLayer, revealState, summaryState) {
+    if (municipalityLayer === null) {
+      return;
+    }
+    if (revealState) {
+      fitRevealBounds(map, municipalityLayer, revealState);
+    } else if (summaryState) {
+      fitSummaryBounds(map, municipalityLayer, summaryState);
+    } else {
+      fitBoundaryLayerBounds(map, municipalityLayer);
+    }
+  }
+
   function initializeGameMap() {
     const mapElement = document.getElementById("game-map");
     if (!mapElement || !window.L || mapElement.dataset.initialized === "true") {
@@ -1095,8 +1105,16 @@
 
     map.setView([latitude, longitude], zoom);
     constrainMapToBounds(map, switzerlandBounds);
-    map.on("resize", function () {
+    let municipalityLayerForFit = null;
+    let resizeFitTimeout = null;
+    function refreshMapFit() {
+      map.invalidateSize();
       constrainMapToBounds(map, switzerlandBounds);
+      refitMapView(map, municipalityLayerForFit, revealState, summaryState);
+    }
+    map.on("resize", function () {
+      window.clearTimeout(resizeFitTimeout);
+      resizeFitTimeout = window.setTimeout(refreshMapFit, 0);
     });
     const backgroundMapId = readStoredBackgroundMapId();
     const boundaryLineMode = readStoredBoundaryLineMode();
@@ -1153,6 +1171,7 @@
       ),
     }).then(function (municipalityLayer) {
       boundaryState.municipalityLayer = municipalityLayer;
+      municipalityLayerForFit = municipalityLayer;
       applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
       if (revealState && municipalityLayer !== null) {
         fitRevealBounds(map, municipalityLayer, revealState);
@@ -1184,8 +1203,7 @@
     });
 
     window.setTimeout(function () {
-      map.invalidateSize();
-      constrainMapToBounds(map, switzerlandBounds);
+      refreshMapFit();
     }, 0);
   }
 
