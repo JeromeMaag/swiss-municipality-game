@@ -251,7 +251,12 @@
               <button type="submit">{% trans "Start" %}</button>
             </form>
           {% else %}
-            <button type="button" class="button-link auth-choice-trigger" data-auth-modal-trigger>
+            <button
+              type="button"
+              class="button-link auth-choice-trigger"
+              data-auth-modal-trigger
+              {% if show_guest_start_form %}hidden{% endif %}
+            >
               {% trans "Start" %}
             </button>
             <form
@@ -260,60 +265,62 @@
               method="post"
               action="{% url 'game:start' %}"
               data-guest-start-form
-              hidden
+              {% if not show_guest_start_form %}hidden{% endif %}
             >
               {% csrf_token %}
               <button type="submit">{% trans "Start" %}</button>
             </form>
-            <div
-              class="auth-choice-backdrop"
-              data-auth-modal
-              {% if open_auth_choice_modal %}
-                data-auth-modal-open="true"
-              {% else %}
-                hidden
-              {% endif %}
-            >
-              <section
-                class="auth-choice-modal"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="auth-choice-heading"
-              >
-                <button
-                  type="button"
-                  class="auth-choice-close"
-                  aria-label="{% trans 'Close' %}"
-                  data-auth-modal-close
-                >
-                  &times;
-                </button>
-                <span class="state-label">{% trans "Account optional" %}</span>
-                <h2 id="auth-choice-heading">{% trans "Start playing" %}</h2>
-                <p>
-                  {% blocktrans trimmed %}
-                    Play now in this browser, or sign in if you want future history
-                    and statistics.
-                  {% endblocktrans %}
-                </p>
-                <button
-                  type="submit"
-                  form="guest-start-form"
-                  data-auth-primary
-                  data-guest-mode-choice
-                >
-                  {% trans "Play without account" %}
-                </button>
-                <div class="auth-choice-actions">
-                  <a class="button-link" href="{% url 'accounts:login' %}">{% trans "Log in" %}</a>
-                  <a class="button-link button-link-secondary" href="{% url 'accounts:register' %}">
-                    {% trans "Create account" %}
-                  </a>
-                </div>
-              </section>
-            </div>
           {% endif %}
         </aside>
+        {% if not request.user.is_authenticated %}
+          <div
+            class="auth-choice-backdrop"
+            data-auth-modal
+            {% if open_auth_choice_modal %}
+              data-auth-modal-open="true"
+            {% else %}
+              hidden
+            {% endif %}
+          >
+            <section
+              class="auth-choice-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="auth-choice-heading"
+            >
+              <button
+                type="button"
+                class="auth-choice-close"
+                aria-label="{% trans 'Close' %}"
+                data-auth-modal-close
+              >
+                &times;
+              </button>
+              <span class="state-label">{% trans "Account optional" %}</span>
+              <h2 id="auth-choice-heading">{% trans "Start playing" %}</h2>
+              <p>
+                {% blocktrans trimmed %}
+                  Play now in this browser, or sign in if you want future history
+                  and statistics.
+                {% endblocktrans %}
+              </p>
+              <button
+                type="submit"
+                form="guest-start-form"
+                data-auth-primary
+                data-guest-mode-choice
+              >
+                {% trans "Play without account" %}
+              </button>
+              <div class="auth-choice-actions">
+                <a class="button-link" href="{% url 'accounts:login' %}">{% trans "Log in" %}</a>
+                <a class="button-link button-link-secondary" href="{% url 'accounts:register' %}">
+                  {% trans "Create account" %}
+                </a>
+              </div>
+            </section>
+          </div>
+        {% endif %}
       </div>
     {% endif %}
   </section>
@@ -327,6 +334,6 @@
       crossorigin="anonymous"
       defer
     ></script>
-    <script src="{% static 'js/game_map.js' %}?v=map-layers-1" defer></script>
+    <script src="{% static 'js/game_map.js' %}?v=ui-polish-2" defer></script>
   {% endif %}
 {% endblock %}

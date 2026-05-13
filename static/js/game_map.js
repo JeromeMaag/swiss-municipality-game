@@ -16,6 +16,17 @@
     surfaceRelief: "black",
     swissimage: "white",
   };
+  const DEFAULT_MIN_ZOOM = 8;
+  const DESKTOP_SIDEBAR_WIDTH = 360;
+  const MOBILE_BREAKPOINT_WIDTH = 920;
+  const COMPACT_MIN_FIT_PADDING = 12;
+  const COMPACT_MIN_BOTTOM_PADDING = 180;
+  const COMPACT_MIN_AVAILABLE_MAP_HEIGHT = 96;
+  const COMPACT_SHORT_AVAILABLE_MAP_HEIGHT = 48;
+  const COMPACT_SIDEBAR_HEIGHT_RATIO = 0.5;
+  const COMPACT_TALL_SIDEBAR_HEIGHT_RATIO = 0.64;
+  const COMPACT_TOP_PADDING_RATIO = 0.18;
+  const VECTOR_RENDERER_PADDING = 0.2;
 
   function swisstopoWmtsUrl(layer, extension) {
     return (
@@ -78,6 +89,84 @@
     return Number.isFinite(value) ? value : fallback;
   }
 
+  function isCompactMap(map) {
+    return map.getSize().x <= MOBILE_BREAKPOINT_WIDTH;
+  }
+
+  function compactMapEdgePadding(map, padding) {
+    return Math.min(
+      padding,
+      Math.max(
+        COMPACT_MIN_FIT_PADDING,
+        Math.floor(map.getSize().y * COMPACT_TOP_PADDING_RATIO)
+      )
+    );
+  }
+
+  function compactMapBottomPadding(map, padding) {
+    const mapHeight = map.getSize().y;
+    const layout = map.getContainer().closest(".game-layout");
+    const hasTallSidebar = layout
+      ? Boolean(
+          layout.querySelector(".game-entry-sidebar") ||
+            layout.querySelector(".history-sidebar")
+        )
+      : false;
+    const sidebarRatio = hasTallSidebar
+      ? COMPACT_TALL_SIDEBAR_HEIGHT_RATIO
+      : COMPACT_SIDEBAR_HEIGHT_RATIO;
+    const desiredPadding = Math.max(
+      COMPACT_MIN_BOTTOM_PADDING,
+      Math.ceil(mapHeight * sidebarRatio + padding)
+    );
+    const preferredMaxPadding =
+      mapHeight - padding - COMPACT_MIN_AVAILABLE_MAP_HEIGHT;
+    const fallbackMaxPadding =
+      mapHeight - padding - COMPACT_SHORT_AVAILABLE_MAP_HEIGHT;
+    const maxPadding =
+      preferredMaxPadding >= 0 ? preferredMaxPadding : fallbackMaxPadding;
+    return Math.max(
+      0,
+      Math.min(desiredPadding, maxPadding)
+    );
+  }
+
+  function mapFitOptions(map, maxZoom, padding) {
+    if (isCompactMap(map)) {
+      const compactPadding = compactMapEdgePadding(map, padding);
+      return {
+        animate: false,
+        maxZoom: maxZoom,
+        paddingBottomRight: [
+          compactPadding,
+          compactMapBottomPadding(map, compactPadding),
+        ],
+        paddingTopLeft: [compactPadding, compactPadding],
+      };
+    }
+
+    return {
+      animate: false,
+      maxZoom: maxZoom,
+      paddingBottomRight: [padding, padding],
+      paddingTopLeft: [DESKTOP_SIDEBAR_WIDTH + padding, padding],
+    };
+  }
+
+  function fitBoundaryLayerBounds(map, layer) {
+    if (layer.getLayers().length > 0) {
+      map.fitBounds(layer.getBounds(), mapFitOptions(map, 10, 24));
+    }
+  }
+
+  function constrainMapToBounds(map, bounds) {
+    map.setMinZoom(DEFAULT_MIN_ZOOM);
+    if (map.getZoom() < DEFAULT_MIN_ZOOM) {
+      map.setZoom(DEFAULT_MIN_ZOOM, { animate: false });
+    }
+    map.panInsideBounds(bounds, { animate: false });
+  }
+
   function readCookie(name) {
     const cookies = document.cookie ? document.cookie.split(";") : [];
     for (let index = 0; index < cookies.length; index += 1) {
@@ -135,14 +224,12 @@
         const layer = window.L.geoJSON(data, {
           interactive: false,
           onEachFeature: options.onEachFeature,
+          renderer: options.renderer,
           style: options.style,
         }).addTo(map);
 
         if (options.fitBounds && layer.getLayers().length > 0) {
-          map.fitBounds(layer.getBounds(), {
-            animate: false,
-            padding: [24, 24],
-          });
+          fitBoundaryLayerBounds(map, layer);
         }
 
         return layer;
@@ -542,37 +629,46 @@
     return value.toFixed(5);
   }
 
-  function createGuessMarker(map, label) {
-    const marker = document.createElement("div");
-    marker.className = "guess-marker";
-    marker.setAttribute("aria-hidden", "true");
+  function createGuessMarkerIcon(label, revealed) {
+    let className = "guess-marker";
     if (label) {
-      marker.classList.add("guess-marker--numbered");
+      className += " guess-marker--numbered";
+    }
+    if (revealed) {
+      className += " guess-marker--revealed";
     }
     const markerLabel = label
       ? '<span class="guess-marker-label">' + escapeHtml(label) + "</span>"
       : "";
-    marker.innerHTML = (
-      '<span class="guess-marker-head">' +
-      markerLabel +
-      "</span>" +
-      '<span class="guess-marker-stem"></span>'
-    );
-    map.getContainer().appendChild(marker);
-    return marker;
+    return window.L.divIcon({
+      className: className,
+      html: (
+        '<span class="guess-marker-head">' +
+        markerLabel +
+        "</span>" +
+        '<span class="guess-marker-stem"></span>'
+      ),
+      iconAnchor: [14, 36],
+      iconSize: [29, 36],
+    });
   }
 
-  function createRevealedGuessMarker(map, label) {
-    const marker = createGuessMarker(map, label);
-    marker.classList.add("guess-marker--revealed");
-    return marker;
+  function createGuessMarker(map, latlng, label) {
+    return window.L.marker(latlng, {
+      icon: createGuessMarkerIcon(label, false),
+      interactive: false,
+      keyboard: false,
+      zIndexOffset: 750,
+    }).addTo(map);
   }
 
-  function positionGuessMarker(map, marker, latlng) {
-    const point = map.latLngToContainerPoint(latlng);
-    marker.style.transform = (
-      "translate(" + point.x + "px, " + point.y + "px) translate(-50%, -100%)"
-    );
+  function createRevealedGuessMarker(map, latlng, label) {
+    return window.L.marker(latlng, {
+      icon: createGuessMarkerIcon(label, true),
+      interactive: false,
+      keyboard: false,
+      zIndexOffset: 760,
+    }).addTo(map);
   }
 
   function initializeGuessInteraction(map, mapElement) {
@@ -587,14 +683,6 @@
     let marker = null;
     let selectedLatLng = null;
 
-    function updateMarkerPosition() {
-      if (marker !== null && selectedLatLng !== null) {
-        positionGuessMarker(map, marker, selectedLatLng);
-      }
-    }
-
-    map.on("move zoom resize viewreset", updateMarkerPosition);
-
     map.on("click", function (event) {
       const latitude = formatCoordinate(event.latlng.lat);
       const longitude = formatCoordinate(event.latlng.lng);
@@ -603,9 +691,10 @@
       selectedLatLng = event.latlng;
 
       if (marker === null) {
-        marker = createGuessMarker(map);
+        marker = createGuessMarker(map, selectedLatLng);
+      } else {
+        marker.setLatLng(selectedLatLng);
       }
-      positionGuessMarker(map, marker, selectedLatLng);
 
       latitudeInput.value = latitude;
       longitudeInput.value = longitude;
@@ -712,15 +801,8 @@
   }
 
   function initializeReveal(map, revealState, mapElement) {
-    const marker = createRevealedGuessMarker(map);
-
-    function updateMarkerPosition() {
-      positionGuessMarker(map, marker, revealState.latlng);
-    }
-
+    createRevealedGuessMarker(map, revealState.latlng);
     map.getContainer().classList.add("game-map--reveal");
-    map.on("move zoom resize viewreset", updateMarkerPosition);
-    updateMarkerPosition();
     sendTrackingEvent(mapElement, "REVEAL_SHOWN", {
       latitude: revealState.latlng.lat,
       longitude: revealState.latlng.lng,
@@ -732,14 +814,7 @@
   function initializeSummary(map, summaryState) {
     map.getContainer().classList.add("game-map--summary");
     summaryState.reveals.forEach(function (reveal) {
-      const marker = createRevealedGuessMarker(map, String(reveal.turnNumber));
-
-      function updateMarkerPosition() {
-        positionGuessMarker(map, marker, reveal.latlng);
-      }
-
-      map.on("move zoom resize viewreset", updateMarkerPosition);
-      updateMarkerPosition();
+      createRevealedGuessMarker(map, reveal.latlng, String(reveal.turnNumber));
     });
   }
 
@@ -936,7 +1011,7 @@
 
     if (!map.getPane("revealDistancePane")) {
       map.createPane("revealDistancePane");
-      map.getPane("revealDistancePane").style.zIndex = 660;
+      map.getPane("revealDistancePane").style.zIndex = 590;
       map.getPane("revealDistancePane").style.pointerEvents = "none";
     }
 
@@ -967,11 +1042,7 @@
       bounds.extend(targetLayer.getBounds());
     }
 
-    map.fitBounds(bounds, {
-      animate: false,
-      maxZoom: 12,
-      padding: [42, 42],
-    });
+    map.fitBounds(bounds, mapFitOptions(map, 12, 42));
   }
 
   function fitSummaryBounds(map, municipalityLayer, summaryState) {
@@ -985,11 +1056,20 @@
     });
 
     if (bounds.isValid()) {
-      map.fitBounds(bounds, {
-        animate: false,
-        maxZoom: 10,
-        padding: [64, 64],
-      });
+      map.fitBounds(bounds, mapFitOptions(map, 10, 64));
+    }
+  }
+
+  function refitMapView(map, municipalityLayer, revealState, summaryState) {
+    if (municipalityLayer === null) {
+      return;
+    }
+    if (revealState) {
+      fitRevealBounds(map, municipalityLayer, revealState);
+    } else if (summaryState) {
+      fitSummaryBounds(map, municipalityLayer, summaryState);
+    } else {
+      fitBoundaryLayerBounds(map, municipalityLayer);
     }
   }
 
@@ -1009,16 +1089,33 @@
     const labelMinZoom = readNumber(mapElement, "labelMinZoom", 11);
     const revealState = readRevealState(mapElement);
     const summaryState = readSummaryState();
+    const vectorRenderer = window.L.canvas({
+      padding: VECTOR_RENDERER_PADDING,
+    });
     const map = window.L.map(mapElement, {
       attributionControl: true,
       maxBounds: switzerlandBounds,
       maxBoundsViscosity: 1,
-      minZoom: 8,
+      minZoom: DEFAULT_MIN_ZOOM,
       preferCanvas: true,
+      renderer: vectorRenderer,
+      worldCopyJump: false,
       zoomControl: true,
     });
 
     map.setView([latitude, longitude], zoom);
+    constrainMapToBounds(map, switzerlandBounds);
+    let municipalityLayerForFit = null;
+    let resizeFitTimeout = null;
+    function refreshMapFit() {
+      map.invalidateSize();
+      constrainMapToBounds(map, switzerlandBounds);
+      refitMapView(map, municipalityLayerForFit, revealState, summaryState);
+    }
+    map.on("resize", function () {
+      window.clearTimeout(resizeFitTimeout);
+      resizeFitTimeout = window.setTimeout(refreshMapFit, 0);
+    });
     const backgroundMapId = readStoredBackgroundMapId();
     const boundaryLineMode = readStoredBoundaryLineMode();
     const outlineMode = readStoredOutlineMode();
@@ -1065,6 +1162,7 @@
     addBoundaryLayer(map, mapElement.dataset.municipalityBoundariesUrl, {
       errorMessage: "Municipality boundaries could not be loaded.",
       fitBounds: !revealState && !summaryState,
+      renderer: vectorRenderer,
       style: municipalityStyle(
         revealState,
         summaryState,
@@ -1073,6 +1171,7 @@
       ),
     }).then(function (municipalityLayer) {
       boundaryState.municipalityLayer = municipalityLayer;
+      municipalityLayerForFit = municipalityLayer;
       applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
       if (revealState && municipalityLayer !== null) {
         fitRevealBounds(map, municipalityLayer, revealState);
@@ -1087,6 +1186,7 @@
       return addBoundaryLayer(map, mapElement.dataset.cantonBoundariesUrl, {
         errorMessage: "Canton boundaries could not be loaded.",
         fitBounds: false,
+        renderer: vectorRenderer,
         style: cantonStyle(initialBoundaryColors, boundaryState.outlineMode),
       });
     }).then(function (cantonLayer) {
@@ -1103,7 +1203,7 @@
     });
 
     window.setTimeout(function () {
-      map.invalidateSize();
+      refreshMapFit();
     }, 0);
   }
 

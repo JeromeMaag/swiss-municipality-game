@@ -51,9 +51,20 @@ jobs:
           cache: pip
 
       - name: Install system geospatial libraries
+        timeout-minutes: 8
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gdal-bin libgdal-dev libgeos-dev
+          sudo find /etc/apt -type f \( -name '*.list' -o -name '*.sources' \) -print0 \
+            | sudo xargs -0 sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g'
+          sudo apt-get \
+            -o Acquire::Retries=5 \
+            -o Acquire::http::Timeout=20 \
+            -o Acquire::https::Timeout=20 \
+            update
+          sudo apt-get \
+            -o Acquire::Retries=5 \
+            -o Acquire::http::Timeout=20 \
+            -o Acquire::https::Timeout=20 \
+            install -y --no-install-recommends gdal-bin libgdal-dev libgeos-dev
 
       - name: Install Python dependencies
         run: |

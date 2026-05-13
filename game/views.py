@@ -594,6 +594,12 @@ def render_game_index(
                 active_game is None
                 and last_guess is None
                 and not request.user.is_authenticated
+                and not error
+            ),
+            "show_guest_start_form": (
+                active_game is None
+                and bool(error)
+                and not request.user.is_authenticated
             ),
             "turn_count": TURN_COUNT,
             "turns": turns,
