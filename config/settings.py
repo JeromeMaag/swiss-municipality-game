@@ -53,6 +53,10 @@ def get_geodjango_library_path(
 ) -> str | None:
     """Return a configured or auto-detected GeoDjango native library path.
 
+    Windows auto-detection intentionally checks the common in-project virtualenv
+    layout at ``.venv/Lib/site-packages``. Other environment layouts should use
+    the explicit environment variable override.
+
     Args:
         env_name: Environment variable that can explicitly define the path.
         package_glob: Glob below ``.venv/Lib/site-packages`` to auto-detect.
@@ -185,11 +189,16 @@ LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "game:index"
 LOGOUT_REDIRECT_URL = "home"
 
-GDAL_LIBRARY_PATH = get_geodjango_library_path(
+_GDAL_LIBRARY_PATH = get_geodjango_library_path(
     "GDAL_LIBRARY_PATH",
     "pyogrio.libs/gdal*.dll",
 )
-GEOS_LIBRARY_PATH = get_geodjango_library_path(
+if _GDAL_LIBRARY_PATH:
+    GDAL_LIBRARY_PATH = _GDAL_LIBRARY_PATH
+
+_GEOS_LIBRARY_PATH = get_geodjango_library_path(
     "GEOS_LIBRARY_PATH",
     "shapely.libs/geos_c*.dll",
 )
+if _GEOS_LIBRARY_PATH:
+    GEOS_LIBRARY_PATH = _GEOS_LIBRARY_PATH
