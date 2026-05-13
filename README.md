@@ -29,22 +29,27 @@ history and personal statistics.
 This setup is intended for local development and self-hosted evaluation, not as
 a production deployment recipe.
 
-Create a virtual environment, install dependencies, copy the local environment
-file, and start PostGIS:
+Create a virtual environment, install dependencies, and copy the local
+environment file:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env
-docker compose up -d db
-python manage.py migrate
 ```
 
 Set a real `SECRET_KEY` in `.env`. A local key can be generated with:
 
 ```powershell
 python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+```
+
+Start PostGIS and apply migrations:
+
+```powershell
+docker compose up -d db
+python manage.py migrate
 ```
 
 Choose a geodata setup:
