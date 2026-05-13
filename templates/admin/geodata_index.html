@@ -9,8 +9,8 @@
     {% if geodata.dataset_version %}
       <p>
         {% trans "Current dataset:" %} <strong>{{ geodata.dataset_version }}</strong>
-        - {% blocktrans with count=geodata.active_municipality_count %}{{ count }} active municipalities{% endblocktrans %}
-        - {% blocktrans with count=geodata.missing_population_count %}{{ count }} without population{% endblocktrans %}
+        - {% blocktrans count count=geodata.active_municipality_count %}{{ count }} active municipality{% plural %}{{ count }} active municipalities{% endblocktrans %}
+        - {% blocktrans count count=geodata.missing_population_count %}{{ count }} without population{% plural %}{{ count }} without population{% endblocktrans %}
       </p>
     {% else %}
       <p>{% trans "No geodata has been imported yet." %}</p>

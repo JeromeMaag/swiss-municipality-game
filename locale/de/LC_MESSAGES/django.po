@@ -33,11 +33,11 @@ msgstr "Anmelden"
 msgid "Register"
 msgstr "Registrieren"
 
-msgid "No account yet?"
-msgstr "Noch kein Konto?"
+msgid "No account yet? <a href=\"%(register_url)s\">Register</a>."
+msgstr "Noch kein Konto? <a href=\"%(register_url)s\">Registrieren</a>."
 
-msgid "Already registered?"
-msgstr "Schon registriert?"
+msgid "Already registered? <a href=\"%(login_url)s\">Login</a>."
+msgstr "Schon registriert? <a href=\"%(login_url)s\">Anmelden</a>."
 
 msgid "Play"
 msgstr "Spielen"
@@ -73,10 +73,9 @@ msgid "Map performance"
 msgstr "Leistung pro Karte"
 
 msgid "%(games)s game"
-msgstr "%(games)s Spiel"
-
-msgid "%(games)s games"
-msgstr "%(games)s Spiele"
+msgid_plural "%(games)s games"
+msgstr[0] "%(games)s Spiel"
+msgstr[1] "%(games)s Spiele"
 
 msgid "%(score)s avg score"
 msgstr "%(score)s Ø Punkte"
@@ -89,6 +88,9 @@ msgstr "Einstellungen"
 
 msgid "Language"
 msgstr "Sprache"
+
+msgid "Save language"
+msgstr "Sprache speichern"
 
 msgid "The selected language is stored for this browser."
 msgstr "Die ausgewählte Sprache wird für diesen Browser gespeichert."
@@ -279,11 +281,15 @@ msgstr "Geodaten"
 msgid "Current dataset:"
 msgstr "Aktueller Datensatz:"
 
-msgid "%(count)s active municipalities"
-msgstr "%(count)s aktive Gemeinden"
+msgid "%(count)s active municipality"
+msgid_plural "%(count)s active municipalities"
+msgstr[0] "%(count)s aktive Gemeinde"
+msgstr[1] "%(count)s aktive Gemeinden"
 
 msgid "%(count)s without population"
-msgstr "%(count)s ohne Einwohnerzahl"
+msgid_plural "%(count)s without population"
+msgstr[0] "%(count)s ohne Einwohnerzahl"
+msgstr[1] "%(count)s ohne Einwohnerzahl"
 
 msgid "No geodata has been imported yet."
 msgstr "Es wurden noch keine Geodaten importiert."

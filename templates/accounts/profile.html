@@ -64,11 +64,7 @@
               <li>
                 <strong>{{ mode.label }}</strong>
                 <span>
-                  {% if mode.games_played == 1 %}
-                    {% blocktrans with games=mode.games_played %}{{ games }} game{% endblocktrans %}
-                  {% else %}
-                    {% blocktrans with games=mode.games_played %}{{ games }} games{% endblocktrans %}
-                  {% endif %}
+                  {% blocktrans count games=mode.games_played %}{{ games }} game{% plural %}{{ games }} games{% endblocktrans %}
                 </span>
                 <span>{% blocktrans with score=mode.average_score %}{{ score }} avg score{% endblocktrans %}</span>
               </li>
@@ -89,7 +85,6 @@
             id="profile-language-select"
             class="profile-language-select"
             name="language"
-            onchange="this.form.submit()"
           >
             {% for language_code, language_name in available_languages %}
               <option value="{{ language_code }}"{% if language_code == LANGUAGE_CODE %} selected{% endif %}>
@@ -97,6 +92,7 @@
               </option>
             {% endfor %}
           </select>
+          <button type="submit">{% trans "Save language" %}</button>
           <p>{% trans "The selected language is stored for this browser." %}</p>
         </form>
       </section>

@@ -177,7 +177,11 @@ class LanguagePreferenceTests(TestCase):
         self.assertContains(response, 'action="/i18n/setlang/"')
         self.assertContains(response, 'id="profile-language-select"')
         self.assertContains(response, 'name="language"')
-        self.assertContains(response, 'onchange="this.form.submit()"')
+        self.assertContains(
+            response,
+            '<button type="submit">Enregistrer la langue</button>',
+        )
+        self.assertNotContains(response, 'onchange="this.form.submit()"')
         self.assertContains(response, 'value="fr" selected')
         self.assertContains(response, "English")
         self.assertContains(response, "Deutsch")

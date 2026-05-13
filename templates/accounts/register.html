@@ -12,7 +12,10 @@
       <button type="submit">{% trans "Register" %}</button>
     </form>
     <p class="auth-note">
-      {% trans "Already registered?" %} <a href="{% url 'accounts:login' %}">{% trans "Login" %}</a>.
+      {% url 'accounts:login' as login_url %}
+      {% blocktrans trimmed with login_url=login_url %}
+        Already registered? <a href="{{ login_url }}">Login</a>.
+      {% endblocktrans %}
     </p>
   </section>
 {% endblock %}
