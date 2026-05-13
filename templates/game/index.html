@@ -251,7 +251,12 @@
               <button type="submit">{% trans "Start" %}</button>
             </form>
           {% else %}
-            <button type="button" class="button-link auth-choice-trigger" data-auth-modal-trigger>
+            <button
+              type="button"
+              class="button-link auth-choice-trigger"
+              data-auth-modal-trigger
+              {% if show_guest_start_form %}hidden{% endif %}
+            >
               {% trans "Start" %}
             </button>
             <form
@@ -260,7 +265,7 @@
               method="post"
               action="{% url 'game:start' %}"
               data-guest-start-form
-              hidden
+              {% if not show_guest_start_form %}hidden{% endif %}
             >
               {% csrf_token %}
               <button type="submit">{% trans "Start" %}</button>
