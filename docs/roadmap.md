@@ -1,13 +1,7 @@
 # Roadmap
-
-## 0.2.0 Focus
-
-The next release should make the game easier to try, more replayable, and more
-useful after a finished game.
-
 ## Gameplay Ideas
 
-- Canton learning or practice mode
+- Guided learning mode
 - Settlements or place names instead of municipalities
 - Historical municipality datasets as a game mode
 - Configurable round counts, such as 5, 10, or 20 rounds
