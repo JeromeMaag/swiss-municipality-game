@@ -19,9 +19,13 @@
   const DEFAULT_MIN_ZOOM = 8;
   const DESKTOP_SIDEBAR_WIDTH = 360;
   const MOBILE_BREAKPOINT_WIDTH = 920;
+  const COMPACT_MIN_FIT_PADDING = 12;
   const COMPACT_MIN_BOTTOM_PADDING = 180;
+  const COMPACT_MIN_AVAILABLE_MAP_HEIGHT = 96;
+  const COMPACT_SHORT_AVAILABLE_MAP_HEIGHT = 48;
   const COMPACT_SIDEBAR_HEIGHT_RATIO = 0.5;
   const COMPACT_TALL_SIDEBAR_HEIGHT_RATIO = 0.64;
+  const COMPACT_TOP_PADDING_RATIO = 0.18;
   const VECTOR_RENDERER_PADDING = 0.2;
 
   function swisstopoWmtsUrl(layer, extension) {
@@ -89,7 +93,18 @@
     return map.getSize().x <= MOBILE_BREAKPOINT_WIDTH;
   }
 
+  function compactMapEdgePadding(map, padding) {
+    return Math.min(
+      padding,
+      Math.max(
+        COMPACT_MIN_FIT_PADDING,
+        Math.floor(map.getSize().y * COMPACT_TOP_PADDING_RATIO)
+      )
+    );
+  }
+
   function compactMapBottomPadding(map, padding) {
+    const mapHeight = map.getSize().y;
     const layout = map.getContainer().closest(".game-layout");
     const hasTallSidebar = layout
       ? Boolean(
@@ -100,19 +115,33 @@
     const sidebarRatio = hasTallSidebar
       ? COMPACT_TALL_SIDEBAR_HEIGHT_RATIO
       : COMPACT_SIDEBAR_HEIGHT_RATIO;
-    return Math.max(
+    const desiredPadding = Math.max(
       COMPACT_MIN_BOTTOM_PADDING,
-      Math.ceil(map.getSize().y * sidebarRatio + padding)
+      Math.ceil(mapHeight * sidebarRatio + padding)
+    );
+    const preferredMaxPadding =
+      mapHeight - padding - COMPACT_MIN_AVAILABLE_MAP_HEIGHT;
+    const fallbackMaxPadding =
+      mapHeight - padding - COMPACT_SHORT_AVAILABLE_MAP_HEIGHT;
+    const maxPadding =
+      preferredMaxPadding >= 0 ? preferredMaxPadding : fallbackMaxPadding;
+    return Math.max(
+      0,
+      Math.min(desiredPadding, maxPadding)
     );
   }
 
   function mapFitOptions(map, maxZoom, padding) {
     if (isCompactMap(map)) {
+      const compactPadding = compactMapEdgePadding(map, padding);
       return {
         animate: false,
         maxZoom: maxZoom,
-        paddingBottomRight: [padding, compactMapBottomPadding(map, padding)],
-        paddingTopLeft: [padding, padding],
+        paddingBottomRight: [
+          compactPadding,
+          compactMapBottomPadding(map, compactPadding),
+        ],
+        paddingTopLeft: [compactPadding, compactPadding],
       };
     }
 
