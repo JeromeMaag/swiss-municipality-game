@@ -49,7 +49,7 @@
 
           <section class="target-panel result-panel summary-results" aria-labelledby="history-detail-heading">
             <span class="state-label">
-              {{ selected_game.finished_at|date:"M j, Y" }}
+              {{ selected_game.finished_at|date:"SHORT_DATE_FORMAT" }}
             </span>
             <h1 id="history-detail-heading">{% trans "Game result" %}</h1>
             {% include "game/includes/summary_round_list.html" with game=selected_game %}
@@ -79,8 +79,8 @@
                   <li>
                     <a class="history-game-card" href="{% url 'game:history_detail' game.id %}">
                       <header>
-                        <strong>{{ game.finished_at|date:"M j, Y" }}</strong>
-                        <span>{{ game.finished_at|date:"H:i" }}</span>
+                        <strong>{{ game.finished_at|date:"SHORT_DATE_FORMAT" }}</strong>
+                        <span>{{ game.finished_at|date:"TIME_FORMAT" }}</span>
                       </header>
                       <dl>
                         <div>

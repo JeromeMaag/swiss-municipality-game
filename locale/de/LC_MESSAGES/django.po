@@ -162,7 +162,7 @@ msgid "Mode"
 msgstr "Modus"
 
 msgid "Map setup"
-msgstr "Spielmodus"
+msgstr "Kartenauswahl"
 
 msgid "Switzerland"
 msgstr "Schweiz"

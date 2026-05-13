@@ -104,7 +104,7 @@
             {% for game in statistics.recent_games %}
               <li>
                 <a href="{% url 'game:history_detail' game.id %}">
-                  <span>{{ game.finished_at|date:"M j, Y" }}</span>
+                  <span>{{ game.finished_at|date:"SHORT_DATE_FORMAT" }}</span>
                   <strong>{{ game.total_score }}</strong>
                 </a>
               </li>
