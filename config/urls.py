@@ -24,4 +24,5 @@ urlpatterns = [
     path("accounts/", include("accounts.urls")),
     path("geo/", include("geo.urls")),
     path("game/", include("game.urls")),
+    path("i18n/", include("django.conf.urls.i18n")),
 ]

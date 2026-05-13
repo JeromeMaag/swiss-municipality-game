@@ -1999,7 +1999,7 @@ class GameStartTests(TestCase):
 
         response = self.client.get(reverse("game:index"))
 
-        self.assertContains(response, "GemeindeGuess CH")
+        self.assertContains(response, "Find the municipality!")
         self.assertContains(response, f"{first_turn.turn_number}/5")
         self.assertContains(response, "Score")
         self.assertNotContains(response, f"Active game #{game.id}")

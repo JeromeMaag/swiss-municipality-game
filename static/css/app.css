@@ -76,6 +76,7 @@ a {
 
 .site-nav button,
 .auth-form button,
+.profile-language-form button,
 .game-panel button,
 .button-link {
   align-items: center;
@@ -102,6 +103,7 @@ a {
 
 .site-nav button:hover,
 .auth-form button:hover,
+.profile-language-form button:hover,
 .game-panel button:hover,
 .button-link:hover {
   background: var(--accent-dark);
@@ -1110,6 +1112,45 @@ a {
 
 .profile-mode-list strong {
   font-size: 1.25rem;
+}
+
+.profile-settings {
+  align-content: start;
+}
+
+.profile-language-form {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.profile-language-form label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.profile-language-form p {
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.profile-language-select {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 760;
+  min-height: 2.75rem;
+  padding: 0 0.8rem;
+}
+
+.profile-language-select:focus {
+  border-color: var(--teal);
+  outline: 3px solid rgba(14, 94, 99, 0.15);
 }
 
 .profile-recent {

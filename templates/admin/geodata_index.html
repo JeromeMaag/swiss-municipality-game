@@ -1,23 +1,23 @@
 {% extends "admin/index.html" %}
-{% load geodata_admin %}
+{% load geodata_admin i18n %}
 
 {% block content %}
 <div id="content-main">
   {% geodata_status as geodata %}
   <div class="module">
-    <h2>Geodata</h2>
+    <h2>{% trans "Geodata" %}</h2>
     {% if geodata.dataset_version %}
       <p>
-        Current dataset: <strong>{{ geodata.dataset_version }}</strong>
-        - {{ geodata.active_municipality_count }} active municipalities
-        - {{ geodata.missing_population_count }} without population
+        {% trans "Current dataset:" %} <strong>{{ geodata.dataset_version }}</strong>
+        - {% blocktrans count count=geodata.active_municipality_count %}{{ count }} active municipality{% plural %}{{ count }} active municipalities{% endblocktrans %}
+        - {% blocktrans count count=geodata.missing_population_count %}{{ count }} without population{% plural %}{{ count }} without population{% endblocktrans %}
       </p>
     {% else %}
-      <p>No geodata has been imported yet.</p>
+      <p>{% trans "No geodata has been imported yet." %}</p>
     {% endif %}
     <p>
       <a href="{% url 'admin_geodata_setup' %}" class="button">
-        Open geodata setup
+        {% trans "Open geodata setup" %}
       </a>
     </p>
   </div>

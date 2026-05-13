@@ -1,3 +1,5 @@
+{% load i18n %}
+
 <ol class="summary-round-list">
   {% for turn in game.turns.all %}
     <li>
@@ -8,20 +10,20 @@
         </header>
         <dl class="result-list">
           <div class="result-list-primary">
-            <dt>Score</dt>
+            <dt>{% trans "Score" %}</dt>
             <dd>{{ turn.guess.score }}</dd>
           </div>
           <div>
-            <dt>Distance</dt>
+            <dt>{% trans "Distance" %}</dt>
             <dd>{{ turn.guess.distance_to_municipality_m|floatformat:0 }} m</dd>
           </div>
           <div>
-            <dt>Canton</dt>
+            <dt>{% trans "Canton" %}</dt>
             <dd>{{ turn.target.canton.abbreviation }}</dd>
           </div>
           {% if turn.target.population is not None %}
             <div>
-              <dt>Population</dt>
+              <dt>{% trans "Population" %}</dt>
               <dd>{{ turn.target.population }}</dd>
             </div>
           {% endif %}

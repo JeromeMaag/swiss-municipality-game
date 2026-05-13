@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% load static %}
+{% load i18n static %}
 
-{% block title %}History - GemeindeGuess CH{% endblock %}
+{% block title %}{% trans "History" %} - {% trans "Find the municipality!" %}{% endblock %}
 {% block body_class %}game-page{% endblock %}
 
 {% block extra_head %}
@@ -16,7 +16,7 @@
 {% block content %}
   <section class="game-panel game-shell">
     <div class="game-layout">
-      <section class="map-panel" aria-label="Game history map">
+      <section class="map-panel" aria-label="{% trans 'Game history map' %}">
         <p class="map-status" data-map-status role="status" aria-live="polite" aria-atomic="true"></p>
         {% include "game/includes/map_settings.html" %}
         <div
@@ -34,61 +34,61 @@
         ></div>
       </section>
 
-      <aside class="game-sidebar history-sidebar" aria-label="Game history">
+      <aside class="game-sidebar history-sidebar" aria-label="{% trans 'Game history' %}">
         {% if selected_game %}
-          <div class="hud-row" aria-label="Selected game result">
+          <div class="hud-row" aria-label="{% trans 'Selected game result' %}">
             <div>
-              <span>Score</span>
+              <span>{% trans "Score" %}</span>
               <strong>{{ selected_game.total_score }}</strong>
             </div>
             <div>
-              <span>Map</span>
+              <span>{% trans "Map" %}</span>
               <strong>{{ selected_game.map_label }}</strong>
             </div>
           </div>
 
           <section class="target-panel result-panel summary-results" aria-labelledby="history-detail-heading">
             <span class="state-label">
-              {{ selected_game.finished_at|date:"M j, Y" }}
+              {{ selected_game.finished_at|date:"SHORT_DATE_FORMAT" }}
             </span>
-            <h1 id="history-detail-heading">Game result</h1>
+            <h1 id="history-detail-heading">{% trans "Game result" %}</h1>
             {% include "game/includes/summary_round_list.html" with game=selected_game %}
           </section>
 
           <a class="button-link" href="{% url 'game:history' %}">
-            Back to history
+            {% trans "Back to history" %}
           </a>
         {% else %}
-          <div class="hud-row" aria-label="History statistics">
+          <div class="hud-row" aria-label="{% trans 'History statistics' %}">
             <div>
-              <span>Games</span>
+              <span>{% trans "Games" %}</span>
               <strong>{{ history_stats.played }}</strong>
             </div>
             <div>
-              <span>Best</span>
+              <span>{% trans "Best" %}</span>
               <strong>{{ history_stats.best_score }}</strong>
             </div>
           </div>
 
           <section class="target-panel history-panel" aria-labelledby="history-heading">
-            <span class="state-label">Personal statistics</span>
-            <h1 id="history-heading">History</h1>
+            <span class="state-label">{% trans "Personal statistics" %}</span>
+            <h1 id="history-heading">{% trans "History" %}</h1>
             {% if history_games %}
               <ol class="history-game-list">
                 {% for game in history_games %}
                   <li>
                     <a class="history-game-card" href="{% url 'game:history_detail' game.id %}">
                       <header>
-                        <strong>{{ game.finished_at|date:"M j, Y" }}</strong>
-                        <span>{{ game.finished_at|date:"H:i" }}</span>
+                        <strong>{{ game.finished_at|date:"SHORT_DATE_FORMAT" }}</strong>
+                        <span>{{ game.finished_at|date:"TIME_FORMAT" }}</span>
                       </header>
                       <dl>
                         <div>
-                          <dt>Score</dt>
+                          <dt>{% trans "Score" %}</dt>
                           <dd>{{ game.total_score }}</dd>
                         </div>
                         <div>
-                          <dt>Map</dt>
+                          <dt>{% trans "Map" %}</dt>
                           <dd>{{ game.map_label }}</dd>
                         </div>
                       </dl>
@@ -98,8 +98,8 @@
               </ol>
             {% else %}
               <div class="history-empty">
-                <p>No finished games yet.</p>
-                <a class="button-link" href="{% url 'game:index' %}">Start game</a>
+                <p>{% trans "No finished games yet." %}</p>
+                <a class="button-link" href="{% url 'game:index' %}">{% trans "Start game" %}</a>
               </div>
             {% endif %}
           </section>

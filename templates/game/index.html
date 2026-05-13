@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% load static %}
+{% load i18n static %}
 
-{% block title %}Game - GemeindeGuess CH{% endblock %}
+{% block title %}{% trans "Game" %} - {% trans "Find the municipality!" %}{% endblock %}
 {% block body_class %}game-page{% endblock %}
 
 {% block extra_head %}
@@ -25,7 +25,7 @@
 
     {% if active_game %}
       <div class="game-layout">
-        <section class="map-panel" aria-label="Guess map">
+        <section class="map-panel" aria-label="{% trans 'Guess map' %}">
           {% if show_game_map %}
             <p class="map-status" data-map-status role="status" aria-live="polite" aria-atomic="true"></p>
             {% include "game/includes/map_settings.html" %}
@@ -59,10 +59,10 @@
           {% endif %}
         </section>
 
-        <aside class="game-sidebar" aria-label="Current game">
-          <div class="hud-row" aria-label="Game progress">
+        <aside class="game-sidebar" aria-label="{% trans 'Current game' %}">
+          <div class="hud-row" aria-label="{% trans 'Game progress' %}">
             <div>
-              <span>Round</span>
+              <span>{% trans "Round" %}</span>
               <strong>
                 {% if last_guess %}
                   {{ last_guess.turn.turn_number }}/{{ turn_count }}
@@ -74,7 +74,7 @@
               </strong>
             </div>
             <div>
-              <span>Score</span>
+              <span>{% trans "Score" %}</span>
               <strong>{{ active_game.total_score }}</strong>
             </div>
           </div>
@@ -82,25 +82,25 @@
           {% if last_guess %}
             <section class="target-panel result-panel" aria-labelledby="result-heading" role="status" aria-live="polite">
               <span class="state-label">
-                {% if active_game.status == "finished" %}Finished game{% else %}Result{% endif %}
+                {% if active_game.status == "finished" %}{% trans "Finished game" %}{% else %}{% trans "Result" %}{% endif %}
               </span>
               <h1 id="result-heading">{{ last_guess.turn.target.name }}</h1>
               <dl class="result-list">
                 <div class="result-list-primary">
-                  <dt>Score</dt>
+                  <dt>{% trans "Score" %}</dt>
                   <dd>{{ last_guess.score }}</dd>
                 </div>
                 <div>
-                  <dt>Distance</dt>
+                  <dt>{% trans "Distance" %}</dt>
                   <dd>{{ last_guess.distance_to_municipality_m|floatformat:0 }} m</dd>
                 </div>
                 <div>
-                  <dt>Canton</dt>
+                  <dt>{% trans "Canton" %}</dt>
                   <dd>{{ last_guess.turn.target.canton.name }} ({{ last_guess.turn.target.canton.abbreviation }})</dd>
                 </div>
                 {% if last_guess.turn.target.population is not None %}
                   <div>
-                    <dt>Population</dt>
+                    <dt>{% trans "Population" %}</dt>
                     <dd>{{ last_guess.turn.target.population }}</dd>
                   </div>
                 {% endif %}
@@ -108,11 +108,11 @@
             </section>
             {% if active_game.status == "finished" %}
               <a class="button-link" href="{% url 'game:summary' active_game.id %}">
-                Summary
+                {% trans "Summary" %}
               </a>
             {% else %}
               <a class="button-link" href="{% url 'game:index' %}" data-next-turn-link>
-                Next
+                {% trans "Next" %}
               </a>
             {% endif %}
           {% elif current_turn %}
@@ -130,17 +130,17 @@
               <input type="hidden" name="latitude" data-guess-lat>
               <input type="hidden" name="longitude" data-guess-lng>
               <button type="submit" data-confirm-guess disabled>
-                Guess
+                {% trans "Guess" %}
               </button>
             </form>
           {% else %}
             {% if active_game.status == "finished" %}
               <a class="button-link" href="{% url 'game:summary' active_game.id %}">
-                Summary
+                {% trans "Summary" %}
               </a>
             {% else %}
               <p class="error-message" role="alert" aria-live="assertive">
-                No active turn is available for this game.
+                {% trans "No active turn is available for this game." %}
               </p>
             {% endif %}
           {% endif %}
@@ -148,7 +148,7 @@
       </div>
     {% else %}
       <div class="game-layout">
-        <section class="map-panel" aria-label="Game preview map">
+        <section class="map-panel" aria-label="{% trans 'Game preview map' %}">
           {% if show_game_map %}
             <p class="map-status" data-map-status role="status" aria-live="polite" aria-atomic="true"></p>
             {% include "game/includes/map_settings.html" %}
@@ -167,27 +167,27 @@
           {% endif %}
         </section>
 
-        <aside class="game-sidebar game-entry-sidebar" aria-label="Start game">
-          <div class="hud-row" aria-label="Game setup">
+        <aside class="game-sidebar game-entry-sidebar" aria-label="{% trans 'Start game' %}">
+          <div class="hud-row" aria-label="{% trans 'Game setup' %}">
             <div>
-              <span>Rounds</span>
+              <span>{% trans "Rounds" %}</span>
               <strong>{{ turn_count }}</strong>
             </div>
             <div>
-              <span>Map</span>
+              <span>{% trans "Map" %}</span>
               <strong data-game-mode-map-label>{{ map_label }}</strong>
             </div>
           </div>
 
           <section class="target-panel" aria-labelledby="start-heading">
-            <span class="state-label">GemeindeGuess CH</span>
-            <h1 id="start-heading">Start game</h1>
+            <span class="state-label">{% trans "Find the municipality!" %}</span>
+            <h1 id="start-heading">{% trans "Start game" %}</h1>
           </section>
 
           <section class="mode-panel" aria-labelledby="mode-heading" data-game-mode-picker>
             <div class="mode-panel-heading">
-              <span class="state-label">Mode</span>
-              <strong id="mode-heading">Map setup</strong>
+              <span class="state-label">{% trans "Mode" %}</span>
+              <strong id="mode-heading">{% trans "Map setup" %}</strong>
             </div>
             <div class="mode-option-list" role="radiogroup" aria-labelledby="mode-heading">
               <label class="mode-option">
@@ -200,7 +200,7 @@
                   data-mode-choice
                 >
                 <span>
-                  <strong>Switzerland</strong>
+                  <strong>{% trans "Switzerland" %}</strong>
                   <small>CH</small>
                 </span>
               </label>
@@ -214,13 +214,13 @@
                   data-mode-choice
                 >
                 <span>
-                  <strong>Single canton</strong>
+                  <strong>{% trans "Single canton" %}</strong>
                   <small data-selected-canton-label>{{ selected_canton|default:"-" }}</small>
                 </span>
               </label>
             </div>
             <label class="canton-picker">
-              <span>Canton</span>
+              <span>{% trans "Canton" %}</span>
               <select
                 name="canton"
                 form="{% if request.user.is_authenticated %}game-start-form{% else %}guest-start-form{% endif %}"
@@ -234,7 +234,7 @@
                     {{ canton.name }}
                   </option>
                 {% empty %}
-                  <option value="">No cantons available</option>
+                  <option value="">{% trans "No cantons available" %}</option>
                 {% endfor %}
               </select>
             </label>
@@ -248,11 +248,11 @@
               action="{% url 'game:start' %}"
             >
               {% csrf_token %}
-              <button type="submit">Start</button>
+              <button type="submit">{% trans "Start" %}</button>
             </form>
           {% else %}
             <button type="button" class="button-link auth-choice-trigger" data-auth-modal-trigger>
-              Start
+              {% trans "Start" %}
             </button>
             <form
               id="guest-start-form"
@@ -263,7 +263,7 @@
               hidden
             >
               {% csrf_token %}
-              <button type="submit">Start</button>
+              <button type="submit">{% trans "Start" %}</button>
             </form>
             <div
               class="auth-choice-backdrop"
@@ -283,16 +283,18 @@
                 <button
                   type="button"
                   class="auth-choice-close"
-                  aria-label="Close"
+                  aria-label="{% trans 'Close' %}"
                   data-auth-modal-close
                 >
                   &times;
                 </button>
-                <span class="state-label">Account optional</span>
-                <h2 id="auth-choice-heading">Start playing</h2>
+                <span class="state-label">{% trans "Account optional" %}</span>
+                <h2 id="auth-choice-heading">{% trans "Start playing" %}</h2>
                 <p>
-                  Play now in this browser, or sign in if you want future history
-                  and statistics.
+                  {% blocktrans trimmed %}
+                    Play now in this browser, or sign in if you want future history
+                    and statistics.
+                  {% endblocktrans %}
                 </p>
                 <button
                   type="submit"
@@ -300,12 +302,12 @@
                   data-auth-primary
                   data-guest-mode-choice
                 >
-                  Play without account
+                  {% trans "Play without account" %}
                 </button>
                 <div class="auth-choice-actions">
-                  <a class="button-link" href="{% url 'accounts:login' %}">Log in</a>
+                  <a class="button-link" href="{% url 'accounts:login' %}">{% trans "Log in" %}</a>
                   <a class="button-link button-link-secondary" href="{% url 'accounts:register' %}">
-                    Create account
+                    {% trans "Create account" %}
                   </a>
                 </div>
               </section>

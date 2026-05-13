@@ -1,5 +1,6 @@
 """Views for account-related pages."""
 
+from django.conf import settings
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView as DjangoLoginView
@@ -44,7 +45,10 @@ def profile(request):
     return render(
         request,
         "accounts/profile.html",
-        {"statistics": build_player_statistics(request.user)},
+        {
+            "available_languages": settings.LANGUAGES,
+            "statistics": build_player_statistics(request.user),
+        },
     )
 
 

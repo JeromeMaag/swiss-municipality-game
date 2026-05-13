@@ -1,84 +1,110 @@
 {% extends "base.html" %}
+{% load i18n %}
 
-{% block title %}Profile | GemeindeGuess CH{% endblock %}
+{% block title %}{% trans "Profile" %} | {% trans "Find the municipality!" %}{% endblock %}
 {% block body_class %}profile-page{% endblock %}
 
 {% block content %}
+  {% get_current_language as LANGUAGE_CODE %}
   <section class="profile-shell" aria-labelledby="profile-heading">
     <header class="profile-header">
       <div>
-        <h1 id="profile-heading">Profile</h1>
+        <h1 id="profile-heading">{% trans "Profile" %}</h1>
         <p>{{ user.username }}</p>
       </div>
       <div class="profile-actions">
-        <a class="button-link button-link-secondary" href="{% url 'game:history' %}">History</a>
-        <a class="button-link" href="{% url 'game:index' %}">Play</a>
+        <a class="button-link button-link-secondary" href="{% url 'game:history' %}">{% trans "History" %}</a>
+        <a class="button-link" href="{% url 'game:index' %}">{% trans "Play" %}</a>
       </div>
     </header>
 
-    <section class="profile-metrics" aria-label="Main statistics">
+    <section class="profile-metrics" aria-label="{% trans 'Main statistics' %}">
       <article class="profile-metric">
-        <span>Games played</span>
+        <span>{% trans "Games played" %}</span>
         <strong>{{ statistics.games_played }}</strong>
       </article>
       <article class="profile-metric">
-        <span>Average score</span>
+        <span>{% trans "Average score" %}</span>
         <strong>{{ statistics.average_score }}</strong>
       </article>
       <article class="profile-metric">
-        <span>Best score</span>
+        <span>{% trans "Best score" %}</span>
         <strong>{{ statistics.best_score }}</strong>
       </article>
       <article class="profile-metric">
-        <span>Perfect rounds</span>
+        <span>{% trans "Perfect rounds" %}</span>
         <strong>{{ statistics.perfect_rounds }}</strong>
       </article>
     </section>
 
     <div class="profile-grid">
       <section class="profile-section" aria-labelledby="distance-heading">
-        <h2 id="distance-heading">Distance</h2>
+        <h2 id="distance-heading">{% trans "Distance" %}</h2>
         <dl class="profile-stat-list">
           <div>
-            <dt>Rounds played</dt>
+            <dt>{% trans "Rounds played" %}</dt>
             <dd>{{ statistics.rounds_played }}</dd>
           </div>
           <div>
-            <dt>Average distance</dt>
+            <dt>{% trans "Average distance" %}</dt>
             <dd>{{ statistics.average_distance_m|floatformat:0 }} m</dd>
           </div>
           <div>
-            <dt>Best distance</dt>
+            <dt>{% trans "Best distance" %}</dt>
             <dd>{{ statistics.best_distance_m|floatformat:0 }} m</dd>
           </div>
         </dl>
       </section>
 
       <section class="profile-section" aria-labelledby="mode-heading">
-        <h2 id="mode-heading">Map performance</h2>
+        <h2 id="mode-heading">{% trans "Map performance" %}</h2>
         {% if statistics.map_modes %}
           <ol class="profile-mode-list">
             {% for mode in statistics.map_modes %}
               <li>
                 <strong>{{ mode.label }}</strong>
-                <span>{{ mode.games_played }} game{{ mode.games_played|pluralize }}</span>
-                <span>{{ mode.average_score }} avg score</span>
+                <span>
+                  {% blocktrans count games=mode.games_played %}{{ games }} game{% plural %}{{ games }} games{% endblocktrans %}
+                </span>
+                <span>{% blocktrans with score=mode.average_score %}{{ score }} avg score{% endblocktrans %}</span>
               </li>
             {% endfor %}
           </ol>
         {% else %}
-          <p class="profile-section-empty">Play a finished game to unlock map stats.</p>
+          <p class="profile-section-empty">{% trans "Play a finished game to unlock map stats." %}</p>
         {% endif %}
       </section>
 
+      <section class="profile-section profile-settings" aria-labelledby="profile-settings-heading">
+        <h2 id="profile-settings-heading">{% trans "Settings" %}</h2>
+        <form class="profile-language-form" action="{% url 'set_language' %}" method="post">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <label for="profile-language-select">{% trans "Language" %}</label>
+          <select
+            id="profile-language-select"
+            class="profile-language-select"
+            name="language"
+          >
+            {% for language_code, language_name in available_languages %}
+              <option value="{{ language_code }}"{% if language_code == LANGUAGE_CODE %} selected{% endif %}>
+                {{ language_name }}
+              </option>
+            {% endfor %}
+          </select>
+          <button type="submit">{% trans "Save language" %}</button>
+          <p>{% trans "The selected language is stored for this browser." %}</p>
+        </form>
+      </section>
+
       <section class="profile-section profile-recent" aria-labelledby="recent-heading">
-        <h2 id="recent-heading">Recent games</h2>
+        <h2 id="recent-heading">{% trans "Recent games" %}</h2>
         {% if statistics.recent_games %}
           <ol class="profile-recent-list">
             {% for game in statistics.recent_games %}
               <li>
                 <a href="{% url 'game:history_detail' game.id %}">
-                  <span>{{ game.finished_at|date:"M j, Y" }}</span>
+                  <span>{{ game.finished_at|date:"SHORT_DATE_FORMAT" }}</span>
                   <strong>{{ game.total_score }}</strong>
                 </a>
               </li>
@@ -86,8 +112,8 @@
           </ol>
         {% else %}
           <div class="profile-empty">
-            <p>No finished games yet.</p>
-            <a class="button-link" href="{% url 'game:index' %}">Start game</a>
+            <p>{% trans "No finished games yet." %}</p>
+            <a class="button-link" href="{% url 'game:index' %}">{% trans "Start game" %}</a>
           </div>
         {% endif %}
       </section>

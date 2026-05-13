@@ -8,6 +8,7 @@ from django.contrib.gis.geos import GEOSGeometry, Point
 from django.db import IntegrityError, connection, transaction
 from django.db.models import QuerySet
 from django.utils import timezone
+from django.utils.translation import gettext as _
 
 from geo.models import Canton, Municipality
 from geo.selectors import (
@@ -141,7 +142,7 @@ def calculate_scoring_max_distance_m_for_dataset(
 
     if row is None or row[0] is None or row[0] <= 0:
         raise NotEnoughMunicipalitiesError(
-            "Could not calculate a usable scoring map extent."
+            _("Could not calculate a usable scoring map extent.")
         )
     return float(row[0])
 
@@ -213,7 +214,7 @@ def start_game_for_player(
             in the current dataset version.
     """
     if not player.can_own_games:
-        raise ValueError("Player identity cannot own games.")
+        raise ValueError(_("Player identity cannot own games."))
 
     existing_game = get_active_game_for_player(player)
     if existing_game is not None:
@@ -236,8 +237,11 @@ def start_game_for_player(
                 if existing_game is not None:
                     return existing_game
                 raise NotEnoughMunicipalitiesError(
-                    f"At least {TURN_COUNT} active municipalities are required to "
-                    "start a game."
+                    _(
+                        "At least %(count)s active municipalities are required "
+                        "to start a game."
+                    )
+                    % {"count": TURN_COUNT}
                 )
 
             game_scope = resolve_game_scope(
@@ -252,8 +256,11 @@ def start_game_for_player(
                 if existing_game is not None:
                     return existing_game
                 raise NotEnoughMunicipalitiesError(
-                    f"At least {TURN_COUNT} active municipalities are required to "
-                    "start a game."
+                    _(
+                        "At least %(count)s active municipalities are required "
+                        "to start a game."
+                    )
+                    % {"count": TURN_COUNT}
                 )
 
             scoring_max_distance_m = calculate_scoring_max_distance_m_for_dataset(
@@ -326,7 +333,7 @@ def resolve_game_scope(
         canton_abbreviation,
     )
     if canton is None:
-        raise InvalidGameModeError("Choose a valid canton.")
+        raise InvalidGameModeError(_("Choose a valid canton."))
     return GameScope(
         mode=Game.Mode.CANTON,
         canton=canton,
@@ -340,7 +347,7 @@ def normalize_game_mode(mode: str) -> str:
         return Game.Mode.SWITZERLAND
     if mode in Game.Mode.values:
         return mode
-    raise InvalidGameModeError("Choose a valid game mode.")
+    raise InvalidGameModeError(_("Choose a valid game mode."))
 
 
 def submit_guess(user, turn_id, latitude, longitude) -> GuessSubmissionResult:
@@ -389,17 +396,17 @@ def submit_guess_for_player(
         InvalidGuessCoordinatesError: If the coordinates are invalid.
     """
     if not player.can_own_games:
-        raise GuessSubmissionError("Player identity cannot submit guesses.")
+        raise GuessSubmissionError(_("Player identity cannot submit guesses."))
 
     latitude = _normalize_coordinate(
         latitude,
-        name="Latitude",
+        name=_("Latitude"),
         minimum=-90,
         maximum=90,
     )
     longitude = _normalize_coordinate(
         longitude,
-        name="Longitude",
+        name=_("Longitude"),
         minimum=-180,
         maximum=180,
     )
@@ -414,7 +421,7 @@ def submit_guess_for_player(
                 .get(pk=turn_pk)
             )
         except Turn.DoesNotExist as error:
-            raise GuessSubmissionError("Turn does not exist.") from error
+            raise GuessSubmissionError(_("Turn does not exist.")) from error
 
         game = Game.objects.select_for_update().get(pk=turn.game_id)
         turn.game = game
@@ -509,13 +516,18 @@ def _normalize_coordinate(value, *, name: str, minimum: float, maximum: float) -
     try:
         coordinate = float(value)
     except (TypeError, ValueError) as error:
-        raise InvalidGuessCoordinatesError(f"{name} must be a number.") from error
+        raise InvalidGuessCoordinatesError(
+            _("%(name)s must be a number.") % {"name": name}
+        ) from error
 
     if not math.isfinite(coordinate):
-        raise InvalidGuessCoordinatesError(f"{name} must be finite.")
+        raise InvalidGuessCoordinatesError(
+            _("%(name)s must be finite.") % {"name": name}
+        )
     if coordinate < minimum or coordinate > maximum:
         raise InvalidGuessCoordinatesError(
-            f"{name} must be between {minimum} and {maximum}."
+            _("%(name)s must be between %(minimum)s and %(maximum)s.")
+            % {"name": name, "minimum": minimum, "maximum": maximum}
         )
     return coordinate
 
@@ -535,10 +547,10 @@ def _normalize_turn_id(value) -> int:
     try:
         turn_id = int(value)
     except (TypeError, ValueError) as error:
-        raise GuessSubmissionError("Turn is invalid.") from error
+        raise GuessSubmissionError(_("Turn is invalid.")) from error
 
     if turn_id < 1:
-        raise GuessSubmissionError("Turn is invalid.")
+        raise GuessSubmissionError(_("Turn is invalid."))
     return turn_id
 
 
@@ -554,11 +566,11 @@ def _validate_guessable_turn(*, player: PlayerIdentity, game: Game, turn: Turn) 
         GuessSubmissionError: If the turn cannot currently be guessed.
     """
     if not player.owns(game):
-        raise GuessSubmissionError("Turn does not belong to this player.")
+        raise GuessSubmissionError(_("Turn does not belong to this player."))
     if game.status != Game.Status.ACTIVE:
-        raise GuessSubmissionError("Game is not active.")
+        raise GuessSubmissionError(_("Game is not active."))
     if turn.revealed_at is not None or Guess.objects.filter(turn=turn).exists():
-        raise GuessSubmissionError("Turn has already been guessed.")
+        raise GuessSubmissionError(_("Turn has already been guessed."))
 
     current_turn_id = (
         game.turns.filter(revealed_at__isnull=True)
@@ -567,7 +579,7 @@ def _validate_guessable_turn(*, player: PlayerIdentity, game: Game, turn: Turn) 
         .first()
     )
     if current_turn_id != turn.id:
-        raise GuessSubmissionError("Turn is not the current turn.")
+        raise GuessSubmissionError(_("Turn is not the current turn."))
 
 
 def _ensure_game_scoring_max_distance_m(*, game: Game, target_id: int) -> float:
@@ -626,7 +638,7 @@ def calculate_nearest_boundary_point(*, point: Point, target_id: int) -> Point:
         row = cursor.fetchone()
 
     if row is None:
-        raise GuessSubmissionError("Target municipality does not exist.")
+        raise GuessSubmissionError(_("Target municipality does not exist."))
 
     return GEOSGeometry(memoryview(row[0]))
 
@@ -667,7 +679,7 @@ def _calculate_guess_distances(*, point: Point, target_id: int) -> GuessDistance
         row = cursor.fetchone()
 
     if row is None:
-        raise GuessSubmissionError("Target municipality does not exist.")
+        raise GuessSubmissionError(_("Target municipality does not exist."))
 
     return GuessDistances(
         distance_to_municipality_m=float(row[0]),

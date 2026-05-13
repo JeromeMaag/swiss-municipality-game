@@ -1,76 +1,79 @@
 {% extends "admin/base_site.html" %}
+{% load i18n %}
 
 {% block breadcrumbs %}
   <div class="breadcrumbs">
-    <a href="{% url 'admin:index' %}">Home</a>
-    &rsaquo; Geodata setup
+    <a href="{% url 'admin:index' %}">{% trans "Home" %}</a>
+    &rsaquo; {% trans "Geodata setup" %}
   </div>
 {% endblock %}
 
 {% block content %}
   <div id="content-main">
     <div class="module">
-      <h2>Current geodata</h2>
+      <h2>{% trans "Current geodata" %}</h2>
       {% if status.dataset_version %}
         <table>
           <tbody>
             <tr>
-              <th scope="row">Dataset</th>
+              <th scope="row">{% trans "Dataset" %}</th>
               <td>{{ status.dataset_version }}</td>
             </tr>
             <tr>
-              <th scope="row">Imported at</th>
+              <th scope="row">{% trans "Imported at" %}</th>
               <td>{{ status.dataset_version.imported_at }}</td>
             </tr>
             <tr>
-              <th scope="row">Cantons</th>
+              <th scope="row">{% trans "Cantons" %}</th>
               <td>{{ status.canton_count }}</td>
             </tr>
             <tr>
-              <th scope="row">Municipalities</th>
+              <th scope="row">{% trans "Municipalities" %}</th>
               <td>{{ status.municipality_count }}</td>
             </tr>
             <tr>
-              <th scope="row">Active municipalities</th>
+              <th scope="row">{% trans "Active municipalities" %}</th>
               <td>{{ status.active_municipality_count }}</td>
             </tr>
             <tr>
-              <th scope="row">Inactive municipalities</th>
+              <th scope="row">{% trans "Inactive municipalities" %}</th>
               <td>{{ status.inactive_municipality_count }}</td>
             </tr>
             <tr>
-              <th scope="row">Active municipalities without population</th>
+              <th scope="row">{% trans "Active municipalities without population" %}</th>
               <td>{{ status.missing_population_count }}</td>
             </tr>
           </tbody>
         </table>
       {% else %}
-        <p>No geodata has been imported yet.</p>
+        <p>{% trans "No geodata has been imported yet." %}</p>
       {% endif %}
     </div>
 
     <div class="module">
-      <h2>Update geodata</h2>
+      <h2>{% trans "Update geodata" %}</h2>
       <p>
-        Official geodata setup downloads swissBOUNDARIES3D boundaries and BFS
-        STATPOP population data. It can take a while and should not be interrupted.
+        {% blocktrans trimmed %}
+          Official geodata setup downloads swissBOUNDARIES3D boundaries and BFS
+          STATPOP population data. It can take a while and should not be interrupted.
+        {% endblocktrans %}
       </p>
       <form method="post" data-geodata-update-form>
         {% csrf_token %}
         <input type="hidden" data-geodata-action>
         <div class="submit-row">
           <button type="submit" name="action" value="setup_geodata" class="default">
-            Update official geodata
+            {% trans "Update official geodata" %}
           </button>
           <button type="submit" name="action" value="seed_dev_geodata">
-            Load development geodata
+            {% trans "Load development geodata" %}
           </button>
         </div>
         <div data-geodata-loading hidden>
           <p>
-            Geodata update is running. This can take several minutes.
+            {% trans "Geodata update is running. This can take several minutes." %}
           </p>
-          <progress aria-label="Geodata update progress"></progress>
+          <progress aria-label="{% trans 'Geodata update progress' %}"></progress>
         </div>
       </form>
     </div>

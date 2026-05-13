@@ -3,6 +3,7 @@
 from typing import Any
 
 from django.core.exceptions import ValidationError
+from django.utils.translation import gettext as _
 
 from .models import GameEvent
 
@@ -33,7 +34,7 @@ def track_event(
         ValidationError: If the event data or relationships are inconsistent.
     """
     if (user is None) == (not guest_key):
-        raise ValidationError("Events must belong to exactly one user or guest.")
+        raise ValidationError(_("Events must belong to exactly one user or guest."))
     event = GameEvent(
         user=user,
         guest_key=guest_key,

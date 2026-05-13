@@ -5,6 +5,7 @@ import hashlib
 from django.core.cache import cache
 from django.http import Http404, HttpResponse, HttpResponseNotModified
 from django.utils.cache import patch_cache_control
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET
 
 from .constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
@@ -196,7 +197,7 @@ def requested_canton_filter(request, dataset_version: GeoDatasetVersion):
         return None
     canton = get_canton_for_dataset_by_abbreviation(dataset_version, abbreviation)
     if canton is None:
-        raise Http404("Canton not found.")
+        raise Http404(_("Canton not found."))
     return canton
 
 
@@ -298,19 +299,19 @@ def require_municipality_label_access(request):
     try:
         turn_id = int(raw_turn_id)
     except (TypeError, ValueError) as error:
-        raise Http404("Municipality labels not found.") from error
+        raise Http404(_("Municipality labels not found.")) from error
 
     if turn_id < 1:
-        raise Http404("Municipality labels not found.")
+        raise Http404(_("Municipality labels not found."))
     if request.session.get(MUNICIPALITY_LABEL_ACCESS_SESSION_KEY) != turn_id:
-        raise Http404("Municipality labels not found.")
+        raise Http404(_("Municipality labels not found."))
 
     from game.identity import get_player_identity
     from game.models import Turn
 
     player = get_player_identity(request)
     if not player.can_own_games:
-        raise Http404("Municipality labels not found.")
+        raise Http404(_("Municipality labels not found."))
 
     turn = (
         Turn.objects.select_related("game__canton")
@@ -322,5 +323,5 @@ def require_municipality_label_access(request):
         .first()
     )
     if turn is None:
-        raise Http404("Municipality labels not found.")
+        raise Http404(_("Municipality labels not found."))
     return turn
