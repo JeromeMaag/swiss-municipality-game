@@ -2083,6 +2083,20 @@ class GameStartTests(TestCase):
         self.assertContains(response, 'role="alert"', status_code=400)
         self.assertContains(response, 'aria-live="assertive"', status_code=400)
 
+    def test_start_view_error_does_not_reopen_auth_prompt_for_guests(self) -> None:
+        """Guest setup errors keep the visible error unobscured."""
+        self.create_municipalities(4)
+
+        response = self.client.post(reverse("game:start"))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(
+            response,
+            "At least 5 active municipalities",
+            status_code=400,
+        )
+        self.assertNotContains(response, "data-auth-modal-open", status_code=400)
+
 
 class GameSummaryTests(TestCase):
     """Tests for finished game summary pages."""

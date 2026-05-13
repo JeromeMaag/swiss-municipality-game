@@ -16,6 +16,9 @@
     surfaceRelief: "black",
     swissimage: "white",
   };
+  const DEFAULT_MIN_ZOOM = 8;
+  const DESKTOP_SIDEBAR_WIDTH = 360;
+  const MOBILE_BREAKPOINT_WIDTH = 920;
 
   function swisstopoWmtsUrl(layer, extension) {
     return (
@@ -76,6 +79,45 @@
   function readNumber(element, name, fallback) {
     const value = Number.parseFloat(element.dataset[name]);
     return Number.isFinite(value) ? value : fallback;
+  }
+
+  function isCompactMap(map) {
+    return map.getSize().x <= MOBILE_BREAKPOINT_WIDTH;
+  }
+
+  function mapFitOptions(map, maxZoom, padding) {
+    if (isCompactMap(map)) {
+      return {
+        animate: false,
+        maxZoom: maxZoom,
+        paddingBottomRight: [padding, Math.max(180, map.getSize().y * 0.42)],
+        paddingTopLeft: [padding, padding],
+      };
+    }
+
+    return {
+      animate: false,
+      maxZoom: maxZoom,
+      paddingBottomRight: [padding, padding],
+      paddingTopLeft: [DESKTOP_SIDEBAR_WIDTH + padding, padding],
+    };
+  }
+
+  function calculateResponsiveMinZoom(map, bounds) {
+    const boundsZoom = map.getBoundsZoom(bounds, true);
+    if (!Number.isFinite(boundsZoom)) {
+      return DEFAULT_MIN_ZOOM;
+    }
+    return Math.max(DEFAULT_MIN_ZOOM, Math.ceil(boundsZoom));
+  }
+
+  function constrainMapToBounds(map, bounds) {
+    const minZoom = calculateResponsiveMinZoom(map, bounds);
+    map.setMinZoom(minZoom);
+    if (map.getZoom() < minZoom) {
+      map.setZoom(minZoom, { animate: false });
+    }
+    map.panInsideBounds(bounds, { animate: false });
   }
 
   function readCookie(name) {
@@ -139,10 +181,7 @@
         }).addTo(map);
 
         if (options.fitBounds && layer.getLayers().length > 0) {
-          map.fitBounds(layer.getBounds(), {
-            animate: false,
-            padding: [24, 24],
-          });
+          map.fitBounds(layer.getBounds(), mapFitOptions(map, 10, 24));
         }
 
         return layer;
@@ -967,11 +1006,7 @@
       bounds.extend(targetLayer.getBounds());
     }
 
-    map.fitBounds(bounds, {
-      animate: false,
-      maxZoom: 12,
-      padding: [42, 42],
-    });
+    map.fitBounds(bounds, mapFitOptions(map, 12, 42));
   }
 
   function fitSummaryBounds(map, municipalityLayer, summaryState) {
@@ -985,11 +1020,7 @@
     });
 
     if (bounds.isValid()) {
-      map.fitBounds(bounds, {
-        animate: false,
-        maxZoom: 10,
-        padding: [64, 64],
-      });
+      map.fitBounds(bounds, mapFitOptions(map, 10, 64));
     }
   }
 
@@ -1013,12 +1044,17 @@
       attributionControl: true,
       maxBounds: switzerlandBounds,
       maxBoundsViscosity: 1,
-      minZoom: 8,
+      minZoom: DEFAULT_MIN_ZOOM,
       preferCanvas: true,
+      worldCopyJump: false,
       zoomControl: true,
     });
 
     map.setView([latitude, longitude], zoom);
+    constrainMapToBounds(map, switzerlandBounds);
+    map.on("resize", function () {
+      constrainMapToBounds(map, switzerlandBounds);
+    });
     const backgroundMapId = readStoredBackgroundMapId();
     const boundaryLineMode = readStoredBoundaryLineMode();
     const outlineMode = readStoredOutlineMode();
@@ -1104,6 +1140,7 @@
 
     window.setTimeout(function () {
       map.invalidateSize();
+      constrainMapToBounds(map, switzerlandBounds);
     }, 0);
   }
 
