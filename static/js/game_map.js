@@ -19,6 +19,7 @@
   const DEFAULT_MIN_ZOOM = 8;
   const DESKTOP_SIDEBAR_WIDTH = 360;
   const MOBILE_BREAKPOINT_WIDTH = 920;
+  const VECTOR_RENDERER_PADDING = 1.2;
 
   function swisstopoWmtsUrl(layer, extension) {
     return (
@@ -177,6 +178,7 @@
         const layer = window.L.geoJSON(data, {
           interactive: false,
           onEachFeature: options.onEachFeature,
+          renderer: options.renderer,
           style: options.style,
         }).addTo(map);
 
@@ -581,37 +583,46 @@
     return value.toFixed(5);
   }
 
-  function createGuessMarker(map, label) {
-    const marker = document.createElement("div");
-    marker.className = "guess-marker";
-    marker.setAttribute("aria-hidden", "true");
+  function createGuessMarkerIcon(label, revealed) {
+    let className = "guess-marker";
     if (label) {
-      marker.classList.add("guess-marker--numbered");
+      className += " guess-marker--numbered";
+    }
+    if (revealed) {
+      className += " guess-marker--revealed";
     }
     const markerLabel = label
       ? '<span class="guess-marker-label">' + escapeHtml(label) + "</span>"
       : "";
-    marker.innerHTML = (
-      '<span class="guess-marker-head">' +
-      markerLabel +
-      "</span>" +
-      '<span class="guess-marker-stem"></span>'
-    );
-    map.getContainer().appendChild(marker);
-    return marker;
+    return window.L.divIcon({
+      className: className,
+      html: (
+        '<span class="guess-marker-head">' +
+        markerLabel +
+        "</span>" +
+        '<span class="guess-marker-stem"></span>'
+      ),
+      iconAnchor: [14, 36],
+      iconSize: [29, 36],
+    });
   }
 
-  function createRevealedGuessMarker(map, label) {
-    const marker = createGuessMarker(map, label);
-    marker.classList.add("guess-marker--revealed");
-    return marker;
+  function createGuessMarker(map, latlng, label) {
+    return window.L.marker(latlng, {
+      icon: createGuessMarkerIcon(label, false),
+      interactive: false,
+      keyboard: false,
+      zIndexOffset: 750,
+    }).addTo(map);
   }
 
-  function positionGuessMarker(map, marker, latlng) {
-    const point = map.latLngToContainerPoint(latlng);
-    marker.style.transform = (
-      "translate(" + point.x + "px, " + point.y + "px) translate(-50%, -100%)"
-    );
+  function createRevealedGuessMarker(map, latlng, label) {
+    return window.L.marker(latlng, {
+      icon: createGuessMarkerIcon(label, true),
+      interactive: false,
+      keyboard: false,
+      zIndexOffset: 760,
+    }).addTo(map);
   }
 
   function initializeGuessInteraction(map, mapElement) {
@@ -626,14 +637,6 @@
     let marker = null;
     let selectedLatLng = null;
 
-    function updateMarkerPosition() {
-      if (marker !== null && selectedLatLng !== null) {
-        positionGuessMarker(map, marker, selectedLatLng);
-      }
-    }
-
-    map.on("move zoom resize viewreset", updateMarkerPosition);
-
     map.on("click", function (event) {
       const latitude = formatCoordinate(event.latlng.lat);
       const longitude = formatCoordinate(event.latlng.lng);
@@ -642,9 +645,10 @@
       selectedLatLng = event.latlng;
 
       if (marker === null) {
-        marker = createGuessMarker(map);
+        marker = createGuessMarker(map, selectedLatLng);
+      } else {
+        marker.setLatLng(selectedLatLng);
       }
-      positionGuessMarker(map, marker, selectedLatLng);
 
       latitudeInput.value = latitude;
       longitudeInput.value = longitude;
@@ -751,15 +755,8 @@
   }
 
   function initializeReveal(map, revealState, mapElement) {
-    const marker = createRevealedGuessMarker(map);
-
-    function updateMarkerPosition() {
-      positionGuessMarker(map, marker, revealState.latlng);
-    }
-
+    createRevealedGuessMarker(map, revealState.latlng);
     map.getContainer().classList.add("game-map--reveal");
-    map.on("move zoom resize viewreset", updateMarkerPosition);
-    updateMarkerPosition();
     sendTrackingEvent(mapElement, "REVEAL_SHOWN", {
       latitude: revealState.latlng.lat,
       longitude: revealState.latlng.lng,
@@ -771,14 +768,7 @@
   function initializeSummary(map, summaryState) {
     map.getContainer().classList.add("game-map--summary");
     summaryState.reveals.forEach(function (reveal) {
-      const marker = createRevealedGuessMarker(map, String(reveal.turnNumber));
-
-      function updateMarkerPosition() {
-        positionGuessMarker(map, marker, reveal.latlng);
-      }
-
-      map.on("move zoom resize viewreset", updateMarkerPosition);
-      updateMarkerPosition();
+      createRevealedGuessMarker(map, reveal.latlng, String(reveal.turnNumber));
     });
   }
 
@@ -1040,12 +1030,16 @@
     const labelMinZoom = readNumber(mapElement, "labelMinZoom", 11);
     const revealState = readRevealState(mapElement);
     const summaryState = readSummaryState();
+    const vectorRenderer = window.L.canvas({
+      padding: VECTOR_RENDERER_PADDING,
+    });
     const map = window.L.map(mapElement, {
       attributionControl: true,
       maxBounds: switzerlandBounds,
       maxBoundsViscosity: 1,
       minZoom: DEFAULT_MIN_ZOOM,
       preferCanvas: true,
+      renderer: vectorRenderer,
       worldCopyJump: false,
       zoomControl: true,
     });
@@ -1101,6 +1095,7 @@
     addBoundaryLayer(map, mapElement.dataset.municipalityBoundariesUrl, {
       errorMessage: "Municipality boundaries could not be loaded.",
       fitBounds: !revealState && !summaryState,
+      renderer: vectorRenderer,
       style: municipalityStyle(
         revealState,
         summaryState,
@@ -1123,6 +1118,7 @@
       return addBoundaryLayer(map, mapElement.dataset.cantonBoundariesUrl, {
         errorMessage: "Canton boundaries could not be loaded.",
         fitBounds: false,
+        renderer: vectorRenderer,
         style: cantonStyle(initialBoundaryColors, boundaryState.outlineMode),
       });
     }).then(function (cantonLayer) {
