@@ -19,7 +19,10 @@
   const DEFAULT_MIN_ZOOM = 8;
   const DESKTOP_SIDEBAR_WIDTH = 360;
   const MOBILE_BREAKPOINT_WIDTH = 920;
-  const VECTOR_RENDERER_PADDING = 1.2;
+  const COMPACT_MIN_BOTTOM_PADDING = 180;
+  const COMPACT_SIDEBAR_HEIGHT_RATIO = 0.5;
+  const COMPACT_TALL_SIDEBAR_HEIGHT_RATIO = 0.64;
+  const VECTOR_RENDERER_PADDING = 0.2;
 
   function swisstopoWmtsUrl(layer, extension) {
     return (
@@ -86,12 +89,29 @@
     return map.getSize().x <= MOBILE_BREAKPOINT_WIDTH;
   }
 
+  function compactMapBottomPadding(map, padding) {
+    const layout = map.getContainer().closest(".game-layout");
+    const hasTallSidebar = layout
+      ? Boolean(
+          layout.querySelector(".game-entry-sidebar") ||
+            layout.querySelector(".history-sidebar")
+        )
+      : false;
+    const sidebarRatio = hasTallSidebar
+      ? COMPACT_TALL_SIDEBAR_HEIGHT_RATIO
+      : COMPACT_SIDEBAR_HEIGHT_RATIO;
+    return Math.max(
+      COMPACT_MIN_BOTTOM_PADDING,
+      Math.ceil(map.getSize().y * sidebarRatio + padding)
+    );
+  }
+
   function mapFitOptions(map, maxZoom, padding) {
     if (isCompactMap(map)) {
       return {
         animate: false,
         maxZoom: maxZoom,
-        paddingBottomRight: [padding, Math.max(180, map.getSize().y * 0.42)],
+        paddingBottomRight: [padding, compactMapBottomPadding(map, padding)],
         paddingTopLeft: [padding, padding],
       };
     }
@@ -965,7 +985,7 @@
 
     if (!map.getPane("revealDistancePane")) {
       map.createPane("revealDistancePane");
-      map.getPane("revealDistancePane").style.zIndex = 660;
+      map.getPane("revealDistancePane").style.zIndex = 590;
       map.getPane("revealDistancePane").style.pointerEvents = "none";
     }
 
