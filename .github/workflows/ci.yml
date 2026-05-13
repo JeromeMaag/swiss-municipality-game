@@ -60,7 +60,11 @@ jobs:
             -o Acquire::http::Timeout=20 \
             -o Acquire::https::Timeout=20 \
             update
-          sudo apt-get install -y --no-install-recommends gdal-bin libgdal-dev libgeos-dev
+          sudo apt-get \
+            -o Acquire::Retries=5 \
+            -o Acquire::http::Timeout=20 \
+            -o Acquire::https::Timeout=20 \
+            install -y --no-install-recommends gdal-bin libgdal-dev libgeos-dev
 
       - name: Install Python dependencies
         run: |
