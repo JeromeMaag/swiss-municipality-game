@@ -3,6 +3,8 @@
 import os
 import subprocess
 import sys
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import mock
 
 from django.conf import settings
@@ -11,7 +13,7 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils.translation import deactivate
 
-from .settings import get_bool_env, get_list_env
+from .settings import get_bool_env, get_geodjango_library_path, get_list_env
 
 
 class SettingsHelperTests(SimpleTestCase):
@@ -62,6 +64,96 @@ class SettingsHelperTests(SimpleTestCase):
             self.assertEqual(
                 get_list_env("ALLOWED_HOSTS"),
                 ["localhost", "example.test", "127.0.0.1"],
+            )
+
+    def test_geodjango_library_path_uses_explicit_env_value(self) -> None:
+        """GeoDjango library helper respects configured env vars."""
+        with TemporaryDirectory() as temp_dir, mock.patch.dict(
+            os.environ,
+            {"GDAL_LIBRARY_PATH": "C:\\custom\\gdal.dll"},
+            clear=True,
+        ):
+            self.assertEqual(
+                get_geodjango_library_path(
+                    "GDAL_LIBRARY_PATH",
+                    "pyogrio.libs/gdal*.dll",
+                    base_dir=Path(temp_dir),
+                    os_name="nt",
+                ),
+                "C:\\custom\\gdal.dll",
+            )
+
+    def test_geodjango_library_path_auto_detects_windows_dll(self) -> None:
+        """GeoDjango library helper finds bundled Windows wheels."""
+        with TemporaryDirectory() as temp_dir, mock.patch.dict(
+            os.environ,
+            {},
+            clear=True,
+        ):
+            base_dir = Path(temp_dir)
+            library_path = (
+                base_dir
+                / ".venv"
+                / "Lib"
+                / "site-packages"
+                / "pyogrio.libs"
+                / "gdal309.dll"
+            )
+            library_path.parent.mkdir(parents=True)
+            library_path.touch()
+
+            self.assertEqual(
+                get_geodjango_library_path(
+                    "GDAL_LIBRARY_PATH",
+                    "pyogrio.libs/gdal*.dll",
+                    base_dir=base_dir,
+                    os_name="nt",
+                ),
+                str(library_path),
+            )
+
+    def test_geodjango_library_path_returns_none_when_missing(self) -> None:
+        """GeoDjango library helper does not fail when no DLL exists."""
+        with TemporaryDirectory() as temp_dir, mock.patch.dict(
+            os.environ,
+            {},
+            clear=True,
+        ):
+            self.assertIsNone(
+                get_geodjango_library_path(
+                    "GEOS_LIBRARY_PATH",
+                    "shapely.libs/geos_c*.dll",
+                    base_dir=Path(temp_dir),
+                    os_name="nt",
+                )
+            )
+
+    def test_geodjango_library_path_only_auto_detects_on_windows(self) -> None:
+        """GeoDjango library helper leaves non-Windows environments alone."""
+        with TemporaryDirectory() as temp_dir, mock.patch.dict(
+            os.environ,
+            {},
+            clear=True,
+        ):
+            base_dir = Path(temp_dir)
+            library_path = (
+                base_dir
+                / ".venv"
+                / "Lib"
+                / "site-packages"
+                / "pyogrio.libs"
+                / "gdal309.dll"
+            )
+            library_path.parent.mkdir(parents=True)
+            library_path.touch()
+
+            self.assertIsNone(
+                get_geodjango_library_path(
+                    "GDAL_LIBRARY_PATH",
+                    "pyogrio.libs/gdal*.dll",
+                    base_dir=base_dir,
+                    os_name="posix",
+                )
             )
 
     def test_debug_defaults_to_false(self) -> None:

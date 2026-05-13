@@ -40,13 +40,6 @@ python -c "from django.core.management.utils import get_random_secret_key; print
 
 The app refuses to start with the example placeholder key.
 
-On Windows, set the GeoDjango library paths before running Django commands:
-
-```powershell
-$env:GDAL_LIBRARY_PATH = (Get-ChildItem .\.venv\Lib\site-packages\pyogrio.libs -Filter "gdal*.dll" | Select-Object -First 1 -ExpandProperty FullName)
-$env:GEOS_LIBRARY_PATH = (Get-ChildItem .\.venv\Lib\site-packages\shapely.libs -Filter "geos_c*.dll" | Select-Object -First 1 -ExpandProperty FullName)
-```
-
 Start the local PostGIS database and apply migrations:
 
 ```powershell

@@ -44,6 +44,38 @@ def get_list_env(name: str, default: list[str] | None = None) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def get_geodjango_library_path(
+    env_name: str,
+    package_glob: str,
+    *,
+    base_dir: Path = BASE_DIR,
+    os_name: str | None = None,
+) -> str | None:
+    """Return a configured or auto-detected GeoDjango native library path.
+
+    Args:
+        env_name: Environment variable that can explicitly define the path.
+        package_glob: Glob below ``.venv/Lib/site-packages`` to auto-detect.
+        base_dir: Project root used for auto-detection.
+        os_name: Operating system name, defaulting to ``os.name``.
+
+    Returns:
+        A configured or detected library path, or None when unavailable.
+    """
+    configured_path = os.getenv(env_name)
+    if configured_path:
+        return configured_path
+
+    if (os_name or os.name) != "nt":
+        return None
+
+    site_packages_dir = base_dir / ".venv" / "Lib" / "site-packages"
+    matches = sorted(site_packages_dir.glob(package_glob))
+    if not matches:
+        return None
+    return str(matches[0])
+
+
 SECRET_KEY_PLACEHOLDERS = {
     "dev-change-me",
     "replace-this-with-a-local-secret-key",
@@ -153,5 +185,11 @@ LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "game:index"
 LOGOUT_REDIRECT_URL = "home"
 
-GDAL_LIBRARY_PATH = os.getenv("GDAL_LIBRARY_PATH")
-GEOS_LIBRARY_PATH = os.getenv("GEOS_LIBRARY_PATH")
+GDAL_LIBRARY_PATH = get_geodjango_library_path(
+    "GDAL_LIBRARY_PATH",
+    "pyogrio.libs/gdal*.dll",
+)
+GEOS_LIBRARY_PATH = get_geodjango_library_path(
+    "GEOS_LIBRARY_PATH",
+    "shapely.libs/geos_c*.dll",
+)
