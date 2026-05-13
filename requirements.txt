@@ -1,6 +1,6 @@
 Django>=5.2,<5.3
 psycopg[binary]>=3.2
-python-dotenv>=1.0
+python-dotenv>=1.2.2
 dj-database-url>=2.2
 geopandas>=1.0
 shapely>=2.0
