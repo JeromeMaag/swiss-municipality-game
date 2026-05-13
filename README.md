@@ -26,6 +26,9 @@ history and personal statistics.
 
 ## Quick Start
 
+This setup is intended for local development and self-hosted evaluation, not as
+a production deployment recipe.
+
 Create a virtual environment, install dependencies, copy the local environment
 file, and start PostGIS:
 
@@ -69,7 +72,9 @@ Open `http://127.0.0.1:8000/`.
 
 ## Geodata Setup
 
-Detailed import notes are available in [Data import](docs/data_import.md).
+Detailed import notes are available in [Data import](docs/data_import.md). The
+Django admin geodata setup screen is an operator tool and requires a staff
+account; it is not part of the public player experience.
 
 ## Self-Hosting Notes
 

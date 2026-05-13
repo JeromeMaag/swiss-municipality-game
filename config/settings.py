@@ -1,4 +1,4 @@
-"""Django settings for the GemeindeGuess CH project."""
+"""Django settings for the Find the Municipality! project."""
 
 import os
 from pathlib import Path

@@ -1,4 +1,4 @@
-"""WSGI entrypoint for the GemeindeGuess CH project."""
+"""WSGI entrypoint for the Find the Municipality! project."""
 
 import os
 
