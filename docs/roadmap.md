@@ -1,18 +1,10 @@
 # Roadmap
-
-## 0.2.0 Focus
-
-The next release should make the game easier to try, more replayable, and more
-useful after a finished game.
-
 ## Gameplay Ideas
 
-- Canton guessing mode
-- Canton learning or practice mode
+- Guided learning mode
 - Settlements or place names instead of municipalities
 - Historical municipality datasets as a game mode
 - Configurable round counts, such as 5, 10, or 20 rounds
-- Difficulty options based on population, area, or recognizability
 - Endless practice mode
 - Hint system with score penalties
 - Daily challenge
@@ -24,18 +16,12 @@ useful after a finished game.
 - Google login
 - Email verification
 - Password reset by email
-- Profile page
 - Username changes
 - Account deletion
 - Guest-to-account migration for games played without an account
 
 ## Stats And History
 
-- Finished-game history
-- Detailed pages for past games
-- Average score
-- Best games
-- Average distance
 - Best and worst cantons
 - Exact-hit rate
 - Streaks and achievements
@@ -43,12 +29,7 @@ useful after a finished game.
 
 ## Map And UI
 
-- Background map options, such as satellite, national map, light map, and dark
-  map
-- Mobile UI improvements
-- Better login and registration screens
 - Better admin geodata screen
-- Cleaner map controls
 - Pin drop animation
 - Reveal transition animation
 - Score count-up animation
@@ -70,7 +51,6 @@ useful after a finished game.
 - Content Security Policy
 - Self-host Leaflet assets
 - Non-default admin path
-- Dependabot
 - CodeQL
 - Dependency lockfile workflow
 - Production deployment documentation

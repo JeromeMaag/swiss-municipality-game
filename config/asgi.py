@@ -1,4 +1,4 @@
-"""ASGI entrypoint for the GemeindeGuess CH project."""
+"""ASGI entrypoint for the Find the Municipality! project."""
 
 import os
 

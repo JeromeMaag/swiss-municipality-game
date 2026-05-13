@@ -1,1 +1,1 @@
-"""Project configuration package for GemeindeGuess CH."""
+"""Project configuration package for Find the Municipality!."""
