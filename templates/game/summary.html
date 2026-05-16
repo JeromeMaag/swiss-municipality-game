@@ -55,6 +55,10 @@
             {% csrf_token %}
             <input type="hidden" name="game_mode" value="{{ game.mode }}">
             <input type="hidden" name="canton" value="{{ game.canton.abbreviation|default:'' }}">
+            <input type="hidden" name="target_type" value="{{ game.target_type }}">
+            {% if game.show_municipality_boundaries %}
+              <input type="hidden" name="show_municipality_boundaries" value="1">
+            {% endif %}
             <button type="submit" data-game-keyboard-action>
               {% trans "Play again" %}
             </button>
@@ -76,5 +80,5 @@
     crossorigin="anonymous"
     defer
   ></script>
-  <script src="{% static 'js/game_map.js' %}?v=keyboard-1" defer></script>
+  <script src="{% static 'js/game_map.js' %}?v=target-ui-1" defer></script>
 {% endblock %}

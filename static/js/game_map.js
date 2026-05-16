@@ -1427,7 +1427,11 @@
     }
 
     const modeChoices = picker.querySelectorAll("[data-mode-choice]");
+    const targetTypeChoices = picker.querySelectorAll("[data-target-type-choice]");
     const cantonSelect = picker.querySelector("[data-canton-select]");
+    const municipalityOverlayToggle = picker.querySelector(
+      "[data-municipality-overlay-toggle]"
+    );
     const selectedCantonLabel = picker.querySelector("[data-selected-canton-label]");
     const mapLabel = document.querySelector("[data-game-mode-map-label]");
     if (!modeChoices.length || !cantonSelect) {
@@ -1439,12 +1443,26 @@
       return checkedChoice ? checkedChoice.value : "switzerland";
     }
 
+    function selectedTargetType() {
+      const checkedChoice = picker.querySelector(
+        "[data-target-type-choice]:checked"
+      );
+      return checkedChoice ? checkedChoice.value : "municipality";
+    }
+
     function updateModePreview() {
       const cantonMode = selectedMode() === "canton";
+      const villageMode = selectedTargetType() === "village";
       const cantonCode = cantonSelect.value || "";
       const mapCode = cantonCode || "-";
 
       cantonSelect.disabled = !cantonMode;
+      if (municipalityOverlayToggle) {
+        municipalityOverlayToggle.disabled = !villageMode;
+        if (!villageMode) {
+          municipalityOverlayToggle.checked = false;
+        }
+      }
       if (selectedCantonLabel) {
         selectedCantonLabel.textContent = mapCode;
       }
@@ -1454,6 +1472,9 @@
     }
 
     modeChoices.forEach(function (choice) {
+      choice.addEventListener("change", updateModePreview);
+    });
+    targetTypeChoices.forEach(function (choice) {
       choice.addEventListener("change", updateModePreview);
     });
     cantonSelect.addEventListener("change", updateModePreview);

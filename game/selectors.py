@@ -109,6 +109,7 @@ def get_finished_game_summary_for_player(
     """
     turns = (
         Turn.objects.select_related(
+            "game",
             "municipality_target__canton",
             "village_target__canton",
             "guess",

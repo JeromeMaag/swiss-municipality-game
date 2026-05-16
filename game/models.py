@@ -295,6 +295,31 @@ class Turn(models.Model):
         """
         return f"Turn {self.turn_number} of game {self.game_id or 'unsaved'}"
 
+    @property
+    def selected_target(self):
+        """Return the municipality or village target matching the game type."""
+        if self.game.target_type == Game.TargetType.VILLAGE:
+            return self.village_target
+        return self.municipality_target
+
+    @property
+    def selected_target_name(self) -> str:
+        """Return the display name for the selected turn target."""
+        target = self.selected_target
+        return target.name if target is not None else ""
+
+    @property
+    def selected_target_canton(self):
+        """Return the canton for the selected turn target."""
+        target = self.selected_target
+        return target.canton if target is not None else None
+
+    @property
+    def selected_target_population(self) -> int | None:
+        """Return target population when the selected target stores it."""
+        target = self.selected_target
+        return getattr(target, "population", None)
+
     def clean(self) -> None:
         """Validate turn consistency.
 

@@ -6,7 +6,7 @@
       <article class="summary-round-card">
         <header>
           <span>{{ turn.turn_number }}</span>
-          <strong>{{ turn.municipality_target.name }}</strong>
+          <strong>{{ turn.selected_target_name }}</strong>
         </header>
         <dl class="result-list">
           <div class="result-list-primary">
@@ -19,12 +19,12 @@
           </div>
           <div>
             <dt>{% trans "Canton" %}</dt>
-            <dd>{{ turn.municipality_target.canton.abbreviation }}</dd>
+            <dd>{{ turn.selected_target_canton.abbreviation }}</dd>
           </div>
-          {% if turn.municipality_target.population is not None %}
+          {% if turn.selected_target_population is not None %}
             <div>
               <dt>{% trans "Population" %}</dt>
-              <dd>{{ turn.municipality_target.population }}</dd>
+              <dd>{{ turn.selected_target_population }}</dd>
             </div>
           {% endif %}
         </dl>

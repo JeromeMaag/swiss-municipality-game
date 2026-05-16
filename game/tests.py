@@ -1552,6 +1552,9 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Map setup")
         self.assertContains(response, "Switzerland")
         self.assertContains(response, "Single canton")
+        self.assertContains(response, "Municipalities")
+        self.assertContains(response, "Villages")
+        self.assertContains(response, "Show municipalities")
         self.assertContains(response, "Zurich")
         self.assertContains(response, 'aria-label="Map settings"')
         self.assertContains(response, 'title="Map settings"')
@@ -1579,6 +1582,8 @@ class GameStartTests(TestCase):
         self.assertContains(response, 'id="game-start-form"')
         self.assertContains(response, 'name="game_mode"')
         self.assertContains(response, 'name="canton"')
+        self.assertContains(response, 'name="target_type"')
+        self.assertContains(response, 'name="show_municipality_boundaries"')
         self.assertContains(response, 'form="game-start-form"')
         self.assertContains(response, reverse("game:start"))
 
@@ -1592,6 +1597,8 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Start game")
         self.assertContains(response, "Map setup")
         self.assertContains(response, "Single canton")
+        self.assertContains(response, "Villages")
+        self.assertContains(response, "Show municipalities")
         self.assertContains(response, "data-background-map-picker")
         self.assertContains(response, reverse("geo:cantons_geojson"))
         self.assertContains(response, reverse("geo:municipality_boundaries_geojson"))
@@ -1600,6 +1607,8 @@ class GameStartTests(TestCase):
         self.assertContains(response, "data-guest-start-form")
         self.assertContains(response, 'name="game_mode"')
         self.assertContains(response, 'name="canton"')
+        self.assertContains(response, 'name="target_type"')
+        self.assertContains(response, 'name="show_municipality_boundaries"')
         self.assertContains(response, 'form="guest-start-form"')
         self.assertContains(response, "data-auth-modal-open")
         self.assertContains(response, reverse("accounts:login"))
@@ -1673,6 +1682,33 @@ class GameStartTests(TestCase):
             ),
         )
 
+    def test_start_view_starts_village_game(self) -> None:
+        """Game start view accepts village targets and overlay settings."""
+        self.create_villages(5)
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("game:start"),
+            {
+                "target_type": "village",
+                "show_municipality_boundaries": "1",
+            },
+        )
+
+        self.assertRedirects(response, reverse("game:index"))
+        game = Game.objects.get()
+        first_turn = game.turns.select_related("village_target").order_by(
+            "turn_number"
+        ).first()
+        self.assertEqual(game.target_type, Game.TargetType.VILLAGE)
+        self.assertTrue(game.show_municipality_boundaries)
+        self.assertEqual(game.turns.count(), 5)
+        self.assertIsNone(first_turn.municipality_target_id)
+        self.assertIsNotNone(first_turn.village_target_id)
+
+        game_response = self.client.get(reverse("game:index"))
+        self.assertContains(game_response, first_turn.village_target.name)
+
     def test_start_view_ignores_canton_for_switzerland_mode(self) -> None:
         """Switzerland mode ignores a posted canton from non-JS form controls."""
         self.create_municipalities(5)
@@ -1688,6 +1724,26 @@ class GameStartTests(TestCase):
         self.assertEqual(game.mode, Game.Mode.SWITZERLAND)
         self.assertIsNone(game.canton)
 
+    def test_start_view_ignores_municipality_overlay_for_municipality_game(
+        self,
+    ) -> None:
+        """Municipality games ignore stale village-only overlay form data."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("game:start"),
+            {
+                "target_type": "municipality",
+                "show_municipality_boundaries": "1",
+            },
+        )
+
+        self.assertRedirects(response, reverse("game:index"))
+        game = Game.objects.get()
+        self.assertEqual(game.target_type, Game.TargetType.MUNICIPALITY)
+        self.assertFalse(game.show_municipality_boundaries)
+
     def test_start_view_rejects_invalid_canton(self) -> None:
         """Game start view validates canton choices."""
         self.create_municipalities(5)
@@ -1702,6 +1758,11 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Choose a valid canton.", status_code=400)
         self.assertEqual(response.context["selected_game_mode"], Game.Mode.CANTON)
         self.assertEqual(response.context["selected_canton"], "")
+        self.assertEqual(
+            response.context["selected_target_type"],
+            Game.TargetType.MUNICIPALITY,
+        )
+        self.assertFalse(response.context["selected_show_municipality_boundaries"])
         self.assertFalse(Game.objects.exists())
 
     def test_start_view_rejects_invalid_mode(self) -> None:
@@ -1721,6 +1782,51 @@ class GameStartTests(TestCase):
             Game.Mode.SWITZERLAND,
         )
         self.assertEqual(response.context["selected_canton"], "")
+        self.assertEqual(
+            response.context["selected_target_type"],
+            Game.TargetType.MUNICIPALITY,
+        )
+        self.assertFalse(response.context["selected_show_municipality_boundaries"])
+        self.assertFalse(Game.objects.exists())
+
+    def test_start_view_rejects_invalid_target_type(self) -> None:
+        """Game start view validates posted target types."""
+        self.create_municipalities(5)
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("game:start"),
+            {"target_type": "invalid"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, "Choose a valid target type.", status_code=400)
+        self.assertEqual(
+            response.context["selected_target_type"],
+            Game.TargetType.MUNICIPALITY,
+        )
+        self.assertFalse(Game.objects.exists())
+
+    def test_start_view_preserves_village_setup_after_setup_error(self) -> None:
+        """Village setup errors keep the selected target controls in context."""
+        self.create_villages(4)
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("game:start"),
+            {
+                "target_type": "village",
+                "show_municipality_boundaries": "1",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, "At least 5 active villages", status_code=400)
+        self.assertEqual(
+            response.context["selected_target_type"],
+            Game.TargetType.VILLAGE,
+        )
+        self.assertTrue(response.context["selected_show_municipality_boundaries"])
         self.assertFalse(Game.objects.exists())
 
     def test_start_view_rejects_get(self) -> None:
@@ -2641,6 +2747,8 @@ class GameSummaryTests(TestCase):
         self.assertContains(response, reverse("game:index"))
         self.assertContains(response, 'name="game_mode"')
         self.assertContains(response, 'value="switzerland"')
+        self.assertContains(response, 'name="target_type"')
+        self.assertContains(response, 'value="municipality"')
         self.assertContains(response, 'method="post"')
         self.assertContains(response, 'id="game-map"')
         self.assertContains(response, 'data-summary-map="true"')
@@ -2707,6 +2815,8 @@ class GameSummaryTests(TestCase):
         self.assertContains(response, 'value="canton"')
         self.assertContains(response, 'name="canton"')
         self.assertContains(response, 'value="ZH"')
+        self.assertContains(response, 'name="target_type"')
+        self.assertContains(response, 'value="municipality"')
 
     def test_build_summary_reveals_uses_stored_boundary_point(self) -> None:
         """Summary reveal payloads reuse persisted nearest boundary points."""

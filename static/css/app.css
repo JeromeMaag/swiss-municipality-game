@@ -583,6 +583,45 @@ a {
   color: #101a20;
 }
 
+.setup-toggle {
+  align-items: center;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  gap: 0.7rem;
+}
+
+.setup-toggle input {
+  accent-color: var(--accent);
+  height: 1.05rem;
+  width: 1.05rem;
+}
+
+.setup-toggle input:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.setup-toggle input:disabled + span {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.setup-toggle span {
+  display: grid;
+  gap: 0.08rem;
+}
+
+.setup-toggle strong {
+  font-size: 0.9rem;
+}
+
+.setup-toggle small {
+  color: var(--panel-muted);
+  font-size: 0.76rem;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
 .result-panel {
   gap: 1rem;
 }

@@ -46,7 +46,7 @@
                 data-tracking-url="{% url 'game:track_turn_event' current_turn.id %}"
               {% endif %}
               {% if last_guess %}
-                data-reveal-target-id="{{ last_guess.turn.municipality_target.id }}"
+                data-reveal-target-id="{{ last_guess.turn.selected_target.id }}"
                 data-reveal-boundary-lat="{{ reveal_boundary_lat }}"
                 data-reveal-boundary-lng="{{ reveal_boundary_lng }}"
                 data-reveal-lat="{{ reveal_guess_lat }}"
@@ -84,7 +84,7 @@
               <span class="state-label">
                 {% if active_game.status == "finished" %}{% trans "Finished game" %}{% else %}{% trans "Result" %}{% endif %}
               </span>
-              <h1 id="result-heading">{{ last_guess.turn.municipality_target.name }}</h1>
+              <h1 id="result-heading">{{ last_guess_target.name }}</h1>
               <dl class="result-list">
                 <div class="result-list-primary">
                   <dt>{% trans "Score" %}</dt>
@@ -96,12 +96,12 @@
                 </div>
                 <div>
                   <dt>{% trans "Canton" %}</dt>
-                  <dd>{{ last_guess.turn.municipality_target.canton.name }} ({{ last_guess.turn.municipality_target.canton.abbreviation }})</dd>
+                  <dd>{{ last_guess_target_canton.name }} ({{ last_guess_target_canton.abbreviation }})</dd>
                 </div>
-                {% if last_guess.turn.municipality_target.population is not None %}
+                {% if last_guess_target_population is not None %}
                   <div>
                     <dt>{% trans "Population" %}</dt>
-                    <dd>{{ last_guess.turn.municipality_target.population }}</dd>
+                    <dd>{{ last_guess_target_population }}</dd>
                   </div>
                 {% endif %}
               </dl>
@@ -238,6 +238,55 @@
                 {% endfor %}
               </select>
             </label>
+            <div class="mode-panel-heading">
+              <span class="state-label">{% trans "Target" %}</span>
+              <strong id="target-type-heading">{% trans "What to find" %}</strong>
+            </div>
+            <div class="mode-option-list" role="radiogroup" aria-labelledby="target-type-heading">
+              <label class="mode-option">
+                <input
+                  type="radio"
+                  name="target_type"
+                  value="municipality"
+                  form="{% if request.user.is_authenticated %}game-start-form{% else %}guest-start-form{% endif %}"
+                  {% if selected_target_type == "municipality" %}checked{% endif %}
+                  data-target-type-choice
+                >
+                <span>
+                  <strong>{% trans "Municipalities" %}</strong>
+                  <small>{% trans "Default" %}</small>
+                </span>
+              </label>
+              <label class="mode-option">
+                <input
+                  type="radio"
+                  name="target_type"
+                  value="village"
+                  form="{% if request.user.is_authenticated %}game-start-form{% else %}guest-start-form{% endif %}"
+                  {% if selected_target_type == "village" %}checked{% endif %}
+                  data-target-type-choice
+                >
+                <span>
+                  <strong>{% trans "Villages" %}</strong>
+                  <small>{% trans "New" %}</small>
+                </span>
+              </label>
+            </div>
+            <label class="setup-toggle" data-municipality-overlay-option>
+              <input
+                type="checkbox"
+                name="show_municipality_boundaries"
+                value="1"
+                form="{% if request.user.is_authenticated %}game-start-form{% else %}guest-start-form{% endif %}"
+                {% if selected_show_municipality_boundaries %}checked{% endif %}
+                {% if selected_target_type != "village" %}disabled{% endif %}
+                data-municipality-overlay-toggle
+              >
+              <span>
+                <strong>{% trans "Show municipalities" %}</strong>
+                <small>{% trans "Village games only" %}</small>
+              </span>
+            </label>
           </section>
 
           {% if request.user.is_authenticated %}
@@ -334,6 +383,6 @@
       crossorigin="anonymous"
       defer
     ></script>
-    <script src="{% static 'js/game_map.js' %}?v=keyboard-1" defer></script>
+    <script src="{% static 'js/game_map.js' %}?v=target-ui-1" defer></script>
   {% endif %}
 {% endblock %}
