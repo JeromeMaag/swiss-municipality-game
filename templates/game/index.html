@@ -107,11 +107,11 @@
               </dl>
             </section>
             {% if active_game.status == "finished" %}
-              <a class="button-link" href="{% url 'game:summary' active_game.id %}">
+              <a class="button-link" href="{% url 'game:summary' active_game.id %}" data-game-keyboard-action>
                 {% trans "Summary" %}
               </a>
             {% else %}
-              <a class="button-link" href="{% url 'game:index' %}" data-next-turn-link>
+              <a class="button-link" href="{% url 'game:index' %}" data-next-turn-link data-game-keyboard-action>
                 {% trans "Next" %}
               </a>
             {% endif %}
@@ -129,13 +129,13 @@
               <input type="hidden" name="turn_id" value="{{ current_turn.id }}">
               <input type="hidden" name="latitude" data-guess-lat>
               <input type="hidden" name="longitude" data-guess-lng>
-              <button type="submit" data-confirm-guess disabled>
+              <button type="submit" data-confirm-guess data-game-keyboard-action disabled>
                 {% trans "Guess" %}
               </button>
             </form>
           {% else %}
             {% if active_game.status == "finished" %}
-              <a class="button-link" href="{% url 'game:summary' active_game.id %}">
+              <a class="button-link" href="{% url 'game:summary' active_game.id %}" data-game-keyboard-action>
                 {% trans "Summary" %}
               </a>
             {% else %}
@@ -334,6 +334,6 @@
       crossorigin="anonymous"
       defer
     ></script>
-    <script src="{% static 'js/game_map.js' %}?v=ui-polish-2" defer></script>
+    <script src="{% static 'js/game_map.js' %}?v=keyboard-1" defer></script>
   {% endif %}
 {% endblock %}

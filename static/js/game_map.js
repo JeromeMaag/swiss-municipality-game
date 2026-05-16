@@ -615,14 +615,92 @@
         setOpen(false);
       }
     });
-    document.addEventListener("keydown", function (event) {
-      if (panel.hidden || event.key !== "Escape") {
-        return;
-      }
-      setOpen(false);
-      toggle.focus();
-    });
+    document.addEventListener(
+      "keydown",
+      function (event) {
+        if (event.key !== "Escape" || hasOpenAuthModal()) {
+          return;
+        }
+        event.preventDefault();
+        setOpen(panel.hidden);
+        if (panel.hidden) {
+          toggle.focus();
+        }
+      },
+      true
+    );
     toggle.dataset.initialized = "true";
+  }
+
+  function hasOpenAuthModal() {
+    const modal = document.querySelector("[data-auth-modal]");
+    return Boolean(modal && !modal.hidden);
+  }
+
+  function isEditableShortcutTarget(target) {
+    if (!(target instanceof Element)) {
+      return false;
+    }
+    return Boolean(
+      target.closest(
+        'a[href], button, input, select, textarea, [contenteditable="true"]'
+      )
+    );
+  }
+
+  function isVisibleKeyboardAction(element) {
+    if (!element || element.disabled || element.hidden) {
+      return false;
+    }
+    if (element.getAttribute("aria-disabled") === "true") {
+      return false;
+    }
+    return element.offsetParent !== null;
+  }
+
+  function currentGameKeyboardAction() {
+    return Array.from(
+      document.querySelectorAll("[data-game-keyboard-action]")
+    ).find(isVisibleKeyboardAction);
+  }
+
+  function isActionKey(event) {
+    return (
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.shiftKey &&
+      (event.key === "Enter" || event.key === " " || event.key === "Spacebar")
+    );
+  }
+
+  function initializeGameKeyboardShortcuts() {
+    if (document.documentElement.dataset.gameKeyboardShortcuts === "true") {
+      return;
+    }
+
+    document.addEventListener(
+      "keydown",
+      function (event) {
+        if (
+          hasOpenAuthModal() ||
+          isEditableShortcutTarget(event.target) ||
+          !isActionKey(event)
+        ) {
+          return;
+        }
+
+        const action = currentGameKeyboardAction();
+        if (!action) {
+          return;
+        }
+        event.preventDefault();
+        action.click();
+      },
+      true
+    );
+
+    document.documentElement.dataset.gameKeyboardShortcuts = "true";
   }
 
   function formatCoordinate(value) {
@@ -1367,6 +1445,7 @@
     initializeGameMap();
     initializeGameModePicker();
     initializeAuthChoiceModal();
+    initializeGameKeyboardShortcuts();
   }
 
   if (document.readyState === "loading") {
