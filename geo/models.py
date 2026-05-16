@@ -2,6 +2,7 @@
 
 from django.core.exceptions import ValidationError
 from django.contrib.gis.db import models
+from django.db.models import Q
 
 
 class GeoDatasetVersion(models.Model):
@@ -145,3 +146,94 @@ class Municipality(models.Model):
                     )
                 }
             )
+
+
+class Village(models.Model):
+    """Swiss village/locality boundary for a specific dataset version."""
+
+    dataset_version = models.ForeignKey(
+        GeoDatasetVersion,
+        on_delete=models.CASCADE,
+        related_name="villages",
+    )
+    source_identifier = models.CharField(max_length=120, blank=True, db_index=True)
+    name = models.CharField(max_length=160, db_index=True)
+    postal_code = models.CharField(max_length=10, blank=True, db_index=True)
+    canton = models.ForeignKey(
+        Canton,
+        on_delete=models.PROTECT,
+        related_name="villages",
+    )
+    municipality = models.ForeignKey(
+        Municipality,
+        on_delete=models.PROTECT,
+        related_name="villages",
+        blank=True,
+        null=True,
+    )
+    geom = models.MultiPolygonField(srid=4326)
+    geom_simplified = models.MultiPolygonField(srid=4326, blank=True, null=True)
+    label_point = models.PointField(srid=4326, blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    valid_from = models.DateField(blank=True, null=True)
+    valid_to = models.DateField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model metadata for villages."""
+
+        ordering = ["name", "postal_code"]
+        indexes = [
+            models.Index(fields=["dataset_version", "name"]),
+            models.Index(fields=["dataset_version", "postal_code"]),
+            models.Index(fields=["canton", "name"]),
+            models.Index(fields=["municipality", "name"]),
+            models.Index(fields=["is_active"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["dataset_version", "source_identifier"],
+                condition=~Q(source_identifier=""),
+                name="unique_village_dataset_source_identifier",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return the village display label.
+
+        Returns:
+            A human-readable village name, optional postal code, and canton.
+        """
+        if self.postal_code:
+            return f"{self.name} {self.postal_code} ({self.canton.abbreviation})"
+        return f"{self.name} ({self.canton.abbreviation})"
+
+    def clean(self) -> None:
+        """Validate village consistency.
+
+        Raises:
+            ValidationError: If the village, canton, or municipality belong to
+                incompatible dataset versions or cantons.
+        """
+        super().clean()
+        errors: dict[str, list[str]] = {}
+
+        if self.canton_id and self.dataset_version_id != self.canton.dataset_version_id:
+            errors.setdefault("canton", []).append(
+                "Village and canton must belong to the same dataset version."
+            )
+
+        if self.municipality_id:
+            if self.dataset_version_id != self.municipality.dataset_version_id:
+                errors.setdefault("municipality", []).append(
+                    "Village and municipality must belong to the same dataset "
+                    "version."
+                )
+            if self.canton_id and self.canton_id != self.municipality.canton_id:
+                errors.setdefault("municipality", []).append(
+                    "Village and municipality must belong to the same canton."
+                )
+
+        if errors:
+            raise ValidationError(errors)

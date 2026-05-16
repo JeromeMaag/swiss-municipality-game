@@ -2,7 +2,7 @@
 
 from django.contrib import admin
 
-from .models import Canton, GeoDatasetVersion, Municipality
+from .models import Canton, GeoDatasetVersion, Municipality, Village
 
 
 @admin.register(GeoDatasetVersion)
@@ -42,3 +42,36 @@ class MunicipalityAdmin(admin.ModelAdmin):
     search_fields = ("name", "canton__name", "canton__abbreviation")
     autocomplete_fields = ("dataset_version", "canton")
     readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(Village)
+class VillageAdmin(admin.ModelAdmin):
+    """Admin configuration for villages."""
+
+    list_display = (
+        "name",
+        "postal_code",
+        "canton",
+        "municipality",
+        "dataset_version",
+        "is_active",
+    )
+    list_filter = ("dataset_version", "canton", "is_active")
+    search_fields = (
+        "name",
+        "postal_code",
+        "source_identifier",
+        "canton__name",
+        "canton__abbreviation",
+        "municipality__name",
+    )
+    autocomplete_fields = ("dataset_version", "canton", "municipality")
+    readonly_fields = ("created_at", "updated_at")
+
+    def get_queryset(self, request):
+        """Return villages with related owner geography for the changelist."""
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("dataset_version", "canton", "municipality")
+        )

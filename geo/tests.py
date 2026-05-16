@@ -79,7 +79,7 @@ from .management.commands.import_swissboundaries3d import (
     select_geopackage_asset,
     select_stac_item,
 )
-from .models import Canton, GeoDatasetVersion, Municipality
+from .models import Canton, GeoDatasetVersion, Municipality, Village
 from .serializers import feature_collection, get_display_geometry
 from .selectors import (
     get_cantons_for_dataset,
@@ -345,6 +345,123 @@ class GeoModelTests(TestCase):
 
         with self.assertRaises(ValidationError):
             municipality.full_clean()
+
+    def test_village_string(self) -> None:
+        """Villages expose name, postal code, and canton abbreviation."""
+        village = Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier="village-1",
+            name="Aadorf",
+            postal_code="8355",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+        self.assertEqual(str(village), "Aadorf 8355 (ZH)")
+
+    def test_village_string_without_postal_code(self) -> None:
+        """Villages can be displayed when the source has no postal code."""
+        village = Village.objects.create(
+            dataset_version=self.dataset_version,
+            name="Aadorf",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+        self.assertEqual(str(village), "Aadorf (ZH)")
+
+    def test_village_source_identifier_is_unique_per_dataset(self) -> None:
+        """Non-empty village source identifiers are unique per dataset."""
+        Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier="village-1",
+            name="Aadorf",
+            postal_code="8355",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Village.objects.create(
+                dataset_version=self.dataset_version,
+                source_identifier="village-1",
+                name="Duplicate Aadorf",
+                postal_code="8355",
+                canton=self.canton,
+                geom=make_test_geometry(),
+            )
+
+    def test_blank_village_source_identifier_can_repeat(self) -> None:
+        """Blank village source identifiers are allowed for manual records."""
+        Village.objects.create(
+            dataset_version=self.dataset_version,
+            name="Aadorf",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+        village = Village.objects.create(
+            dataset_version=self.dataset_version,
+            name="Ettenhausen",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+        self.assertEqual(village.name, "Ettenhausen")
+
+    def test_village_requires_canton_from_same_dataset(self) -> None:
+        """Village validation rejects cantons from another dataset version."""
+        other_dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2027-01-01",
+        )
+        other_canton = Canton.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+        village = Village(
+            dataset_version=self.dataset_version,
+            name="Invalid Village",
+            canton=other_canton,
+            geom=make_test_geometry(),
+        )
+
+        with self.assertRaises(ValidationError):
+            village.full_clean()
+
+    def test_village_requires_municipality_from_same_dataset_and_canton(self) -> None:
+        """Village validation rejects incompatible municipality assignments."""
+        other_dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2027-01-01",
+        )
+        other_canton = Canton.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+        other_municipality = Municipality.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=261,
+            name="Zurich",
+            canton=other_canton,
+            geom=make_test_geometry(),
+        )
+        village = Village(
+            dataset_version=self.dataset_version,
+            name="Invalid Village",
+            canton=self.canton,
+            municipality=other_municipality,
+            geom=make_test_geometry(),
+        )
+
+        with self.assertRaises(ValidationError):
+            village.full_clean()
 
 
 class GeoSerializerTests(TestCase):
