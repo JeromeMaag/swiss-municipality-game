@@ -43,6 +43,14 @@
             <span>{% trans "Score" %}</span>
             <strong>{{ game.total_score }}</strong>
           </div>
+          <div>
+            <span>{% trans "Map" %}</span>
+            <strong>{{ game.map_label }}</strong>
+          </div>
+          <div>
+            <span>{% trans "Target" %}</span>
+            <strong>{{ game.target_type_label }}</strong>
+          </div>
         </div>
 
         <section class="target-panel result-panel summary-results" aria-labelledby="summary-heading">

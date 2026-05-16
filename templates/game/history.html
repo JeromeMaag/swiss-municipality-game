@@ -46,6 +46,10 @@
               <span>{% trans "Map" %}</span>
               <strong>{{ selected_game.map_label }}</strong>
             </div>
+            <div>
+              <span>{% trans "Target" %}</span>
+              <strong>{{ selected_game.target_type_label }}</strong>
+            </div>
           </div>
 
           <section class="target-panel result-panel summary-results" aria-labelledby="history-detail-heading">
@@ -91,6 +95,10 @@
                         <div>
                           <dt>{% trans "Map" %}</dt>
                           <dd>{{ game.map_label }}</dd>
+                        </div>
+                        <div>
+                          <dt>{% trans "Target" %}</dt>
+                          <dd>{{ game.target_type_label }}</dd>
                         </div>
                       </dl>
                     </a>

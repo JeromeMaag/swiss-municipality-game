@@ -6,6 +6,7 @@ from django.conf import settings
 from django.contrib.gis.db import models
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
+from django.utils.translation import gettext_lazy as _
 
 
 GAME_STATUS_ACTIVE = "active"
@@ -175,6 +176,13 @@ class Game(models.Model):
         if self.mode == self.Mode.CANTON and self.canton_id:
             return self.canton.abbreviation
         return "CH"
+
+    @property
+    def target_type_label(self) -> str:
+        """Return the plural target type label for game UI surfaces."""
+        if self.target_type == self.TargetType.VILLAGE:
+            return _("Villages")
+        return _("Municipalities")
 
     def clean(self) -> None:
         """Validate game ownership, scope, target type, and lifecycle consistency.

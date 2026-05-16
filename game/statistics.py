@@ -1,6 +1,7 @@
 """Statistics helpers for player profile pages."""
 
 from django.db.models import Avg, Count, Max, Min, Q
+from django.utils.translation import gettext as _
 
 from .models import Game, Guess
 
@@ -28,6 +29,7 @@ def build_player_statistics(user) -> dict:
         finished_games.only(
             "id",
             "mode",
+            "target_type",
             "canton",
             "canton__abbreviation",
             "total_score",
@@ -49,12 +51,12 @@ def build_player_statistics(user) -> dict:
     games_played = game_stats["games_played"] or 0
     average_score = round_or_zero(game_stats["average_score"])
     map_modes = list(
-        finished_games.values("mode", "canton__abbreviation")
+        finished_games.values("target_type", "mode", "canton__abbreviation")
         .annotate(
             average_score=Avg("total_score"),
             games_played=Count("id"),
         )
-        .order_by("mode", "canton__abbreviation")
+        .order_by("target_type", "mode", "canton__abbreviation")
     )
     return {
         "average_distance_m": round_or_zero(distance_stats["average_distance_m"]),
@@ -67,6 +69,8 @@ def build_player_statistics(user) -> dict:
                 "average_score": round_or_zero(mode["average_score"]),
                 "games_played": mode["games_played"],
                 "label": map_mode_label(mode),
+                "target_label": target_type_label(mode["target_type"]),
+                "target_type": mode["target_type"],
             }
             for mode in map_modes
         ],
@@ -84,3 +88,10 @@ def round_or_zero(value) -> int:
 def map_mode_label(mode: dict) -> str:
     """Return a compact label for grouped map-mode statistics."""
     return mode["canton__abbreviation"] or DEFAULT_MAP_LABEL
+
+
+def target_type_label(target_type: str) -> str:
+    """Return a player-facing plural target type label."""
+    if target_type == Game.TargetType.VILLAGE:
+        return _("Villages")
+    return _("Municipalities")

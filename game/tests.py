@@ -2828,6 +2828,8 @@ class GameSummaryTests(TestCase):
         self.assertContains(response, "Summary Municipality 1")
         self.assertContains(response, "Play again")
         self.assertContains(response, "Change game mode")
+        self.assertContains(response, "Target")
+        self.assertContains(response, "Municipalities")
         self.assertContains(response, "data-game-keyboard-action")
         self.assertContains(response, "data-background-map-picker")
         self.assertContains(response, reverse("game:start"))
@@ -2930,6 +2932,7 @@ class GameSummaryTests(TestCase):
             ),
         )
         self.assertContains(response, "Summary Village 1")
+        self.assertContains(response, "Villages")
         self.assertContains(response, 'name="target_type"')
         self.assertContains(response, 'value="village"')
         self.assertContains(response, 'name="show_municipality_boundaries"')
@@ -3017,6 +3020,8 @@ class GameSummaryTests(TestCase):
         self.assertNotContains(response, 'data-summary-map="true"')
         self.assertContains(response, "Map")
         self.assertContains(response, "CH")
+        self.assertContains(response, "Target")
+        self.assertContains(response, "Municipalities")
         self.assertContains(response, str(game.total_score))
         self.assertContains(response, reverse("game:history_detail", args=[game.id]))
         self.assertNotContains(
@@ -3111,6 +3116,7 @@ class GameSummaryTests(TestCase):
             ),
         )
         self.assertContains(response, "Summary Village 1")
+        self.assertContains(response, "Villages")
         self.assertEqual(response.context["selected_game"], game)
 
     def test_history_detail_rejects_other_users_game(self) -> None:
@@ -3186,7 +3192,15 @@ class GameSummaryTests(TestCase):
         self.assertEqual(statistics["perfect_rounds"], 1)
         self.assertEqual(
             statistics["map_modes"],
-            [{"average_score": 2500, "games_played": 2, "label": "CH"}],
+            [
+                {
+                    "average_score": 2500,
+                    "games_played": 2,
+                    "label": "CH",
+                    "target_label": "Municipalities",
+                    "target_type": Game.TargetType.MUNICIPALITY,
+                }
+            ],
         )
         self.assertEqual(statistics["recent_games"], [newer_game, older_game])
         self.assertContains(response, self.user.username)
@@ -3200,6 +3214,7 @@ class GameSummaryTests(TestCase):
         self.assertContains(response, "0 m")
         self.assertContains(response, "Perfect rounds")
         self.assertContains(response, "CH")
+        self.assertContains(response, "Municipalities")
         self.assertContains(response, "2 games")
         self.assertContains(response, "2500 avg score")
         self.assertContains(
@@ -3211,6 +3226,45 @@ class GameSummaryTests(TestCase):
             reverse("game:history_detail", args=[older_game.id]),
         )
         self.assertNotContains(response, "Total score")
+
+    def test_profile_groups_map_stats_by_target_type(self) -> None:
+        """Profile map stats keep municipality and village games separate."""
+        municipality_game = self.create_finished_game(
+            bfs_offset=9500,
+            scores=[1000, 1000, 1000, 1000, 1000],
+        )
+        village_game = self.create_finished_game(
+            bfs_offset=9600,
+            scores=[500, 500, 500, 500, 500],
+            target_type=Game.TargetType.VILLAGE,
+            show_municipality_boundaries=True,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("profile"))
+        statistics = response.context["statistics"]
+
+        self.assertEqual(
+            statistics["map_modes"],
+            [
+                {
+                    "average_score": municipality_game.total_score,
+                    "games_played": 1,
+                    "label": "CH",
+                    "target_label": "Municipalities",
+                    "target_type": Game.TargetType.MUNICIPALITY,
+                },
+                {
+                    "average_score": village_game.total_score,
+                    "games_played": 1,
+                    "label": "CH",
+                    "target_label": "Villages",
+                    "target_type": Game.TargetType.VILLAGE,
+                },
+            ],
+        )
+        self.assertContains(response, "Municipalities")
+        self.assertContains(response, "Villages")
 
     def test_build_player_statistics_limits_recent_games(self) -> None:
         """Recent profile games are capped to the latest five finished games."""

@@ -1220,6 +1220,7 @@ a {
   align-items: center;
   border-top: 1px solid var(--border);
   display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
   justify-content: space-between;
   padding-top: 0.7rem;
