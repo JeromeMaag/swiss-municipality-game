@@ -55,7 +55,9 @@
             {% csrf_token %}
             <input type="hidden" name="game_mode" value="{{ game.mode }}">
             <input type="hidden" name="canton" value="{{ game.canton.abbreviation|default:'' }}">
-            <button type="submit">{% trans "Play again" %}</button>
+            <button type="submit" data-game-keyboard-action>
+              {% trans "Play again" %}
+            </button>
           </form>
           <a class="button-link button-link-secondary" href="{% url 'game:index' %}">
             {% trans "Change game mode" %}

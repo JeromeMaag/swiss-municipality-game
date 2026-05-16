@@ -2234,6 +2234,7 @@ class GameSummaryTests(TestCase):
         self.assertContains(response, "Summary Municipality 1")
         self.assertContains(response, "Play again")
         self.assertContains(response, "Change game mode")
+        self.assertContains(response, "data-game-keyboard-action")
         self.assertContains(response, "data-background-map-picker")
         self.assertContains(response, reverse("game:start"))
         self.assertContains(response, reverse("game:index"))
