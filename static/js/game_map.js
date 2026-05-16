@@ -478,6 +478,11 @@
         )
       );
     }
+    if (boundaryState.municipalityOverlayLayer !== null) {
+      boundaryState.municipalityOverlayLayer.setStyle(
+        municipalityOverlayStyle(colors, boundaryState.outlineMode)
+      );
+    }
     if (boundaryState.cantonLayer !== null) {
       boundaryState.cantonLayer.setStyle(
         cantonStyle(colors, boundaryState.outlineMode)
@@ -979,6 +984,19 @@
     };
   }
 
+  function municipalityOverlayStyle(colors, outlineMode) {
+    if (outlineMode !== "all" && outlineMode !== "municipalities") {
+      return hiddenBoundaryStyle();
+    }
+    return {
+      color: colors.municipality,
+      dashArray: "4 5",
+      fillOpacity: 0,
+      opacity: colors.municipality === "#ffffff" ? 0.62 : 0.7,
+      weight: colors.municipality === "#ffffff" ? 1 : 1.15,
+    };
+  }
+
   function cantonStyle(colors, outlineMode) {
     if (outlineMode !== "all" && outlineMode !== "cantons") {
       return hiddenBoundaryStyle();
@@ -1229,6 +1247,7 @@
       lineMode: boundaryLineMode,
       mapId: backgroundMapId,
       municipalityLayer: null,
+      municipalityOverlayLayer: null,
       outlineMode: outlineMode,
     };
     const initialBoundaryColors = boundaryLineColors(
@@ -1256,16 +1275,28 @@
       initializeGuessInteraction(map, mapElement);
     }
     mapElement.dataset.initialized = "true";
-    addBoundaryLayer(map, mapElement.dataset.municipalityBoundariesUrl, {
-      errorMessage: "Municipality boundaries could not be loaded.",
-      fitBounds: !revealState && !summaryState,
+    addBoundaryLayer(map, mapElement.dataset.municipalityOverlayUrl, {
+      errorMessage: "Municipality overlay could not be loaded.",
+      fitBounds: false,
       renderer: vectorRenderer,
-      style: municipalityStyle(
-        revealState,
-        summaryState,
+      style: municipalityOverlayStyle(
         initialBoundaryColors,
         boundaryState.outlineMode
       ),
+    }).then(function (municipalityOverlayLayer) {
+      boundaryState.municipalityOverlayLayer = municipalityOverlayLayer;
+      applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
+      return addBoundaryLayer(map, mapElement.dataset.municipalityBoundariesUrl, {
+        errorMessage: "Municipality boundaries could not be loaded.",
+        fitBounds: !revealState && !summaryState,
+        renderer: vectorRenderer,
+        style: municipalityStyle(
+          revealState,
+          summaryState,
+          initialBoundaryColors,
+          boundaryState.outlineMode
+        ),
+      });
     }).then(function (municipalityLayer) {
       boundaryState.municipalityLayer = municipalityLayer;
       municipalityLayerForFit = municipalityLayer;

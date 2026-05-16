@@ -1715,6 +1715,67 @@ class GameStartTests(TestCase):
                 f'{reverse("geo:village_boundaries_geojson")}"'
             ),
         )
+        self.assertContains(
+            game_response,
+            (
+                'data-municipality-overlay-url="'
+                f'{reverse("geo:municipality_boundaries_geojson")}"'
+            ),
+        )
+
+    def test_start_view_omits_village_municipality_overlay_when_disabled(
+        self,
+    ) -> None:
+        """Village maps omit the municipality overlay unless requested."""
+        self.create_villages(5)
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("game:start"),
+            {
+                "target_type": "village",
+            },
+        )
+
+        self.assertRedirects(response, reverse("game:index"))
+        game = Game.objects.get()
+        self.assertEqual(game.target_type, Game.TargetType.VILLAGE)
+        self.assertFalse(game.show_municipality_boundaries)
+
+        game_response = self.client.get(reverse("game:index"))
+        self.assertContains(game_response, 'data-municipality-overlay-url=""')
+
+    def test_start_view_scopes_village_overlay_to_canton(self) -> None:
+        """Canton village maps scope target and municipality overlay URLs."""
+        self.create_villages(5)
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("game:start"),
+            {
+                "game_mode": "canton",
+                "canton": "ZH",
+                "target_type": "village",
+                "show_municipality_boundaries": "1",
+            },
+        )
+
+        self.assertRedirects(response, reverse("game:index"))
+        game_response = self.client.get(reverse("game:index"))
+        self.assertContains(
+            game_response,
+            (
+                'data-municipality-boundaries-url="'
+                f'{reverse("geo:village_boundaries_geojson")}?canton=ZH"'
+            ),
+        )
+        self.assertContains(
+            game_response,
+            (
+                'data-municipality-overlay-url="'
+                f'{reverse("geo:municipality_boundaries_geojson")}?canton=ZH"'
+            ),
+        )
 
     def test_start_view_ignores_canton_for_switzerland_mode(self) -> None:
         """Switzerland mode ignores a posted canton from non-JS form controls."""
@@ -2663,6 +2724,8 @@ class GameSummaryTests(TestCase):
         finished_at=None,
         mode: str = Game.Mode.SWITZERLAND,
         scores: list[int] | None = None,
+        show_municipality_boundaries: bool = False,
+        target_type: str = Game.TargetType.MUNICIPALITY,
     ) -> Game:
         """Create a finished game with five guessed turns.
 
@@ -2675,6 +2738,9 @@ class GameSummaryTests(TestCase):
             finished_at: Optional finished timestamp.
             mode: Game mode to store.
             scores: Optional per-turn scores.
+            show_municipality_boundaries: Whether village games show the
+                municipality overlay.
+            target_type: Game target type to create turns for.
 
         Returns:
             A finished game with five turns and guesses.
@@ -2691,6 +2757,8 @@ class GameSummaryTests(TestCase):
             **owner_fields,
             mode=mode,
             canton=canton if mode == Game.Mode.CANTON else None,
+            target_type=target_type,
+            show_municipality_boundaries=show_municipality_boundaries,
             status=Game.Status.FINISHED,
             finished_at=finished_at or timezone.now(),
         )
@@ -2706,10 +2774,22 @@ class GameSummaryTests(TestCase):
                 population=10_000 + index,
                 geom=make_test_geometry(),
             )
+            target_fields = {"municipality_target": municipality}
+            if target_type == Game.TargetType.VILLAGE:
+                village = Village.objects.create(
+                    dataset_version=self.dataset_version,
+                    source_identifier=f"summary-village-{bfs_offset + index}",
+                    name=f"Summary Village {index + 1}",
+                    postal_code=f"84{index:02d}",
+                    canton=canton,
+                    municipality=municipality,
+                    geom=make_test_geometry(),
+                )
+                target_fields = {"village_target": village}
             turn = Turn.objects.create(
                 game=game,
                 turn_number=index + 1,
-                municipality_target=municipality,
+                **target_fields,
                 revealed_at=timezone.now(),
             )
             Guess.objects.create(
@@ -2824,6 +2904,35 @@ class GameSummaryTests(TestCase):
         self.assertContains(response, 'value="ZH"')
         self.assertContains(response, 'name="target_type"')
         self.assertContains(response, 'value="municipality"')
+
+    def test_summary_uses_village_boundary_layer_and_overlay(self) -> None:
+        """Summary maps use village targets with optional municipality overlay."""
+        game = self.create_finished_game(
+            target_type=Game.TargetType.VILLAGE,
+            show_municipality_boundaries=True,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("game:summary", args=[game.id]))
+
+        self.assertContains(
+            response,
+            (
+                'data-municipality-boundaries-url="'
+                f'{reverse("geo:village_boundaries_geojson")}"'
+            ),
+        )
+        self.assertContains(
+            response,
+            (
+                'data-municipality-overlay-url="'
+                f'{reverse("geo:municipality_boundaries_geojson")}"'
+            ),
+        )
+        self.assertContains(response, "Summary Village 1")
+        self.assertContains(response, 'name="target_type"')
+        self.assertContains(response, 'value="village"')
+        self.assertContains(response, 'name="show_municipality_boundaries"')
 
     def test_build_summary_reveals_uses_stored_boundary_point(self) -> None:
         """Summary reveal payloads reuse persisted nearest boundary points."""
@@ -2974,6 +3083,34 @@ class GameSummaryTests(TestCase):
                 f'{reverse("geo:municipality_boundaries_geojson")}?canton=ZH"'
             ),
         )
+        self.assertEqual(response.context["selected_game"], game)
+
+    def test_history_detail_uses_village_overlay_scope(self) -> None:
+        """History replay maps preserve village target and overlay settings."""
+        game = self.create_finished_game(
+            target_type=Game.TargetType.VILLAGE,
+            show_municipality_boundaries=True,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("game:history_detail", args=[game.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            (
+                'data-municipality-boundaries-url="'
+                f'{reverse("geo:village_boundaries_geojson")}"'
+            ),
+        )
+        self.assertContains(
+            response,
+            (
+                'data-municipality-overlay-url="'
+                f'{reverse("geo:municipality_boundaries_geojson")}"'
+            ),
+        )
+        self.assertContains(response, "Summary Village 1")
         self.assertEqual(response.context["selected_game"], game)
 
     def test_history_detail_rejects_other_users_game(self) -> None:

@@ -38,6 +38,7 @@
               data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
               data-canton-boundaries-url="{{ canton_boundaries_url }}"
               data-municipality-boundaries-url="{{ municipality_boundaries_url }}"
+              data-municipality-overlay-url="{{ municipality_overlay_url }}"
               {% if last_guess %}
                 data-municipality-labels-url="{% url 'geo:municipality_labels_geojson' %}?turn={{ last_guess.turn.id }}"
                 data-label-min-zoom="11"
@@ -161,6 +162,7 @@
               data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
               data-canton-boundaries-url="{{ canton_boundaries_url }}"
               data-municipality-boundaries-url="{{ municipality_boundaries_url }}"
+              data-municipality-overlay-url="{{ municipality_overlay_url }}"
             ></div>
           {% else %}
             <div class="map-placeholder"></div>
@@ -383,6 +385,6 @@
       crossorigin="anonymous"
       defer
     ></script>
-    <script src="{% static 'js/game_map.js' %}?v=target-ui-1" defer></script>
+    <script src="{% static 'js/game_map.js' %}?v=village-map-1" defer></script>
   {% endif %}
 {% endblock %}

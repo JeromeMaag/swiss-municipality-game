@@ -28,6 +28,7 @@
           data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
           data-canton-boundaries-url="{{ canton_boundaries_url }}"
           data-municipality-boundaries-url="{{ municipality_boundaries_url }}"
+          data-municipality-overlay-url="{{ municipality_overlay_url }}"
           data-summary-map="true"
         ></div>
       </section>
@@ -80,5 +81,5 @@
     crossorigin="anonymous"
     defer
   ></script>
-  <script src="{% static 'js/game_map.js' %}?v=target-ui-1" defer></script>
+  <script src="{% static 'js/game_map.js' %}?v=village-map-1" defer></script>
 {% endblock %}
