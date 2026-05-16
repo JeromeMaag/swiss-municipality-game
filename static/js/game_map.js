@@ -618,6 +618,9 @@
     document.addEventListener(
       "keydown",
       function (event) {
+        if (event.repeat) {
+          return;
+        }
         if (
           event.key !== "Escape" ||
           hasOpenAuthModal() ||
@@ -695,6 +698,9 @@
     document.addEventListener(
       "keydown",
       function (event) {
+        if (event.repeat) {
+          return;
+        }
         if (
           hasOpenAuthModal() ||
           isEditableShortcutTarget(event.target) ||
