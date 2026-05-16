@@ -373,8 +373,11 @@
     return BOUNDARY_LINE_MODES.has(mode) ? mode : DEFAULT_BOUNDARY_LINE_MODE;
   }
 
-  function defaultOutlineLayers(hasVillageLayer) {
-    const layers = new Set(["cantons", "municipalities"]);
+  function defaultOutlineLayers(hasMunicipalityLayer, hasVillageLayer) {
+    const layers = new Set(["cantons"]);
+    if (hasMunicipalityLayer) {
+      layers.add("municipalities");
+    }
     if (hasVillageLayer) {
       layers.add("villages");
     }
@@ -390,12 +393,12 @@
     }).join(",");
   }
 
-  function normalizeOutlineLayers(value, hasVillageLayer) {
+  function normalizeOutlineLayers(value, hasMunicipalityLayer, hasVillageLayer) {
     if (!value) {
-      return defaultOutlineLayers(hasVillageLayer);
+      return defaultOutlineLayers(hasMunicipalityLayer, hasVillageLayer);
     }
     if (value === "all") {
-      return defaultOutlineLayers(hasVillageLayer);
+      return defaultOutlineLayers(hasMunicipalityLayer, hasVillageLayer);
     }
     if (value === "off") {
       return new Set();
@@ -411,6 +414,9 @@
         if (!OUTLINE_LAYERS.has(layer) || layer === "all" || layer === "off") {
           return;
         }
+        if (layer === "municipalities" && !hasMunicipalityLayer) {
+          return;
+        }
         if (layer === "villages" && !hasVillageLayer) {
           return;
         }
@@ -418,7 +424,7 @@
       });
 
     if (layers.size === 0) {
-      return defaultOutlineLayers(hasVillageLayer);
+      return defaultOutlineLayers(hasMunicipalityLayer, hasVillageLayer);
     }
     return layers;
   }
@@ -451,14 +457,15 @@
     }
   }
 
-  function readStoredOutlineLayers(hasVillageLayer) {
+  function readStoredOutlineLayers(hasMunicipalityLayer, hasVillageLayer) {
     try {
       return normalizeOutlineLayers(
         window.localStorage.getItem(OUTLINE_STORAGE_KEY),
+        hasMunicipalityLayer,
         hasVillageLayer
       );
     } catch (error) {
-      return defaultOutlineLayers(hasVillageLayer);
+      return defaultOutlineLayers(hasMunicipalityLayer, hasVillageLayer);
     }
   }
 
@@ -505,11 +512,18 @@
     );
   }
 
-  function syncOutlineLayerPickers(layers, hasVillageLayer) {
+  function syncOutlineLayerPickers(
+    layers,
+    hasMunicipalityLayer,
+    hasVillageLayer
+  ) {
     document.querySelectorAll("[data-outline-layer-picker]").forEach(
       function (picker) {
+        const isMunicipalityPicker = picker.value === "municipalities";
         const isVillagePicker = picker.value === "villages";
-        const isAvailable = !isVillagePicker || hasVillageLayer;
+        const isAvailable =
+          (!isMunicipalityPicker || hasMunicipalityLayer) &&
+          (!isVillagePicker || hasVillageLayer);
         const setting = picker.closest("[data-outline-layer-setting]");
         if (setting) {
           setting.hidden = !isAvailable;
@@ -661,6 +675,7 @@
 
     syncOutlineLayerPickers(
       boundaryState.outlineLayers,
+      boundaryState.hasMunicipalityLayer,
       boundaryState.hasVillageLayer
     );
     pickers.forEach(function (picker) {
@@ -674,11 +689,13 @@
         }
         const normalizedLayers = normalizeOutlineLayers(
           serializeOutlineLayers(outlineLayers),
+          boundaryState.hasMunicipalityLayer,
           boundaryState.hasVillageLayer
         );
         storeOutlineLayers(normalizedLayers);
         syncOutlineLayerPickers(
           normalizedLayers,
+          boundaryState.hasMunicipalityLayer,
           boundaryState.hasVillageLayer
         );
         boundaryState.outlineLayers = normalizedLayers;
@@ -1347,7 +1364,13 @@
     const boundaryLineMode = readStoredBoundaryLineMode();
     const hasVillageLayer =
       mapElement.dataset.targetBoundaryLayer === "villages";
-    const outlineLayers = readStoredOutlineLayers(hasVillageLayer);
+    const hasMunicipalityLayer =
+      mapElement.dataset.targetBoundaryLayer === "municipalities" ||
+      Boolean(mapElement.dataset.municipalityOverlayUrl);
+    const outlineLayers = readStoredOutlineLayers(
+      hasMunicipalityLayer,
+      hasVillageLayer
+    );
     const baseLayerState = {
       layer: addBaseMapLayer(
         map,
@@ -1358,6 +1381,7 @@
     };
     const boundaryState = {
       cantonLayer: null,
+      hasMunicipalityLayer: hasMunicipalityLayer,
       hasVillageLayer: hasVillageLayer,
       lineMode: boundaryLineMode,
       mapId: backgroundMapId,

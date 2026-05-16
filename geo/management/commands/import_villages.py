@@ -11,7 +11,6 @@ from urllib.parse import urlparse
 import zipfile
 
 import pandas as pd
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.db.models.deletion import ProtectedError
@@ -160,9 +159,7 @@ class Command(BaseCommand):
         dataset_version = resolve_dataset_version(options["dataset_version"])
         source_url = options["source_url"] or OFFICIAL_VILLAGE_SHAPE_URL
 
-        tmp_parent = Path(settings.BASE_DIR) / "data" / "raw"
-        tmp_parent.mkdir(parents=True, exist_ok=True)
-        with TemporaryDirectory(prefix="villages_", dir=tmp_parent) as tmp_dir:
+        with TemporaryDirectory(prefix="villages_") as tmp_dir:
             tmp_path = Path(tmp_dir)
             source = resolve_or_download_source(options["source"], source_url, tmp_path)
             layer_source = resolve_layer_source(source, options["layer"], tmp_path)
@@ -483,20 +480,6 @@ def import_villages(
         Imported villages and skipped row counts.
     """
     cantons = list(Canton.objects.filter(dataset_version=dataset_version))
-    municipalities_by_canton: dict[int, list[Municipality]] = {}
-    if not options["skip_municipality_assignment"]:
-        municipalities = (
-            Municipality.objects.filter(
-                dataset_version=dataset_version,
-                is_active=True,
-            ).select_related("canton")
-        )
-        for municipality in municipalities:
-            municipalities_by_canton.setdefault(
-                municipality.canton_id,
-                [],
-            ).append(municipality)
-
     canton_by_abbreviation = {canton.abbreviation: canton for canton in cantons}
     canton_by_bfs = {
         canton.bfs_number: canton
@@ -531,10 +514,13 @@ def import_villages(
             skipped_without_canton += 1
             continue
 
-        municipality = find_municipality(
-            geom,
-            canton,
-            municipalities_by_canton.get(canton.id, []),
+        municipality = (
+            None
+            if options["skip_municipality_assignment"]
+            else find_municipality(
+                geom,
+                canton,
+            )
         )
         status = to_str(row_value(row, options["status_field"]))
         is_active = not status or status == options["active_status"]
@@ -608,27 +594,26 @@ def find_canton(
 def find_municipality(
     geom,
     canton: Canton,
-    municipalities: list[Municipality],
 ) -> Municipality | None:
     """Find the municipality containing a village label point.
 
     Args:
         geom: Village geometry.
         canton: Matched village canton.
-        municipalities: Candidate municipalities already scoped to the canton.
 
     Returns:
         Matching municipality, or None when assignment is not unambiguous.
     """
     label_point = geom.point_on_surface
-    matches = [
-        municipality
-        for municipality in municipalities
-        if (
-            municipality.geom.contains(label_point)
-            or municipality.geom.intersects(label_point)
+    matches = list(
+        Municipality.objects.filter(
+            dataset_version=canton.dataset_version,
+            canton=canton,
+            is_active=True,
+            geom__intersects=label_point,
         )
-    ]
+        .order_by("id")[:2]
+    )
     if len(matches) == 1:
         return matches[0]
     return None

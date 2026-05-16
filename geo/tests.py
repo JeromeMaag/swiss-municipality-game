@@ -23,6 +23,7 @@ from django.urls import reverse
 from django.utils import timezone
 from shapely.geometry import Polygon
 
+from geo.admin import bump_village_dataset_versions
 from geo.admin_views import truncate_command_output
 from geo.constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
 from game.identity import GUEST_PLAYER_SESSION_KEY
@@ -369,6 +370,15 @@ class GeoModelTests(TestCase):
         )
 
         self.assertEqual(str(village), "Aadorf 8355 (ZH)")
+
+    def test_village_admin_cache_bump_updates_dataset_version(self) -> None:
+        """Village admin writes can invalidate cached village boundaries."""
+        self.assertIsNone(self.dataset_version.villages_updated_at)
+
+        bump_village_dataset_versions({self.dataset_version.id})
+
+        self.dataset_version.refresh_from_db()
+        self.assertIsNotNone(self.dataset_version.villages_updated_at)
 
     def test_village_string_without_postal_code(self) -> None:
         """Villages can be displayed when the source has no postal code."""

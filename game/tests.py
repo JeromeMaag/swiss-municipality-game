@@ -3003,6 +3003,13 @@ class GameSummaryTests(TestCase):
         self.assertContains(response, 'value="village"')
         self.assertContains(response, 'data-outline-layer-setting="villages" hidden')
         self.assertNotContains(response, 'name="show_municipality_boundaries"')
+        village_target_ids = set(
+            game.turns.values_list("village_target_id", flat=True)
+        )
+        self.assertEqual(
+            {reveal["targetId"] for reveal in response.context["summary_reveals"]},
+            village_target_ids,
+        )
 
     def test_build_summary_reveals_uses_stored_boundary_point(self) -> None:
         """Summary reveal payloads reuse persisted nearest boundary points."""
@@ -3184,6 +3191,13 @@ class GameSummaryTests(TestCase):
         self.assertContains(response, "Summary Village 1")
         self.assertContains(response, "Villages")
         self.assertEqual(response.context["selected_game"], game)
+        village_target_ids = set(
+            game.turns.values_list("village_target_id", flat=True)
+        )
+        self.assertEqual(
+            {reveal["targetId"] for reveal in response.context["summary_reveals"]},
+            village_target_ids,
+        )
 
     def test_history_detail_rejects_other_users_game(self) -> None:
         """Users cannot review another user's game from history."""
@@ -3308,25 +3322,28 @@ class GameSummaryTests(TestCase):
 
         response = self.client.get(reverse("profile"))
         statistics = response.context["statistics"]
+        map_modes_by_target = {
+            mode["target_type"]: mode for mode in statistics["map_modes"]
+        }
 
         self.assertEqual(
-            statistics["map_modes"],
-            [
-                {
+            map_modes_by_target,
+            {
+                Game.TargetType.MUNICIPALITY: {
                     "average_score": municipality_game.total_score,
                     "games_played": 1,
                     "label": "CH",
                     "target_label": "Municipalities",
                     "target_type": Game.TargetType.MUNICIPALITY,
                 },
-                {
+                Game.TargetType.VILLAGE: {
                     "average_score": village_game.total_score,
                     "games_played": 1,
                     "label": "CH",
                     "target_label": "Villages",
                     "target_type": Game.TargetType.VILLAGE,
                 },
-            ],
+            },
         )
         self.assertContains(response, "Municipalities")
         self.assertContains(response, "Villages")

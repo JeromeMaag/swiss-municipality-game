@@ -1,8 +1,18 @@
 """Admin configuration for the geo app."""
 
 from django.contrib import admin
+from django.utils import timezone
 
 from .models import Canton, GeoDatasetVersion, Municipality, Village
+
+
+def bump_village_dataset_versions(dataset_version_ids) -> None:
+    """Refresh village boundary cache versions for affected datasets."""
+    ids = {dataset_version_id for dataset_version_id in dataset_version_ids if dataset_version_id}
+    if ids:
+        GeoDatasetVersion.objects.filter(pk__in=ids).update(
+            villages_updated_at=timezone.now(),
+        )
 
 
 @admin.register(GeoDatasetVersion)
@@ -75,3 +85,31 @@ class VillageAdmin(admin.ModelAdmin):
             .get_queryset(request)
             .select_related("dataset_version", "canton", "municipality")
         )
+
+    def save_model(self, request, obj, form, change) -> None:
+        """Save a village and refresh the affected boundary cache version."""
+        previous_dataset_version_id = None
+        if change and obj.pk:
+            previous_dataset_version_id = (
+                Village.objects.filter(pk=obj.pk)
+                .values_list("dataset_version_id", flat=True)
+                .first()
+            )
+        super().save_model(request, obj, form, change)
+        bump_village_dataset_versions(
+            {previous_dataset_version_id, obj.dataset_version_id}
+        )
+
+    def delete_model(self, request, obj) -> None:
+        """Delete a village and refresh the affected boundary cache version."""
+        dataset_version_id = obj.dataset_version_id
+        super().delete_model(request, obj)
+        bump_village_dataset_versions({dataset_version_id})
+
+    def delete_queryset(self, request, queryset) -> None:
+        """Delete villages and refresh affected boundary cache versions."""
+        dataset_version_ids = set(
+            queryset.values_list("dataset_version_id", flat=True).distinct()
+        )
+        super().delete_queryset(request, queryset)
+        bump_village_dataset_versions(dataset_version_ids)
