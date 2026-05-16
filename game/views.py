@@ -29,7 +29,7 @@ from .services import (
     GuessSubmissionError,
     InvalidGameModeError,
     InvalidGameTargetTypeError,
-    NotEnoughMunicipalitiesError,
+    NotEnoughTargetsError,
     calculate_nearest_boundary_point,
     start_game_for_player,
     submit_guess_for_player,
@@ -102,7 +102,7 @@ def start(request):
     except (
         InvalidGameModeError,
         InvalidGameTargetTypeError,
-        NotEnoughMunicipalitiesError,
+        NotEnoughTargetsError,
     ) as error:
         (
             selected_game_mode,

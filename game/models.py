@@ -219,7 +219,9 @@ class Game(models.Model):
 
     def save(self, *args, **kwargs) -> None:
         """Persist the game while preserving existing turn target consistency."""
-        if self.target_type_changed_after_turns_exist():
+        if self.target_type_changed_after_turns_exist(
+            update_fields=kwargs.get("update_fields"),
+        ):
             raise ValidationError(
                 {
                     "target_type": (
@@ -230,9 +232,11 @@ class Game(models.Model):
             )
         super().save(*args, **kwargs)
 
-    def target_type_changed_after_turns_exist(self) -> bool:
+    def target_type_changed_after_turns_exist(self, *, update_fields=None) -> bool:
         """Return whether target type was changed after turns were created."""
         if self.pk is None:
+            return False
+        if update_fields is not None and "target_type" not in update_fields:
             return False
         persisted_target_type = (
             type(self).objects.filter(pk=self.pk)
@@ -406,6 +410,11 @@ class Turn(models.Model):
 
         if errors:
             raise ValidationError(errors)
+
+    def save(self, *args, **kwargs) -> None:
+        """Persist the turn after enforcing target consistency rules."""
+        self.clean()
+        super().save(*args, **kwargs)
 
 
 class Guess(models.Model):

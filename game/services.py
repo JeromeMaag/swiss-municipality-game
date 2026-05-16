@@ -39,8 +39,11 @@ NEAREST_BOUNDARY_POINT_SQL = """
 """
 
 
-class NotEnoughMunicipalitiesError(ValueError):
+class NotEnoughTargetsError(ValueError):
     """Raised when there are not enough active targets to start a game."""
+
+
+NotEnoughMunicipalitiesError = NotEnoughTargetsError
 
 
 class InvalidGameModeError(ValueError):
@@ -125,7 +128,7 @@ def calculate_scoring_max_distance_m_for_dataset(
         The maximum geodesic distance between bounding-box corners in meters.
 
     Raises:
-        NotEnoughMunicipalitiesError: If the dataset has no usable map extent.
+        NotEnoughTargetsError: If the dataset has no usable map extent.
     """
     target_config = target_type_config(target_type)
     target_table = connection.ops.quote_name(target_config.model._meta.db_table)
@@ -183,7 +186,7 @@ def calculate_scoring_max_distance_m_for_dataset(
         row = cursor.fetchone()
 
     if row is None or row[0] is None or row[0] <= 0:
-        raise NotEnoughMunicipalitiesError(
+        raise NotEnoughTargetsError(
             _("Could not calculate a usable scoring map extent.")
         )
     return float(row[0])
@@ -230,7 +233,7 @@ def start_game(user) -> Game:
         An active game with five turns.
 
     Raises:
-        NotEnoughMunicipalitiesError: If fewer than five active targets exist in
+        NotEnoughTargetsError: If fewer than five active targets exist in
             the current dataset version.
     """
     return start_game_for_player(PlayerIdentity.for_user(user))
@@ -255,7 +258,7 @@ def start_game_for_player(
         An active game with five turns.
 
     Raises:
-        NotEnoughMunicipalitiesError: If fewer than five active targets exist in
+        NotEnoughTargetsError: If fewer than five active targets exist in
             the current dataset version.
     """
     if not player.can_own_games:
@@ -282,7 +285,7 @@ def start_game_for_player(
                 existing_game = get_active_game_for_player(player)
                 if existing_game is not None:
                     return existing_game
-                raise NotEnoughMunicipalitiesError(
+                raise NotEnoughTargetsError(
                     _(
                         "At least %(count)s active %(targets)s are required "
                         "to start a game."
@@ -302,7 +305,7 @@ def start_game_for_player(
                 existing_game = get_active_game_for_player(player)
                 if existing_game is not None:
                     return existing_game
-                raise NotEnoughMunicipalitiesError(
+                raise NotEnoughTargetsError(
                     _(
                         "At least %(count)s active %(targets)s are required "
                         "to start a game."
@@ -370,7 +373,7 @@ def sample_target_ids(
     min_id = id_bounds["min_id"]
     max_id = id_bounds["max_id"]
     if min_id is None or max_id is None:
-        raise NotEnoughMunicipalitiesError(
+        raise NotEnoughTargetsError(
             _("At least %(count)s active targets are required to start a game.")
             % {"count": TURN_COUNT}
         )
@@ -405,7 +408,7 @@ def sample_target_ids(
                 break
 
     if len(target_ids) != TURN_COUNT:
-        raise NotEnoughMunicipalitiesError(
+        raise NotEnoughTargetsError(
             _("At least %(count)s active targets are required to start a game.")
             % {"count": TURN_COUNT}
         )

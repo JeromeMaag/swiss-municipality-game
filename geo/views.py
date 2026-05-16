@@ -239,7 +239,7 @@ def village_boundary_scope(request, dataset_version: GeoDatasetVersion) -> Villa
 
 def village_boundary_scope_key(scope: VillageBoundaryScope) -> str:
     """Return a cache-key suffix that changes when village data changes."""
-    parts = ["villages", f"updated:{scope.version_key}"]
+    parts = [f"updated:{scope.version_key}"]
     if scope.canton_key:
         parts.append(scope.canton_key)
     return ":".join(parts)

@@ -28,7 +28,7 @@ from .services import (
     InvalidGameModeError,
     InvalidGameTargetTypeError,
     InvalidGuessCoordinatesError,
-    NotEnoughMunicipalitiesError,
+    NotEnoughTargetsError,
     calculate_scoring_max_distance_m_for_dataset,
     _calculate_guess_distances,
     _ensure_game_scoring_max_distance_m,
@@ -604,6 +604,9 @@ class GameModelTests(TestCase):
 
         game.refresh_from_db()
         self.assertEqual(game.target_type, Game.TargetType.MUNICIPALITY)
+        game.total_score = 10
+        with self.assertNumQueries(1):
+            game.save(update_fields=["total_score"])
 
     def test_finished_game_requires_finished_at(self) -> None:
         """Finished games require a finish timestamp during validation."""
@@ -735,6 +738,17 @@ class GameModelTests(TestCase):
                 with self.assertRaises(ValidationError):
                     turn.full_clean()
 
+    def test_turn_save_enforces_target_type_consistency(self) -> None:
+        """Turn saves cannot bypass target type consistency validation."""
+        game = Game.objects.create(user=self.user)
+
+        with self.assertRaises(ValidationError):
+            Turn.objects.create(
+                game=game,
+                turn_number=1,
+                village_target=self.village,
+            )
+
     def test_turn_target_must_belong_to_canton_game_scope(self) -> None:
         """Turn validation rejects targets outside a single-canton game scope."""
         bern = Canton.objects.create(
@@ -793,14 +807,18 @@ class GameModelTests(TestCase):
         game = Game.objects.create(user=self.user)
 
         with self.assertRaises(IntegrityError), transaction.atomic():
-            Turn.objects.create(game=game, turn_number=1)
+            Turn.objects.bulk_create([Turn(game=game, turn_number=1)])
 
         with self.assertRaises(IntegrityError), transaction.atomic():
-            Turn.objects.create(
-                game=game,
-                turn_number=1,
-                municipality_target=self.municipality,
-                village_target=self.village,
+            Turn.objects.bulk_create(
+                [
+                    Turn(
+                        game=game,
+                        turn_number=1,
+                        municipality_target=self.municipality,
+                        village_target=self.village,
+                    )
+                ]
             )
 
     def test_turn_number_must_be_between_one_and_five(self) -> None:
@@ -1492,7 +1510,7 @@ class GameStartTests(TestCase):
         self.create_municipalities(4, canton=bern)
         self.create_municipalities(5)
 
-        with self.assertRaises(NotEnoughMunicipalitiesError):
+        with self.assertRaises(NotEnoughTargetsError):
             start_game_for_player(
                 PlayerIdentity.for_user(self.user),
                 mode=Game.Mode.CANTON,
@@ -1554,7 +1572,7 @@ class GameStartTests(TestCase):
         self.create_villages(4)
         self.create_municipalities(5)
 
-        with self.assertRaises(NotEnoughMunicipalitiesError):
+        with self.assertRaises(NotEnoughTargetsError):
             start_game_for_player(
                 PlayerIdentity.for_user(self.user),
                 target_type=Game.TargetType.VILLAGE,
@@ -1567,7 +1585,7 @@ class GameStartTests(TestCase):
         self.create_villages(4)
 
         with translation.override("de"):
-            with self.assertRaises(NotEnoughMunicipalitiesError) as error:
+            with self.assertRaises(NotEnoughTargetsError) as error:
                 start_game_for_player(
                     PlayerIdentity.for_user(self.user),
                     target_type=Game.TargetType.VILLAGE,
@@ -1604,7 +1622,7 @@ class GameStartTests(TestCase):
         self.create_municipalities(4)
         self.create_municipalities(1, is_active=False)
 
-        with self.assertRaises(NotEnoughMunicipalitiesError):
+        with self.assertRaises(NotEnoughTargetsError):
             start_game(self.user)
 
         self.assertEqual(Game.objects.count(), 0)
