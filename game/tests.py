@@ -580,6 +580,31 @@ class GameModelTests(TestCase):
         with translation.override("de"):
             self.assertEqual(village_game.target_type_label, "Dörfer")
 
+    def test_game_target_type_cannot_change_after_turns_exist(self) -> None:
+        """Games keep target type consistent with existing turn target FKs."""
+        game = Game.objects.create(user=self.user)
+        Turn.objects.create(
+            game=game,
+            turn_number=1,
+            municipality_target=self.municipality,
+        )
+
+        game.target_type = Game.TargetType.VILLAGE
+
+        with self.assertRaisesMessage(
+            ValidationError,
+            "Game target type cannot change after turns have been created.",
+        ):
+            game.full_clean()
+        with self.assertRaisesMessage(
+            ValidationError,
+            "Game target type cannot change after turns have been created.",
+        ):
+            game.save(update_fields=["target_type"])
+
+        game.refresh_from_db()
+        self.assertEqual(game.target_type, Game.TargetType.MUNICIPALITY)
+
     def test_finished_game_requires_finished_at(self) -> None:
         """Finished games require a finish timestamp during validation."""
         game = Game(user=self.user, status=Game.Status.FINISHED)

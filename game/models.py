@@ -207,6 +207,43 @@ class Game(models.Model):
             raise ValidationError(
                 {"finished_at": "Finished games require a finish timestamp."}
             )
+        if self.target_type_changed_after_turns_exist():
+            raise ValidationError(
+                {
+                    "target_type": (
+                        "Game target type cannot change after turns have been "
+                        "created."
+                    )
+                }
+            )
+
+    def save(self, *args, **kwargs) -> None:
+        """Persist the game while preserving existing turn target consistency."""
+        if self.target_type_changed_after_turns_exist():
+            raise ValidationError(
+                {
+                    "target_type": (
+                        "Game target type cannot change after turns have been "
+                        "created."
+                    )
+                }
+            )
+        super().save(*args, **kwargs)
+
+    def target_type_changed_after_turns_exist(self) -> bool:
+        """Return whether target type was changed after turns were created."""
+        if self.pk is None:
+            return False
+        persisted_target_type = (
+            type(self).objects.filter(pk=self.pk)
+            .values_list("target_type", flat=True)
+            .first()
+        )
+        return (
+            persisted_target_type is not None
+            and persisted_target_type != self.target_type
+            and self.turns.exists()
+        )
 
 
 class Turn(models.Model):

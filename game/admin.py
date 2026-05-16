@@ -45,6 +45,13 @@ class GameAdmin(admin.ModelAdmin):
         """Return games with canton data for changelist map labels."""
         return super().get_queryset(request).select_related("canton")
 
+    def get_readonly_fields(self, request, obj=None):
+        """Keep target type read-only once turns have been created."""
+        readonly_fields = list(super().get_readonly_fields(request, obj))
+        if obj is not None and obj.turns.exists():
+            readonly_fields.append("target_type")
+        return tuple(readonly_fields)
+
 
 @admin.register(Turn)
 class TurnAdmin(admin.ModelAdmin):
