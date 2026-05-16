@@ -46,7 +46,7 @@
                 data-tracking-url="{% url 'game:track_turn_event' current_turn.id %}"
               {% endif %}
               {% if last_guess %}
-                data-reveal-target-id="{{ last_guess.turn.target.id }}"
+                data-reveal-target-id="{{ last_guess.turn.municipality_target.id }}"
                 data-reveal-boundary-lat="{{ reveal_boundary_lat }}"
                 data-reveal-boundary-lng="{{ reveal_boundary_lng }}"
                 data-reveal-lat="{{ reveal_guess_lat }}"
@@ -84,7 +84,7 @@
               <span class="state-label">
                 {% if active_game.status == "finished" %}{% trans "Finished game" %}{% else %}{% trans "Result" %}{% endif %}
               </span>
-              <h1 id="result-heading">{{ last_guess.turn.target.name }}</h1>
+              <h1 id="result-heading">{{ last_guess.turn.municipality_target.name }}</h1>
               <dl class="result-list">
                 <div class="result-list-primary">
                   <dt>{% trans "Score" %}</dt>
@@ -96,12 +96,12 @@
                 </div>
                 <div>
                   <dt>{% trans "Canton" %}</dt>
-                  <dd>{{ last_guess.turn.target.canton.name }} ({{ last_guess.turn.target.canton.abbreviation }})</dd>
+                  <dd>{{ last_guess.turn.municipality_target.canton.name }} ({{ last_guess.turn.municipality_target.canton.abbreviation }})</dd>
                 </div>
-                {% if last_guess.turn.target.population is not None %}
+                {% if last_guess.turn.municipality_target.population is not None %}
                   <div>
                     <dt>{% trans "Population" %}</dt>
-                    <dd>{{ last_guess.turn.target.population }}</dd>
+                    <dd>{{ last_guess.turn.municipality_target.population }}</dd>
                   </div>
                 {% endif %}
               </dl>

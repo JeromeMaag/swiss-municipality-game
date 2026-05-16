@@ -16,7 +16,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from geo.constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
-from geo.models import Canton, GeoDatasetVersion, Municipality
+from geo.models import Canton, GeoDatasetVersion, Municipality, Village
 from tests.utils import make_test_geometry
 from tracking.models import GameEvent
 
@@ -360,6 +360,15 @@ class GameModelTests(TestCase):
             canton=self.canton,
             geom=make_test_geometry(),
         )
+        self.village = Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier="village-1",
+            name="Aadorf",
+            postal_code="8355",
+            canton=self.canton,
+            municipality=self.municipality,
+            geom=make_test_geometry(),
+        )
 
     def test_game_defaults_to_active(self) -> None:
         """New games start active with zero score."""
@@ -504,23 +513,95 @@ class GameModelTests(TestCase):
     def test_turn_number_is_unique_per_game(self) -> None:
         """A game cannot contain the same turn number twice."""
         game = Game.objects.create(user=self.user)
-        Turn.objects.create(game=game, turn_number=1, target=self.municipality)
+        Turn.objects.create(game=game, turn_number=1, municipality_target=self.municipality)
 
         with self.assertRaises(IntegrityError), transaction.atomic():
-            Turn.objects.create(game=game, turn_number=1, target=self.other_municipality)
+            Turn.objects.create(game=game, turn_number=1, municipality_target=self.other_municipality)
 
     def test_turn_target_is_unique_per_game(self) -> None:
         """A game cannot target the same municipality twice."""
         game = Game.objects.create(user=self.user)
-        Turn.objects.create(game=game, turn_number=1, target=self.municipality)
+        Turn.objects.create(game=game, turn_number=1, municipality_target=self.municipality)
 
         with self.assertRaises(IntegrityError), transaction.atomic():
-            Turn.objects.create(game=game, turn_number=2, target=self.municipality)
+            Turn.objects.create(game=game, turn_number=2, municipality_target=self.municipality)
+
+    def test_turn_village_target_is_unique_per_game(self) -> None:
+        """A game cannot target the same village twice."""
+        game = Game.objects.create(
+            user=self.user,
+            target_type=Game.TargetType.VILLAGE,
+        )
+        Turn.objects.create(game=game, turn_number=1, village_target=self.village)
+
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Turn.objects.create(game=game, turn_number=2, village_target=self.village)
+
+    def test_turn_requires_exactly_one_target(self) -> None:
+        """Turns must point to exactly one target type."""
+        game = Game.objects.create(user=self.user)
+        invalid_turns = [
+            Turn(game=game, turn_number=1),
+            Turn(
+                game=game,
+                turn_number=1,
+                municipality_target=self.municipality,
+                village_target=self.village,
+            ),
+        ]
+
+        for turn in invalid_turns:
+            with self.subTest(
+                municipality_target=turn.municipality_target,
+                village_target=turn.village_target,
+            ):
+                with self.assertRaises(ValidationError):
+                    turn.full_clean()
+
+    def test_turn_target_type_must_match_game_target_type(self) -> None:
+        """Turn validation rejects targets that do not match the game type."""
+        municipality_game = Game.objects.create(user=self.user)
+        village_game = Game.objects.create(
+            user=self.other_user,
+            target_type=Game.TargetType.VILLAGE,
+        )
+        invalid_turns = [
+            Turn(
+                game=municipality_game,
+                turn_number=1,
+                village_target=self.village,
+            ),
+            Turn(
+                game=village_game,
+                turn_number=1,
+                municipality_target=self.municipality,
+            ),
+        ]
+
+        for turn in invalid_turns:
+            with self.subTest(game_target_type=turn.game.target_type):
+                with self.assertRaises(ValidationError):
+                    turn.full_clean()
+
+    def test_database_rejects_turns_without_exactly_one_target(self) -> None:
+        """Database constraints reject turns without one concrete target."""
+        game = Game.objects.create(user=self.user)
+
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Turn.objects.create(game=game, turn_number=1)
+
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Turn.objects.create(
+                game=game,
+                turn_number=1,
+                municipality_target=self.municipality,
+                village_target=self.village,
+            )
 
     def test_turn_number_must_be_between_one_and_five(self) -> None:
         """Turn validation rejects numbers outside the five-turn game range."""
         game = Game.objects.create(user=self.user)
-        turn = Turn(game=game, turn_number=6, target=self.municipality)
+        turn = Turn(game=game, turn_number=6, municipality_target=self.municipality)
 
         with self.assertRaises(ValidationError):
             turn.full_clean()
@@ -536,7 +617,26 @@ class GameModelTests(TestCase):
             is_active=False,
         )
         game = Game.objects.create(user=self.user)
-        turn = Turn(game=game, turn_number=1, target=inactive_municipality)
+        turn = Turn(game=game, turn_number=1, municipality_target=inactive_municipality)
+
+        with self.assertRaises(ValidationError):
+            turn.full_clean()
+
+    def test_turn_village_target_must_be_active(self) -> None:
+        """Turn validation rejects inactive villages as targets."""
+        inactive_village = Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier="inactive-village",
+            name="Inactive Village",
+            canton=self.canton,
+            geom=make_test_geometry(),
+            is_active=False,
+        )
+        game = Game.objects.create(
+            user=self.user,
+            target_type=Game.TargetType.VILLAGE,
+        )
+        turn = Turn(game=game, turn_number=1, village_target=inactive_village)
 
         with self.assertRaises(ValidationError):
             turn.full_clean()
@@ -544,7 +644,7 @@ class GameModelTests(TestCase):
     def test_guess_is_one_to_one_per_turn(self) -> None:
         """A turn can only have one guess."""
         game = Game.objects.create(user=self.user)
-        turn = Turn.objects.create(game=game, turn_number=1, target=self.municipality)
+        turn = Turn.objects.create(game=game, turn_number=1, municipality_target=self.municipality)
         Guess.objects.create(
             turn=turn,
             user=self.user,
@@ -565,7 +665,7 @@ class GameModelTests(TestCase):
     def test_guess_user_must_match_game_user(self) -> None:
         """Guess validation rejects users that do not own the game."""
         game = Game.objects.create(user=self.user)
-        turn = Turn.objects.create(game=game, turn_number=1, target=self.municipality)
+        turn = Turn.objects.create(game=game, turn_number=1, municipality_target=self.municipality)
         guess = Guess(
             turn=turn,
             user=self.other_user,
@@ -580,7 +680,7 @@ class GameModelTests(TestCase):
     def test_guest_guess_must_match_game_guest(self) -> None:
         """Guest guess validation requires the same guest as the game."""
         game = Game.objects.create(user=None, guest_key="guest-session")
-        turn = Turn.objects.create(game=game, turn_number=1, target=self.municipality)
+        turn = Turn.objects.create(game=game, turn_number=1, municipality_target=self.municipality)
         guess = Guess(
             turn=turn,
             user=None,
@@ -596,7 +696,7 @@ class GameModelTests(TestCase):
     def test_guest_guess_accepts_matching_game_guest(self) -> None:
         """Guest guesses can belong to the same guest as the game."""
         game = Game.objects.create(user=None, guest_key="guest-session")
-        turn = Turn.objects.create(game=game, turn_number=1, target=self.municipality)
+        turn = Turn.objects.create(game=game, turn_number=1, municipality_target=self.municipality)
         guess = Guess(
             turn=turn,
             user=None,
@@ -611,7 +711,7 @@ class GameModelTests(TestCase):
     def test_guess_save_derives_user_owner_from_turn_game(self) -> None:
         """Direct guess saves sync user ownership from the linked game."""
         game = Game.objects.create(user=self.user)
-        turn = Turn.objects.create(game=game, turn_number=1, target=self.municipality)
+        turn = Turn.objects.create(game=game, turn_number=1, municipality_target=self.municipality)
 
         guess = Guess.objects.create(
             turn=turn,
@@ -629,7 +729,7 @@ class GameModelTests(TestCase):
     def test_guess_save_derives_guest_owner_from_turn_game(self) -> None:
         """Direct guess saves sync guest ownership from the linked game."""
         game = Game.objects.create(user=None, guest_key="guest-session")
-        turn = Turn.objects.create(game=game, turn_number=1, target=self.municipality)
+        turn = Turn.objects.create(game=game, turn_number=1, municipality_target=self.municipality)
 
         guess = Guess.objects.create(
             turn=turn,
@@ -701,7 +801,7 @@ class GuessSubmissionServiceTests(TestCase):
                 Turn.objects.create(
                     game=game,
                     turn_number=index + 1,
-                    target=municipality,
+                    municipality_target=municipality,
                 )
             )
         return game, turns
@@ -757,7 +857,7 @@ class GuessSubmissionServiceTests(TestCase):
             canton=self.canton,
             geom=make_test_geometry(),
         )
-        turn = Turn.objects.create(game=game, turn_number=1, target=municipality)
+        turn = Turn.objects.create(game=game, turn_number=1, municipality_target=municipality)
 
         result = submit_guess_for_player(
             PlayerIdentity.for_guest("guest-session"),
@@ -819,7 +919,7 @@ class GuessSubmissionServiceTests(TestCase):
 
         scoring_max_distance_m = _ensure_game_scoring_max_distance_m(
             game=game,
-            target_id=turns[0].target_id,
+            target_id=turns[0].municipality_target_id,
         )
 
         self.assertTrue(math.isfinite(scoring_max_distance_m))
@@ -1021,7 +1121,7 @@ class GameStartTests(TestCase):
         self.assertGreater(game.scoring_max_distance_m, 0)
         self.assertEqual(len(turns), 5)
         self.assertEqual([turn.turn_number for turn in turns], [1, 2, 3, 4, 5])
-        self.assertEqual(len({turn.target_id for turn in turns}), 5)
+        self.assertEqual(len({turn.municipality_target_id for turn in turns}), 5)
         self.assertEqual(game.mode, Game.Mode.SWITZERLAND)
         self.assertIsNone(game.canton_id)
         self.assertTrue(
@@ -1083,14 +1183,14 @@ class GameStartTests(TestCase):
         )
 
         target_canton_ids = set(
-            game.turns.values_list("target__canton_id", flat=True)
+            game.turns.values_list("municipality_target__canton_id", flat=True)
         )
         self.assertEqual(game.mode, Game.Mode.CANTON)
         self.assertEqual(game.canton, bern)
         self.assertEqual(game.turns.count(), 5)
         self.assertEqual(target_canton_ids, {bern.id})
         self.assertTrue(
-            set(game.turns.values_list("target_id", flat=True)).issubset(
+            set(game.turns.values_list("municipality_target_id", flat=True)).issubset(
                 {municipality.id for municipality in bern_municipalities}
             )
         )
@@ -1582,7 +1682,7 @@ class GameStartTests(TestCase):
         turn = Turn.objects.create(
             game=game,
             turn_number=1,
-            target=municipality,
+            municipality_target=municipality,
         )
         submit_guess(self.user, turn.id, 47.05, 8.05)
         turn.refresh_from_db()
@@ -1867,9 +1967,9 @@ class GameStartTests(TestCase):
         self.create_municipalities(5)
         self.client.force_login(self.user)
         game = start_game(self.user)
-        first_turn = game.turns.select_related("target").order_by("turn_number").first()
-        first_turn.target.population = 12_345
-        first_turn.target.save(update_fields=["population"])
+        first_turn = game.turns.select_related("municipality_target").order_by("turn_number").first()
+        first_turn.municipality_target.population = 12_345
+        first_turn.municipality_target.save(update_fields=["population"])
 
         response = self.client.post(
             reverse("game:guess"),
@@ -1882,7 +1982,7 @@ class GameStartTests(TestCase):
         )
 
         self.assertContains(response, "Result")
-        self.assertContains(response, first_turn.target.name)
+        self.assertContains(response, first_turn.municipality_target.name)
         self.assertContains(response, "Score")
         self.assertContains(response, "1000")
         self.assertContains(response, "Canton")
@@ -1908,7 +2008,7 @@ class GameStartTests(TestCase):
         )
         self.assertContains(response, 'data-label-min-zoom="11"')
         self.assertContains(response, 'id="game-map"')
-        self.assertContains(response, f'data-reveal-target-id="{first_turn.target.id}"')
+        self.assertContains(response, f'data-reveal-target-id="{first_turn.municipality_target.id}"')
         self.assertContains(response, 'data-reveal-boundary-lat="')
         self.assertContains(response, 'data-reveal-boundary-lng="')
         self.assertNotContains(response, 'data-reveal-boundary-lat=""')
@@ -1932,9 +2032,9 @@ class GameStartTests(TestCase):
         self.create_municipalities(5)
         self.client.force_login(self.user)
         game = start_game(self.user)
-        first_turn = game.turns.select_related("target").order_by("turn_number").first()
-        first_turn.target.population = 0
-        first_turn.target.save(update_fields=["population"])
+        first_turn = game.turns.select_related("municipality_target").order_by("turn_number").first()
+        first_turn.municipality_target.population = 0
+        first_turn.municipality_target.save(update_fields=["population"])
 
         response = self.client.post(
             reverse("game:guess"),
@@ -1956,7 +2056,7 @@ class GameStartTests(TestCase):
         turn = Turn.objects.create(
             game=game,
             turn_number=1,
-            target=municipality,
+            municipality_target=municipality,
         )
         self.client.force_login(self.user)
 
@@ -2028,7 +2128,7 @@ class GameStartTests(TestCase):
         game = start_game(self.user)
         first_turn = game.turns.order_by("turn_number").first()
         future_targets = [
-            turn.target.name
+            turn.municipality_target.name
             for turn in game.turns.order_by("turn_number")
             if turn.turn_number != 1
         ]
@@ -2039,7 +2139,7 @@ class GameStartTests(TestCase):
         self.assertContains(response, f"{first_turn.turn_number}/5")
         self.assertContains(response, "Score")
         self.assertNotContains(response, f"Active game #{game.id}")
-        self.assertContains(response, first_turn.target.name)
+        self.assertContains(response, first_turn.municipality_target.name)
         self.assertContains(response, 'id="game-map"')
         self.assertContains(response, "leaflet@1.9.4")
         self.assertContains(
@@ -2229,7 +2329,7 @@ class GameSummaryTests(TestCase):
             turn = Turn.objects.create(
                 game=game,
                 turn_number=index + 1,
-                target=municipality,
+                municipality_target=municipality,
                 revealed_at=timezone.now(),
             )
             Guess.objects.create(
@@ -2387,7 +2487,7 @@ class GameSummaryTests(TestCase):
             canton=self.canton,
             geom=make_test_geometry(),
         )
-        Turn.objects.create(game=game, turn_number=1, target=municipality)
+        Turn.objects.create(game=game, turn_number=1, municipality_target=municipality)
         self.client.force_login(self.user)
 
         response = self.client.get(reverse("game:summary", args=[game.id]))
@@ -2675,13 +2775,13 @@ class GameSelectorTests(TestCase):
         Turn.objects.create(
             game=game,
             turn_number=1,
-            target=first_target,
+            municipality_target=first_target,
             revealed_at=timezone.now(),
         )
         second_turn = Turn.objects.create(
             game=game,
             turn_number=2,
-            target=second_target,
+            municipality_target=second_target,
         )
 
         self.assertEqual(get_current_turn(game), second_turn)
@@ -2725,7 +2825,7 @@ class GameSelectorTests(TestCase):
         second_turn = Turn.objects.create(
             game=finished_game,
             turn_number=2,
-            target=second_target,
+            municipality_target=second_target,
             revealed_at=timezone.now(),
         )
         Guess.objects.create(
@@ -2738,7 +2838,7 @@ class GameSelectorTests(TestCase):
         first_turn = Turn.objects.create(
             game=finished_game,
             turn_number=1,
-            target=first_target,
+            municipality_target=first_target,
             revealed_at=timezone.now(),
         )
         Guess.objects.create(
@@ -2793,7 +2893,7 @@ class GameViewHelperTests(TestCase):
         self.turn = Turn.objects.create(
             game=self.game,
             turn_number=1,
-            target=municipality,
+            municipality_target=municipality,
             revealed_at=timezone.now(),
         )
         self.guess = Guess.objects.create(
@@ -2827,7 +2927,7 @@ class GameViewHelperTests(TestCase):
         guest_turn = Turn.objects.create(
             game=guest_game,
             turn_number=1,
-            target=self.turn.target,
+            municipality_target=self.turn.municipality_target,
             revealed_at=timezone.now(),
         )
         guest_guess = Guess.objects.create(
@@ -2854,7 +2954,7 @@ class GameViewHelperTests(TestCase):
         other_turn = Turn.objects.create(
             game=other_game,
             turn_number=1,
-            target=self.turn.target,
+            municipality_target=self.turn.municipality_target,
             revealed_at=timezone.now(),
         )
         other_guess = Guess.objects.create(

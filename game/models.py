@@ -222,7 +222,7 @@ class Game(models.Model):
 
 
 class Turn(models.Model):
-    """One target municipality within a game."""
+    """One target within a game."""
 
     game = models.ForeignKey(
         Game,
@@ -232,8 +232,17 @@ class Turn(models.Model):
     turn_number = models.PositiveSmallIntegerField(
         validators=[MinValueValidator(1), MaxValueValidator(5)]
     )
-    target = models.ForeignKey(
+    municipality_target = models.ForeignKey(
         "geo.Municipality",
+        blank=True,
+        null=True,
+        on_delete=models.PROTECT,
+        related_name="target_turns",
+    )
+    village_target = models.ForeignKey(
+        "geo.Village",
+        blank=True,
+        null=True,
         on_delete=models.PROTECT,
         related_name="target_turns",
     )
@@ -250,12 +259,31 @@ class Turn(models.Model):
                 name="unique_turn_number_per_game",
             ),
             models.UniqueConstraint(
-                fields=["game", "target"],
-                name="unique_turn_target_per_game",
+                fields=["game", "municipality_target"],
+                condition=models.Q(municipality_target__isnull=False),
+                name="unique_turn_municipality_target_per_game",
+            ),
+            models.UniqueConstraint(
+                fields=["game", "village_target"],
+                condition=models.Q(village_target__isnull=False),
+                name="unique_turn_village_target_per_game",
             ),
             models.CheckConstraint(
                 condition=models.Q(turn_number__gte=1, turn_number__lte=5),
                 name="turn_number_between_1_and_5",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        municipality_target__isnull=False,
+                        village_target__isnull=True,
+                    )
+                    | models.Q(
+                        municipality_target__isnull=True,
+                        village_target__isnull=False,
+                    )
+                ),
+                name="turn_has_exactly_one_target",
             ),
         ]
 
@@ -271,11 +299,44 @@ class Turn(models.Model):
         """Validate turn consistency.
 
         Raises:
-            ValidationError: If the target municipality is inactive.
+            ValidationError: If target ownership or activity is invalid.
         """
         super().clean()
-        if self.target_id and not self.target.is_active:
-            raise ValidationError({"target": "Target municipality must be active."})
+        errors: dict[str, list[str]] = {}
+        has_municipality = self.municipality_target_id is not None
+        has_village = self.village_target_id is not None
+
+        if has_municipality == has_village:
+            errors.setdefault("municipality_target", []).append(
+                "Turns must have exactly one municipality or village target."
+            )
+        if (
+            self.game_id
+            and self.game.target_type == Game.TargetType.MUNICIPALITY
+            and not has_municipality
+        ):
+            errors.setdefault("municipality_target", []).append(
+                "Municipality games require a municipality target."
+            )
+        if (
+            self.game_id
+            and self.game.target_type == Game.TargetType.VILLAGE
+            and not has_village
+        ):
+            errors.setdefault("village_target", []).append(
+                "Village games require a village target."
+            )
+        if self.municipality_target_id and not self.municipality_target.is_active:
+            errors.setdefault("municipality_target", []).append(
+                "Target municipality must be active."
+            )
+        if self.village_target_id and not self.village_target.is_active:
+            errors.setdefault("village_target", []).append(
+                "Target village must be active."
+            )
+
+        if errors:
+            raise ValidationError(errors)
 
 
 class Guess(models.Model):

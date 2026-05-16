@@ -369,7 +369,7 @@ def build_summary_reveals(game: Game) -> list[dict]:
                 "lat": guess.point.y,
                 "lng": guess.point.x,
                 "score": guess.score,
-                "targetId": turn.target_id,
+                "targetId": turn.municipality_target_id,
                 "turnNumber": turn.turn_number,
             }
         )
@@ -382,7 +382,7 @@ def nearest_boundary_point_for_guess(guess: Guess) -> Point:
         return guess.nearest_boundary_point
     return calculate_nearest_boundary_point(
         point=guess.point,
-        target_id=guess.turn.target_id,
+        target_id=guess.turn.municipality_target_id,
     )
 
 
@@ -474,7 +474,7 @@ def get_last_guess_result(request, player=None) -> Guess | None:
         return None
 
     return (
-        Guess.objects.select_related("turn__game__canton", "turn__target__canton")
+        Guess.objects.select_related("turn__game__canton", "turn__municipality_target__canton")
         .only(
             "id",
             "user",
@@ -494,18 +494,18 @@ def get_last_guess_result(request, player=None) -> Guess | None:
             "turn__game__total_score",
             "turn__game__user",
             "turn__game__guest_key",
-            "turn__target__name",
-            "turn__target__population",
-            "turn__target__canton__abbreviation",
-            "turn__target__canton__name",
+            "turn__municipality_target__name",
+            "turn__municipality_target__population",
+            "turn__municipality_target__canton__abbreviation",
+            "turn__municipality_target__canton__name",
         )
         .defer(
-            "turn__target__geom",
-            "turn__target__geom_simplified",
-            "turn__target__label_point",
-            "turn__target__canton__geom",
-            "turn__target__canton__geom_simplified",
-            "turn__target__canton__label_point",
+            "turn__municipality_target__geom",
+            "turn__municipality_target__geom_simplified",
+            "turn__municipality_target__label_point",
+            "turn__municipality_target__canton__geom",
+            "turn__municipality_target__canton__geom_simplified",
+            "turn__municipality_target__canton__label_point",
         )
         .filter(player.owner_query(), pk=guess_pk)
         .first()
@@ -547,7 +547,7 @@ def render_game_index(
         turns = list(
             active_game.turns.only(
                 "id",
-                "target",
+                "municipality_target",
                 "turn_number",
                 "revealed_at",
             ).order_by("turn_number")
@@ -559,7 +559,7 @@ def render_game_index(
             )
         if current_turn is not None:
             current_target_name = Municipality.objects.only("name").get(
-                pk=current_turn.target_id
+                pk=current_turn.municipality_target_id
             ).name
     if last_guess is not None:
         boundary_point = nearest_boundary_point_for_guess(last_guess)

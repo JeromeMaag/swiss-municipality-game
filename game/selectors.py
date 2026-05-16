@@ -106,14 +106,14 @@ def get_finished_game_summary_for_player(
         None when the game does not exist or is not available for summaries.
     """
     turns = (
-        Turn.objects.select_related("target__canton", "guess")
+        Turn.objects.select_related("municipality_target__canton", "guess")
         .defer(
-            "target__geom",
-            "target__geom_simplified",
-            "target__label_point",
-            "target__canton__geom",
-            "target__canton__geom_simplified",
-            "target__canton__label_point",
+            "municipality_target__geom",
+            "municipality_target__geom_simplified",
+            "municipality_target__label_point",
+            "municipality_target__canton__geom",
+            "municipality_target__canton__geom_simplified",
+            "municipality_target__canton__label_point",
         )
         .order_by("turn_number")
     )

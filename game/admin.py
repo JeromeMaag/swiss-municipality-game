@@ -10,7 +10,7 @@ class TurnInline(admin.TabularInline):
 
     model = Turn
     extra = 0
-    autocomplete_fields = ("target",)
+    autocomplete_fields = ("municipality_target", "village_target")
     readonly_fields = ("started_at", "revealed_at")
 
 
@@ -52,10 +52,18 @@ class GameAdmin(admin.ModelAdmin):
 class TurnAdmin(admin.ModelAdmin):
     """Admin configuration for turns."""
 
-    list_display = ("id", "game", "turn_number", "target", "started_at", "revealed_at")
+    list_display = (
+        "id",
+        "game",
+        "turn_number",
+        "municipality_target",
+        "village_target",
+        "started_at",
+        "revealed_at",
+    )
     list_filter = ("turn_number", "started_at", "revealed_at")
-    search_fields = ("target__name",)
-    autocomplete_fields = ("game", "target")
+    search_fields = ("municipality_target__name", "village_target__name")
+    autocomplete_fields = ("game", "municipality_target", "village_target")
     readonly_fields = ("started_at",)
 
 
@@ -72,6 +80,11 @@ class GuessAdmin(admin.ModelAdmin):
         "guessed_at",
     )
     list_filter = ("guessed_at",)
-    search_fields = ("user__username", "guest_key", "turn__target__name")
+    search_fields = (
+        "user__username",
+        "guest_key",
+        "turn__municipality_target__name",
+        "turn__village_target__name",
+    )
     autocomplete_fields = ("turn",)
     readonly_fields = ("user", "guest_key", "guessed_at")

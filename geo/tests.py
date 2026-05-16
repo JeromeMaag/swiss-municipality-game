@@ -591,7 +591,7 @@ class GeoJSONEndpointTests(TestCase):
         turn = Turn.objects.create(
             game=game,
             turn_number=1,
-            target=self.municipality,
+            municipality_target=self.municipality,
             revealed_at=timezone.now() if revealed else None,
         )
         session = self.client.session
@@ -792,7 +792,7 @@ class GeoJSONEndpointTests(TestCase):
         turn = Turn.objects.create(
             game=game,
             turn_number=1,
-            target=self.municipality,
+            municipality_target=self.municipality,
             revealed_at=timezone.now(),
         )
         session = self.client.session

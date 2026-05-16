@@ -275,7 +275,11 @@ def start_game_for_player(
                 **player.model_fields(),
             )
             turns = [
-                Turn(game=game, turn_number=turn_number, target_id=target_id)
+                Turn(
+                    game=game,
+                    turn_number=turn_number,
+                    municipality_target_id=target_id,
+                )
                 for turn_number, target_id in enumerate(target_ids, start=1)
             ]
             Turn.objects.bulk_create(turns)
@@ -429,9 +433,12 @@ def submit_guess_for_player(
 
         scoring_max_distance_m = _ensure_game_scoring_max_distance_m(
             game=game,
-            target_id=turn.target_id,
+            target_id=turn.municipality_target_id,
         )
-        distances = _calculate_guess_distances(point=point, target_id=turn.target_id)
+        distances = _calculate_guess_distances(
+            point=point,
+            target_id=turn.municipality_target_id,
+        )
         score = calculate_score(
             distances.distance_to_municipality_m,
             scoring_max_distance_m,
