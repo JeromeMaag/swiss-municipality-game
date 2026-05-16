@@ -211,15 +211,19 @@ Boundary line theme:
 - `White`
 - `Black`
 
-Outline visibility:
+Boundary visibility:
 
-- `All outlines`
-- `Cantons only`
-- `Municipalities only`
-- `Off`
+- `Cantons`
+- `Municipalities`
+- `Villages` for village maps
 
-Village maps also show a `Show municipalities` setting. It toggles municipality
-outlines on top of the village boundaries.
+The boundary checkboxes can be combined freely. For example, a village game can
+show only canton and village boundaries while hiding municipality boundaries.
+Unchecking every boundary layer hides all non-highlight boundaries.
+
+Village maps include village boundaries as their target layer. In that mode,
+all three boundary levels can be shown together or reduced to the layers that
+are useful for the current guess.
 
 Map settings affect display only. They do not affect validation, distance
 calculation, scoring, or history.

@@ -260,20 +260,8 @@ msgstr "Weiss"
 msgid "Black"
 msgstr "Schwarz"
 
-msgid "Outlines"
+msgid "Boundaries"
 msgstr "Grenzen"
-
-msgid "All outlines"
-msgstr "Alle Grenzen"
-
-msgid "Cantons only"
-msgstr "Nur Kantone"
-
-msgid "Municipalities only"
-msgstr "Nur Gemeinden"
-
-msgid "Off"
-msgstr "Aus"
 
 msgid "Geodata"
 msgstr "Geodaten"
@@ -320,9 +308,6 @@ msgstr "Gemeinden"
 
 msgid "Villages"
 msgstr "Dörfer"
-
-msgid "Show municipalities"
-msgstr "Gemeinden anzeigen"
 
 msgid "Active municipalities"
 msgstr "Aktive Gemeinden"

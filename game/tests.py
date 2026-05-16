@@ -1549,22 +1549,18 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Auto")
         self.assertContains(response, "White")
         self.assertContains(response, "Black")
-        self.assertContains(response, "Outlines")
-        self.assertContains(response, "data-outline-picker")
-        self.assertContains(response, "All outlines")
-        self.assertContains(response, "Cantons only")
-        self.assertContains(response, "Municipalities only")
-        self.assertContains(response, "Off")
-        self.assertContains(response, "Show municipalities")
-        self.assertContains(response, "data-municipality-overlay-setting")
-        self.assertContains(response, "data-municipality-overlay-picker")
+        self.assertContains(response, "Boundaries")
+        self.assertContains(response, "data-outline-layer-picker")
+        self.assertContains(response, 'value="cantons"')
+        self.assertContains(response, 'value="municipalities"')
+        self.assertContains(response, 'value="villages"')
+        self.assertContains(response, 'data-outline-layer-setting="villages" hidden')
         self.assertContains(response, "data-game-mode-picker")
         self.assertContains(response, 'id="game-start-form"')
         self.assertContains(response, 'name="game_mode"')
         self.assertContains(response, 'name="canton"')
         self.assertContains(response, 'name="target_type"')
         self.assertNotContains(response, 'name="show_municipality_boundaries"')
-        self.assertContains(response, "data-municipality-overlay-setting hidden")
         self.assertContains(response, 'form="game-start-form"')
         self.assertContains(response, reverse("game:start"))
 
@@ -1580,7 +1576,6 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Single canton")
         self.assertContains(response, "Villages")
         self.assertContains(response, "data-background-map-picker")
-        self.assertContains(response, "data-municipality-overlay-setting")
         self.assertContains(response, reverse("geo:cantons_geojson"))
         self.assertContains(response, reverse("geo:municipality_boundaries_geojson"))
         self.assertContains(response, "Play without account")
@@ -1699,7 +1694,7 @@ class GameStartTests(TestCase):
                 f'{reverse("geo:municipality_boundaries_geojson")}"'
             ),
         )
-        self.assertContains(game_response, "data-municipality-overlay-setting")
+        self.assertContains(game_response, 'data-outline-layer-setting="villages" hidden')
 
     def test_start_view_omits_municipality_overlay_for_municipality_game(self) -> None:
         """Municipality maps do not expose the village-only overlay source."""
@@ -2895,7 +2890,7 @@ class GameSummaryTests(TestCase):
         self.assertContains(response, "Villages")
         self.assertContains(response, 'name="target_type"')
         self.assertContains(response, 'value="village"')
-        self.assertContains(response, "data-municipality-overlay-setting")
+        self.assertContains(response, 'data-outline-layer-setting="villages" hidden')
         self.assertNotContains(response, 'name="show_municipality_boundaries"')
 
     def test_build_summary_reveals_uses_stored_boundary_point(self) -> None:

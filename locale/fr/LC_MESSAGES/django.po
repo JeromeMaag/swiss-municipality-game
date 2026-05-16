@@ -260,20 +260,8 @@ msgstr "Blanc"
 msgid "Black"
 msgstr "Noir"
 
-msgid "Outlines"
-msgstr "Contours"
-
-msgid "All outlines"
-msgstr "Tous les contours"
-
-msgid "Cantons only"
-msgstr "Cantons seulement"
-
-msgid "Municipalities only"
-msgstr "Communes seulement"
-
-msgid "Off"
-msgstr "Désactivé"
+msgid "Boundaries"
+msgstr "Limites"
 
 msgid "Geodata"
 msgstr "Géodonnées"
@@ -320,9 +308,6 @@ msgstr "Communes"
 
 msgid "Villages"
 msgstr "Localités"
-
-msgid "Show municipalities"
-msgstr "Afficher les communes"
 
 msgid "Active municipalities"
 msgstr "Communes actives"
