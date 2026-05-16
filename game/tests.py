@@ -1860,6 +1860,7 @@ class GameStartTests(TestCase):
         self.assertContains(response, "0 m")
         self.assertContains(response, "Next")
         self.assertContains(response, "data-next-turn-link")
+        self.assertContains(response, "data-game-keyboard-action")
         self.assertContains(
             response,
             f'data-tracking-url="{reverse("game:track_turn_event", args=[first_turn.id])}"',
@@ -1942,6 +1943,7 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Zurich (ZH)")
         self.assertContains(response, "Summary")
         self.assertContains(response, reverse("game:summary", args=[game.id]))
+        self.assertContains(response, "data-game-keyboard-action")
         self.assertContains(response, 'id="game-map"')
         self.assertContains(
             response,
@@ -2034,6 +2036,7 @@ class GameStartTests(TestCase):
         self.assertContains(response, "data-guess-lat")
         self.assertContains(response, "data-guess-lng")
         self.assertContains(response, "data-confirm-guess")
+        self.assertContains(response, "data-game-keyboard-action")
         self.assertContains(
             response,
             f'data-tracking-url="{reverse("game:track_turn_event", args=[first_turn.id])}"',
@@ -2231,6 +2234,7 @@ class GameSummaryTests(TestCase):
         self.assertContains(response, "Summary Municipality 1")
         self.assertContains(response, "Play again")
         self.assertContains(response, "Change game mode")
+        self.assertContains(response, "data-game-keyboard-action")
         self.assertContains(response, "data-background-map-picker")
         self.assertContains(response, reverse("game:start"))
         self.assertContains(response, reverse("game:index"))
