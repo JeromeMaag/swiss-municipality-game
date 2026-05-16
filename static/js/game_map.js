@@ -1286,8 +1286,8 @@
     }).then(function (municipalityOverlayLayer) {
       boundaryState.municipalityOverlayLayer = municipalityOverlayLayer;
       applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
-      return addBoundaryLayer(map, mapElement.dataset.municipalityBoundariesUrl, {
-        errorMessage: "Municipality boundaries could not be loaded.",
+      return addBoundaryLayer(map, mapElement.dataset.targetBoundariesUrl, {
+        errorMessage: "Target boundaries could not be loaded.",
         fitBounds: !revealState && !summaryState,
         renderer: vectorRenderer,
         style: municipalityStyle(

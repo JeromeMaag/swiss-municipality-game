@@ -477,7 +477,7 @@ class Guess(models.Model):
         """Validate guess consistency.
 
         Raises:
-            ValidationError: If the guess user does not match the game user.
+            ValidationError: If the guess owner does not match the game owner.
         """
         super().clean()
         errors = {}

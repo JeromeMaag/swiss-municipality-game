@@ -3,6 +3,7 @@
 from datetime import timedelta
 import json
 import math
+import re
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -1595,6 +1596,13 @@ class GameStartTests(TestCase):
         self.assertContains(response, 'name="canton"')
         self.assertContains(response, 'name="target_type"')
         self.assertContains(response, 'name="show_municipality_boundaries"')
+        overlay_input = re.search(
+            r"<input[^>]*data-municipality-overlay-toggle[^>]*>",
+            response.content.decode(),
+            re.DOTALL,
+        )
+        self.assertIsNotNone(overlay_input)
+        self.assertNotIn("disabled", overlay_input.group(0))
         self.assertContains(response, 'form="game-start-form"')
         self.assertContains(response, reverse("game:start"))
 
@@ -1688,7 +1696,7 @@ class GameStartTests(TestCase):
         self.assertContains(
             game_response,
             (
-                'data-municipality-boundaries-url="'
+                'data-target-boundaries-url="'
                 f'{reverse("geo:municipality_boundaries_geojson")}?canton=ZH"'
             ),
         )
@@ -1722,7 +1730,7 @@ class GameStartTests(TestCase):
         self.assertContains(
             game_response,
             (
-                'data-municipality-boundaries-url="'
+                'data-target-boundaries-url="'
                 f'{reverse("geo:village_boundaries_geojson")}"'
             ),
         )
@@ -1776,7 +1784,7 @@ class GameStartTests(TestCase):
         self.assertContains(
             game_response,
             (
-                'data-municipality-boundaries-url="'
+                'data-target-boundaries-url="'
                 f'{reverse("geo:village_boundaries_geojson")}?canton=ZH"'
             ),
         )
@@ -2634,7 +2642,7 @@ class GameStartTests(TestCase):
         self.assertContains(
             response,
             (
-                'data-municipality-boundaries-url="'
+                'data-target-boundaries-url="'
                 f'{reverse("geo:municipality_boundaries_geojson")}"'
             ),
         )
@@ -2907,7 +2915,7 @@ class GameSummaryTests(TestCase):
         self.assertContains(
             response,
             (
-                'data-municipality-boundaries-url="'
+                'data-target-boundaries-url="'
                 f'{reverse("geo:municipality_boundaries_geojson")}?canton=ZH"'
             ),
         )
@@ -2931,7 +2939,7 @@ class GameSummaryTests(TestCase):
         self.assertContains(
             response,
             (
-                'data-municipality-boundaries-url="'
+                'data-target-boundaries-url="'
                 f'{reverse("geo:village_boundaries_geojson")}"'
             ),
         )
@@ -3095,7 +3103,7 @@ class GameSummaryTests(TestCase):
         self.assertContains(
             response,
             (
-                'data-municipality-boundaries-url="'
+                'data-target-boundaries-url="'
                 f'{reverse("geo:municipality_boundaries_geojson")}?canton=ZH"'
             ),
         )
@@ -3115,7 +3123,7 @@ class GameSummaryTests(TestCase):
         self.assertContains(
             response,
             (
-                'data-municipality-boundaries-url="'
+                'data-target-boundaries-url="'
                 f'{reverse("geo:village_boundaries_geojson")}"'
             ),
         )

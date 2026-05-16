@@ -252,14 +252,14 @@ def start_game_for_player(
         canton_abbreviation: Requested canton abbreviation for single-canton mode.
         target_type: Requested target type.
         show_municipality_boundaries: Whether village games show municipality
-            boundaries as an additional game-rule overlay.
+            boundaries as an additional visual overlay.
 
     Returns:
         An active game with five turns.
 
     Raises:
-        NotEnoughMunicipalitiesError: If fewer than five active municipalities exist
-            in the current dataset version.
+        NotEnoughMunicipalitiesError: If fewer than five active targets exist in
+            the current dataset version.
     """
     if not player.can_own_games:
         raise ValueError(_("Player identity cannot own games."))
@@ -281,15 +281,16 @@ def start_game_for_player(
 
             dataset_version = get_current_dataset_version()
             if dataset_version is None:
+                target_config = target_type_config(target_type)
                 existing_game = get_active_game_for_player(player)
                 if existing_game is not None:
                     return existing_game
                 raise NotEnoughMunicipalitiesError(
                     _(
-                        "At least %(count)s active municipalities are required "
+                        "At least %(count)s active %(targets)s are required "
                         "to start a game."
                     )
-                    % {"count": TURN_COUNT}
+                    % {"count": TURN_COUNT, "targets": target_config.display_name}
                 )
 
             game_scope = resolve_game_scope(

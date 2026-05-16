@@ -518,6 +518,7 @@ def get_last_guess_result(request, player=None) -> Guess | None:
             "turn__game__id",
             "turn__game__mode",
             "turn__game__target_type",
+            "turn__game__show_municipality_boundaries",
             "turn__game__canton",
             "turn__game__canton__abbreviation",
             "turn__game__status",
@@ -746,9 +747,7 @@ def map_context_for_game(game: Game | None) -> dict[str, str]:
     return {
         "canton_boundaries_url": reverse("geo:cantons_geojson") + scope_query,
         "map_label": game.map_label if game is not None else "CH",
-        "municipality_boundaries_url": (
-            reverse(target_boundaries_route) + scope_query
-        ),
+        "target_boundaries_url": reverse(target_boundaries_route) + scope_query,
         "municipality_overlay_url": municipality_overlay_url,
     }
 

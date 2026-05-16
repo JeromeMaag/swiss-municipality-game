@@ -1,1 +1,1 @@
-"""Game app for municipality guessing sessions."""
+"""Game app for Swiss geography guessing sessions."""
