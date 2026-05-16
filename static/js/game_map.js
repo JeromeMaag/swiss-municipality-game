@@ -3,6 +3,7 @@
 
   const BACKGROUND_MAP_STORAGE_KEY = "gemeindeguess.backgroundMap";
   const BOUNDARY_LINE_STORAGE_KEY = "gemeindeguess.boundaryLines";
+  const MUNICIPALITY_OVERLAY_STORAGE_KEY = "gemeindeguess.municipalityOverlay";
   const OUTLINE_STORAGE_KEY = "gemeindeguess.outlines";
   const DEFAULT_BACKGROUND_MAP_ID = "swissimage";
   const DEFAULT_BOUNDARY_LINE_MODE = "auto";
@@ -401,6 +402,16 @@
     }
   }
 
+  function readStoredMunicipalityOverlayVisible() {
+    try {
+      return (
+        window.localStorage.getItem(MUNICIPALITY_OVERLAY_STORAGE_KEY) === "true"
+      );
+    } catch (error) {
+      return false;
+    }
+  }
+
   function storeBackgroundMapId(mapId) {
     try {
       window.localStorage.setItem(BACKGROUND_MAP_STORAGE_KEY, mapId);
@@ -420,6 +431,17 @@
   function storeOutlineMode(mode) {
     try {
       window.localStorage.setItem(OUTLINE_STORAGE_KEY, mode);
+    } catch (error) {
+      return;
+    }
+  }
+
+  function storeMunicipalityOverlayVisible(isVisible) {
+    try {
+      window.localStorage.setItem(
+        MUNICIPALITY_OVERLAY_STORAGE_KEY,
+        isVisible ? "true" : "false"
+      );
     } catch (error) {
       return;
     }
@@ -445,6 +467,20 @@
     document.querySelectorAll("[data-outline-picker]").forEach(
       function (picker) {
         picker.value = mode;
+      }
+    );
+  }
+
+  function syncMunicipalityOverlayPickers(isVisible, isAvailable) {
+    document.querySelectorAll("[data-municipality-overlay-setting]").forEach(
+      function (setting) {
+        setting.hidden = !isAvailable;
+      }
+    );
+    document.querySelectorAll("[data-municipality-overlay-picker]").forEach(
+      function (picker) {
+        picker.checked = Boolean(isVisible && isAvailable);
+        picker.disabled = !isAvailable;
       }
     );
   }
@@ -480,7 +516,11 @@
     }
     if (boundaryState.municipalityOverlayLayer !== null) {
       boundaryState.municipalityOverlayLayer.setStyle(
-        municipalityOverlayStyle(colors, boundaryState.outlineMode)
+        municipalityOverlayStyle(
+          colors,
+          boundaryState.outlineMode,
+          boundaryState.municipalityOverlayVisible
+        )
       );
     }
     if (boundaryState.cantonLayer !== null) {
@@ -984,8 +1024,40 @@
     };
   }
 
-  function municipalityOverlayStyle(colors, outlineMode) {
-    if (outlineMode !== "all" && outlineMode !== "municipalities") {
+  function initializeMunicipalityOverlayPicker(
+    map,
+    boundaryState,
+    revealState,
+    summaryState
+  ) {
+    const pickers = document.querySelectorAll(
+      "[data-municipality-overlay-picker]"
+    );
+    const isAvailable = boundaryState.hasMunicipalityOverlay;
+    syncMunicipalityOverlayPickers(
+      boundaryState.municipalityOverlayVisible,
+      isAvailable
+    );
+    if (!pickers.length) {
+      return;
+    }
+
+    pickers.forEach(function (picker) {
+      picker.addEventListener("change", function () {
+        const isVisible = Boolean(picker.checked);
+        storeMunicipalityOverlayVisible(isVisible);
+        syncMunicipalityOverlayPickers(isVisible, isAvailable);
+        boundaryState.municipalityOverlayVisible = isVisible && isAvailable;
+        applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
+      });
+    });
+  }
+
+  function municipalityOverlayStyle(colors, outlineMode, isVisible) {
+    if (
+      !isVisible ||
+      (outlineMode !== "all" && outlineMode !== "municipalities")
+    ) {
       return hiddenBoundaryStyle();
     }
     return {
@@ -1234,6 +1306,11 @@
     const backgroundMapId = readStoredBackgroundMapId();
     const boundaryLineMode = readStoredBoundaryLineMode();
     const outlineMode = readStoredOutlineMode();
+    const hasMunicipalityOverlay = Boolean(
+      mapElement.dataset.municipalityOverlayUrl
+    );
+    const municipalityOverlayVisible =
+      hasMunicipalityOverlay && readStoredMunicipalityOverlayVisible();
     const baseLayerState = {
       layer: addBaseMapLayer(
         map,
@@ -1244,10 +1321,12 @@
     };
     const boundaryState = {
       cantonLayer: null,
+      hasMunicipalityOverlay: hasMunicipalityOverlay,
       lineMode: boundaryLineMode,
       mapId: backgroundMapId,
       municipalityLayer: null,
       municipalityOverlayLayer: null,
+      municipalityOverlayVisible: municipalityOverlayVisible,
       outlineMode: outlineMode,
     };
     const initialBoundaryColors = boundaryLineColors(
@@ -1264,6 +1343,12 @@
     );
     initializeBoundaryLinePicker(map, boundaryState, revealState, summaryState);
     initializeOutlinePicker(map, boundaryState, revealState, summaryState);
+    initializeMunicipalityOverlayPicker(
+      map,
+      boundaryState,
+      revealState,
+      summaryState
+    );
     initializeMapSettingsMenu();
     window.L.control.scale({ imperial: false, metric: true }).addTo(map);
     if (revealState) {
@@ -1281,7 +1366,8 @@
       renderer: vectorRenderer,
       style: municipalityOverlayStyle(
         initialBoundaryColors,
-        boundaryState.outlineMode
+        boundaryState.outlineMode,
+        boundaryState.municipalityOverlayVisible
       ),
     }).then(function (municipalityOverlayLayer) {
       boundaryState.municipalityOverlayLayer = municipalityOverlayLayer;
@@ -1458,11 +1544,7 @@
     }
 
     const modeChoices = picker.querySelectorAll("[data-mode-choice]");
-    const targetTypeChoices = picker.querySelectorAll("[data-target-type-choice]");
     const cantonSelect = picker.querySelector("[data-canton-select]");
-    const municipalityOverlayToggle = picker.querySelector(
-      "[data-municipality-overlay-toggle]"
-    );
     const selectedCantonLabel = picker.querySelector("[data-selected-canton-label]");
     const mapLabel = document.querySelector("[data-game-mode-map-label]");
     if (!modeChoices.length || !cantonSelect) {
@@ -1474,26 +1556,12 @@
       return checkedChoice ? checkedChoice.value : "switzerland";
     }
 
-    function selectedTargetType() {
-      const checkedChoice = picker.querySelector(
-        "[data-target-type-choice]:checked"
-      );
-      return checkedChoice ? checkedChoice.value : "municipality";
-    }
-
     function updateModePreview() {
       const cantonMode = selectedMode() === "canton";
-      const villageMode = selectedTargetType() === "village";
       const cantonCode = cantonSelect.value || "";
       const mapCode = cantonCode || "-";
 
       cantonSelect.disabled = !cantonMode;
-      if (municipalityOverlayToggle) {
-        municipalityOverlayToggle.disabled = !villageMode;
-        if (!villageMode) {
-          municipalityOverlayToggle.checked = false;
-        }
-      }
       if (selectedCantonLabel) {
         selectedCantonLabel.textContent = mapCode;
       }
@@ -1503,9 +1571,6 @@
     }
 
     modeChoices.forEach(function (choice) {
-      choice.addEventListener("change", updateModePreview);
-    });
-    targetTypeChoices.forEach(function (choice) {
       choice.addEventListener("change", updateModePreview);
     });
     cantonSelect.addEventListener("change", updateModePreview);

@@ -79,7 +79,6 @@ def get_finished_games_for_player(player: PlayerIdentity) -> QuerySet[Game]:
             "user",
             "guest_key",
             "target_type",
-            "show_municipality_boundaries",
             "mode",
             "canton",
             "canton__abbreviation",

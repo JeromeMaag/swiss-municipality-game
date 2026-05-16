@@ -274,20 +274,6 @@
                 </span>
               </label>
             </div>
-            <label class="setup-toggle" data-municipality-overlay-option>
-              <input
-                type="checkbox"
-                name="show_municipality_boundaries"
-                value="1"
-                form="{% if request.user.is_authenticated %}game-start-form{% else %}guest-start-form{% endif %}"
-                {% if selected_show_municipality_boundaries %}checked{% endif %}
-                data-municipality-overlay-toggle
-              >
-              <span>
-                <strong>{% trans "Show municipalities" %}</strong>
-                <small>{% trans "Village games only" %}</small>
-              </span>
-            </label>
           </section>
 
           {% if request.user.is_authenticated %}

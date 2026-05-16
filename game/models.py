@@ -65,7 +65,6 @@ class Game(models.Model):
         choices=TargetType.choices,
         default=TargetType.MUNICIPALITY,
     )
-    show_municipality_boundaries = models.BooleanField(default=False)
     canton = models.ForeignKey(
         "geo.Canton",
         blank=True,
@@ -144,13 +143,6 @@ class Game(models.Model):
                 ),
                 name="game_mode_canton_consistency",
             ),
-            models.CheckConstraint(
-                condition=(
-                    models.Q(target_type=GAME_TARGET_TYPE_VILLAGE)
-                    | models.Q(show_municipality_boundaries=False)
-                ),
-                name="game_municipality_overlay_village_only",
-            ),
         ]
 
     def __str__(self) -> str:
@@ -188,8 +180,8 @@ class Game(models.Model):
         """Validate game ownership, scope, target type, and lifecycle consistency.
 
         Raises:
-            ValidationError: If ownership, scope, target-type settings, scoring
-                extent, or finished-game lifecycle data is invalid.
+            ValidationError: If ownership, scope, scoring extent, or
+                finished-game lifecycle data is invalid.
         """
         super().clean()
         if (self.user_id is None) == (not self.guest_key):
@@ -203,18 +195,6 @@ class Game(models.Model):
         if self.mode == self.Mode.CANTON and self.canton_id is None:
             raise ValidationError(
                 {"canton": "Single-canton games require a canton."}
-            )
-        if (
-            self.target_type == self.TargetType.MUNICIPALITY
-            and self.show_municipality_boundaries
-        ):
-            raise ValidationError(
-                {
-                    "show_municipality_boundaries": (
-                        "Municipality boundary overlay is only configurable for "
-                        "village games."
-                    )
-                }
             )
         if (
             self.scoring_max_distance_m is not None

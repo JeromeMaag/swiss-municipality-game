@@ -3,7 +3,6 @@
 from datetime import timedelta
 import json
 import math
-import re
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -14,7 +13,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import Client, RequestFactory, TestCase
 from django.urls import reverse
-from django.utils import timezone
+from django.utils import timezone, translation
 
 from geo.constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
 from geo.models import Canton, GeoDatasetVersion, Municipality, Village
@@ -484,7 +483,6 @@ class GameModelTests(TestCase):
 
         self.assertEqual(game.status, Game.Status.ACTIVE)
         self.assertEqual(game.target_type, Game.TargetType.MUNICIPALITY)
-        self.assertFalse(game.show_municipality_boundaries)
         self.assertEqual(game.total_score, 0)
         self.assertIn("Game", str(game))
 
@@ -529,18 +527,6 @@ class GameModelTests(TestCase):
                 with self.assertRaises(ValidationError):
                     game.full_clean()
 
-    def test_village_games_can_show_municipality_boundaries(self) -> None:
-        """Village games can store whether municipality boundaries are shown."""
-        game = Game(
-            user=self.user,
-            target_type=Game.TargetType.VILLAGE,
-            show_municipality_boundaries=True,
-        )
-
-        game.full_clean()
-
-        self.assertTrue(game.show_municipality_boundaries)
-
     def test_game_target_type_label_matches_target_type(self) -> None:
         """Games expose a player-facing target type label."""
         municipality_game = Game(user=self.user)
@@ -551,26 +537,8 @@ class GameModelTests(TestCase):
 
         self.assertEqual(municipality_game.target_type_label, "Municipalities")
         self.assertEqual(village_game.target_type_label, "Villages")
-
-    def test_municipality_games_cannot_show_municipality_boundaries(self) -> None:
-        """Municipality boundary overlay is only meaningful for village games."""
-        game = Game(
-            user=self.user,
-            target_type=Game.TargetType.MUNICIPALITY,
-            show_municipality_boundaries=True,
-        )
-
-        with self.assertRaises(ValidationError):
-            game.full_clean()
-
-    def test_database_rejects_municipality_overlay_for_municipality_games(self) -> None:
-        """Database constraints keep overlay settings tied to village games."""
-        with self.assertRaises(IntegrityError), transaction.atomic():
-            Game.objects.create(
-                user=self.user,
-                target_type=Game.TargetType.MUNICIPALITY,
-                show_municipality_boundaries=True,
-            )
+        with translation.override("de"):
+            self.assertEqual(village_game.target_type_label, "Dörfer")
 
     def test_finished_game_requires_finished_at(self) -> None:
         """Finished games require a finish timestamp during validation."""
@@ -1416,18 +1384,16 @@ class GameStartTests(TestCase):
         self.assertFalse(Game.objects.exists())
 
     def test_start_game_for_player_uses_village_targets(self) -> None:
-        """Village games sample village targets and store overlay settings."""
+        """Village games sample village targets."""
         villages = self.create_villages(5)
 
         game = start_game_for_player(
             PlayerIdentity.for_user(self.user),
             target_type=Game.TargetType.VILLAGE,
-            show_municipality_boundaries=True,
         )
 
         turns = list(game.turns.order_by("turn_number"))
         self.assertEqual(game.target_type, Game.TargetType.VILLAGE)
-        self.assertTrue(game.show_municipality_boundaries)
         self.assertEqual(len(turns), 5)
         self.assertEqual(len({turn.village_target_id for turn in turns}), 5)
         self.assertTrue(
@@ -1566,7 +1532,6 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Single canton")
         self.assertContains(response, "Municipalities")
         self.assertContains(response, "Villages")
-        self.assertContains(response, "Show municipalities")
         self.assertContains(response, "Zurich")
         self.assertContains(response, 'aria-label="Map settings"')
         self.assertContains(response, 'title="Map settings"')
@@ -1590,19 +1555,16 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Cantons only")
         self.assertContains(response, "Municipalities only")
         self.assertContains(response, "Off")
+        self.assertContains(response, "Show municipalities")
+        self.assertContains(response, "data-municipality-overlay-setting")
+        self.assertContains(response, "data-municipality-overlay-picker")
         self.assertContains(response, "data-game-mode-picker")
         self.assertContains(response, 'id="game-start-form"')
         self.assertContains(response, 'name="game_mode"')
         self.assertContains(response, 'name="canton"')
         self.assertContains(response, 'name="target_type"')
-        self.assertContains(response, 'name="show_municipality_boundaries"')
-        overlay_input = re.search(
-            r"<input[^>]*data-municipality-overlay-toggle[^>]*>",
-            response.content.decode(),
-            re.DOTALL,
-        )
-        self.assertIsNotNone(overlay_input)
-        self.assertNotIn("disabled", overlay_input.group(0))
+        self.assertNotContains(response, 'name="show_municipality_boundaries"')
+        self.assertContains(response, "data-municipality-overlay-setting hidden")
         self.assertContains(response, 'form="game-start-form"')
         self.assertContains(response, reverse("game:start"))
 
@@ -1617,8 +1579,8 @@ class GameStartTests(TestCase):
         self.assertContains(response, "Map setup")
         self.assertContains(response, "Single canton")
         self.assertContains(response, "Villages")
-        self.assertContains(response, "Show municipalities")
         self.assertContains(response, "data-background-map-picker")
+        self.assertContains(response, "data-municipality-overlay-setting")
         self.assertContains(response, reverse("geo:cantons_geojson"))
         self.assertContains(response, reverse("geo:municipality_boundaries_geojson"))
         self.assertContains(response, "Play without account")
@@ -1627,7 +1589,7 @@ class GameStartTests(TestCase):
         self.assertContains(response, 'name="game_mode"')
         self.assertContains(response, 'name="canton"')
         self.assertContains(response, 'name="target_type"')
-        self.assertContains(response, 'name="show_municipality_boundaries"')
+        self.assertNotContains(response, 'name="show_municipality_boundaries"')
         self.assertContains(response, 'form="guest-start-form"')
         self.assertContains(response, "data-auth-modal-open")
         self.assertContains(response, reverse("accounts:login"))
@@ -1702,16 +1664,13 @@ class GameStartTests(TestCase):
         )
 
     def test_start_view_starts_village_game(self) -> None:
-        """Game start view accepts village targets and overlay settings."""
+        """Game start view accepts village targets."""
         self.create_villages(5)
         self.client.force_login(self.user)
 
         response = self.client.post(
             reverse("game:start"),
-            {
-                "target_type": "village",
-                "show_municipality_boundaries": "1",
-            },
+            {"target_type": "village"},
         )
 
         self.assertRedirects(response, reverse("game:index"))
@@ -1720,7 +1679,6 @@ class GameStartTests(TestCase):
             "turn_number"
         ).first()
         self.assertEqual(game.target_type, Game.TargetType.VILLAGE)
-        self.assertTrue(game.show_municipality_boundaries)
         self.assertEqual(game.turns.count(), 5)
         self.assertIsNone(first_turn.municipality_target_id)
         self.assertIsNotNone(first_turn.village_target_id)
@@ -1741,25 +1699,21 @@ class GameStartTests(TestCase):
                 f'{reverse("geo:municipality_boundaries_geojson")}"'
             ),
         )
+        self.assertContains(game_response, "data-municipality-overlay-setting")
 
-    def test_start_view_omits_village_municipality_overlay_when_disabled(
-        self,
-    ) -> None:
-        """Village maps omit the municipality overlay unless requested."""
+    def test_start_view_omits_municipality_overlay_for_municipality_game(self) -> None:
+        """Municipality maps do not expose the village-only overlay source."""
         self.create_villages(5)
         self.client.force_login(self.user)
 
         response = self.client.post(
             reverse("game:start"),
-            {
-                "target_type": "village",
-            },
+            {"target_type": "municipality"},
         )
 
         self.assertRedirects(response, reverse("game:index"))
         game = Game.objects.get()
-        self.assertEqual(game.target_type, Game.TargetType.VILLAGE)
-        self.assertFalse(game.show_municipality_boundaries)
+        self.assertEqual(game.target_type, Game.TargetType.MUNICIPALITY)
 
         game_response = self.client.get(reverse("game:index"))
         self.assertContains(game_response, 'data-municipality-overlay-url=""')
@@ -1775,7 +1729,6 @@ class GameStartTests(TestCase):
                 "game_mode": "canton",
                 "canton": "ZH",
                 "target_type": "village",
-                "show_municipality_boundaries": "1",
             },
         )
 
@@ -1814,7 +1767,7 @@ class GameStartTests(TestCase):
     def test_start_view_ignores_municipality_overlay_for_municipality_game(
         self,
     ) -> None:
-        """Municipality games ignore stale village-only overlay form data."""
+        """Game start ignores stale visual overlay form data."""
         self.create_municipalities(5)
         self.client.force_login(self.user)
 
@@ -1829,7 +1782,6 @@ class GameStartTests(TestCase):
         self.assertRedirects(response, reverse("game:index"))
         game = Game.objects.get()
         self.assertEqual(game.target_type, Game.TargetType.MUNICIPALITY)
-        self.assertFalse(game.show_municipality_boundaries)
 
     def test_start_view_rejects_invalid_canton(self) -> None:
         """Game start view validates canton choices."""
@@ -1849,7 +1801,6 @@ class GameStartTests(TestCase):
             response.context["selected_target_type"],
             Game.TargetType.MUNICIPALITY,
         )
-        self.assertFalse(response.context["selected_show_municipality_boundaries"])
         self.assertFalse(Game.objects.exists())
 
     def test_start_view_rejects_invalid_mode(self) -> None:
@@ -1873,7 +1824,6 @@ class GameStartTests(TestCase):
             response.context["selected_target_type"],
             Game.TargetType.MUNICIPALITY,
         )
-        self.assertFalse(response.context["selected_show_municipality_boundaries"])
         self.assertFalse(Game.objects.exists())
 
     def test_start_view_rejects_invalid_target_type(self) -> None:
@@ -1901,10 +1851,7 @@ class GameStartTests(TestCase):
 
         response = self.client.post(
             reverse("game:start"),
-            {
-                "target_type": "village",
-                "show_municipality_boundaries": "1",
-            },
+            {"target_type": "village"},
         )
 
         self.assertEqual(response.status_code, 400)
@@ -1913,7 +1860,6 @@ class GameStartTests(TestCase):
             response.context["selected_target_type"],
             Game.TargetType.VILLAGE,
         )
-        self.assertTrue(response.context["selected_show_municipality_boundaries"])
         self.assertFalse(Game.objects.exists())
 
     def test_start_view_rejects_get(self) -> None:
@@ -2743,7 +2689,6 @@ class GameSummaryTests(TestCase):
         finished_at=None,
         mode: str = Game.Mode.SWITZERLAND,
         scores: list[int] | None = None,
-        show_municipality_boundaries: bool = False,
         target_type: str = Game.TargetType.MUNICIPALITY,
     ) -> Game:
         """Create a finished game with five guessed turns.
@@ -2757,8 +2702,6 @@ class GameSummaryTests(TestCase):
             finished_at: Optional finished timestamp.
             mode: Game mode to store.
             scores: Optional per-turn scores.
-            show_municipality_boundaries: Whether village games show the
-                municipality overlay.
             target_type: Game target type to create turns for.
 
         Returns:
@@ -2777,7 +2720,6 @@ class GameSummaryTests(TestCase):
             mode=mode,
             canton=canton if mode == Game.Mode.CANTON else None,
             target_type=target_type,
-            show_municipality_boundaries=show_municipality_boundaries,
             status=Game.Status.FINISHED,
             finished_at=finished_at or timezone.now(),
         )
@@ -2927,10 +2869,9 @@ class GameSummaryTests(TestCase):
         self.assertContains(response, 'value="municipality"')
 
     def test_summary_uses_village_boundary_layer_and_overlay(self) -> None:
-        """Summary maps use village targets with optional municipality overlay."""
+        """Summary maps expose village targets and municipality overlay source."""
         game = self.create_finished_game(
             target_type=Game.TargetType.VILLAGE,
-            show_municipality_boundaries=True,
         )
         self.client.force_login(self.user)
 
@@ -2954,7 +2895,8 @@ class GameSummaryTests(TestCase):
         self.assertContains(response, "Villages")
         self.assertContains(response, 'name="target_type"')
         self.assertContains(response, 'value="village"')
-        self.assertContains(response, 'name="show_municipality_boundaries"')
+        self.assertContains(response, "data-municipality-overlay-setting")
+        self.assertNotContains(response, 'name="show_municipality_boundaries"')
 
     def test_build_summary_reveals_uses_stored_boundary_point(self) -> None:
         """Summary reveal payloads reuse persisted nearest boundary points."""
@@ -3110,10 +3052,9 @@ class GameSummaryTests(TestCase):
         self.assertEqual(response.context["selected_game"], game)
 
     def test_history_detail_uses_village_overlay_scope(self) -> None:
-        """History replay maps preserve village target and overlay settings."""
+        """History replay maps expose village target and overlay scope."""
         game = self.create_finished_game(
             target_type=Game.TargetType.VILLAGE,
-            show_municipality_boundaries=True,
         )
         self.client.force_login(self.user)
 
@@ -3256,7 +3197,6 @@ class GameSummaryTests(TestCase):
             bfs_offset=9600,
             scores=[500, 500, 500, 500, 500],
             target_type=Game.TargetType.VILLAGE,
-            show_municipality_boundaries=True,
         )
         self.client.force_login(self.user)
 

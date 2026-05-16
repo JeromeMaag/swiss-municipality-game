@@ -242,7 +242,6 @@ def start_game_for_player(
     mode: str = Game.Mode.SWITZERLAND,
     canton_abbreviation: str = "",
     target_type: str = Game.TargetType.MUNICIPALITY,
-    show_municipality_boundaries: bool = False,
 ) -> Game:
     """Return an active game for a player, creating one when needed.
 
@@ -251,8 +250,6 @@ def start_game_for_player(
         mode: Requested game mode.
         canton_abbreviation: Requested canton abbreviation for single-canton mode.
         target_type: Requested target type.
-        show_municipality_boundaries: Whether village games show municipality
-            boundaries as an additional visual overlay.
 
     Returns:
         An active game with five turns.
@@ -323,10 +320,6 @@ def start_game_for_player(
                 mode=game_scope.mode,
                 target_type=game_scope.target_type,
                 canton=game_scope.canton,
-                show_municipality_boundaries=normalize_municipality_overlay(
-                    game_scope.target_type,
-                    show_municipality_boundaries,
-                ),
                 scoring_max_distance_m=scoring_max_distance_m,
                 **player.model_fields(),
             )
@@ -429,11 +422,6 @@ def normalize_game_target_type(target_type: str) -> str:
     if target_type in Game.TargetType.values:
         return target_type
     raise InvalidGameTargetTypeError(_("Choose a valid target type."))
-
-
-def normalize_municipality_overlay(target_type: str, enabled: bool) -> bool:
-    """Return the stored municipality overlay value for a game target type."""
-    return bool(enabled and target_type == Game.TargetType.VILLAGE)
 
 
 def target_type_config(target_type: str) -> TargetTypeConfig:

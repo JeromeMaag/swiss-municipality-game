@@ -318,6 +318,12 @@ msgstr "Kantone"
 msgid "Municipalities"
 msgstr "Gemeinden"
 
+msgid "Villages"
+msgstr "Dörfer"
+
+msgid "Show municipalities"
+msgstr "Gemeinden anzeigen"
+
 msgid "Active municipalities"
 msgstr "Aktive Gemeinden"
 

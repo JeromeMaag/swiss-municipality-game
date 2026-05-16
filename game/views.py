@@ -48,7 +48,6 @@ MAX_TRACKING_REQUEST_BYTES = 4096
 GAME_MODE_FORM_FIELD = "game_mode"
 CANTON_FORM_FIELD = "canton"
 GAME_TARGET_TYPE_FORM_FIELD = "target_type"
-SHOW_MUNICIPALITY_BOUNDARIES_FORM_FIELD = "show_municipality_boundaries"
 
 
 @require_GET
@@ -99,9 +98,6 @@ def start(request):
             mode=request.POST.get(GAME_MODE_FORM_FIELD, ""),
             canton_abbreviation=request.POST.get(CANTON_FORM_FIELD, ""),
             target_type=request.POST.get(GAME_TARGET_TYPE_FORM_FIELD, ""),
-            show_municipality_boundaries=(
-                request.POST.get(SHOW_MUNICIPALITY_BOUNDARIES_FORM_FIELD) == "1"
-            ),
         )
     except (
         InvalidGameModeError,
@@ -112,14 +108,10 @@ def start(request):
             selected_game_mode,
             selected_canton,
             selected_target_type,
-            selected_show_municipality_boundaries,
         ) = normalize_start_form_selection(
             mode=request.POST.get(GAME_MODE_FORM_FIELD, ""),
             canton=request.POST.get(CANTON_FORM_FIELD, ""),
             target_type=request.POST.get(GAME_TARGET_TYPE_FORM_FIELD, ""),
-            show_municipality_boundaries=(
-                request.POST.get(SHOW_MUNICIPALITY_BOUNDARIES_FORM_FIELD) == "1"
-            ),
         )
         return render_game_index(
             request,
@@ -127,9 +119,6 @@ def start(request):
             selected_game_mode=selected_game_mode,
             selected_canton=selected_canton,
             selected_target_type=selected_target_type,
-            selected_show_municipality_boundaries=(
-                selected_show_municipality_boundaries
-            ),
             status=400,
         )
     return redirect("game:index")
@@ -518,7 +507,6 @@ def get_last_guess_result(request, player=None) -> Guess | None:
             "turn__game__id",
             "turn__game__mode",
             "turn__game__target_type",
-            "turn__game__show_municipality_boundaries",
             "turn__game__canton",
             "turn__game__canton__abbreviation",
             "turn__game__status",
@@ -562,7 +550,6 @@ def render_game_index(
     selected_game_mode: str = Game.Mode.SWITZERLAND,
     selected_canton: str = "",
     selected_target_type: str = Game.TargetType.MUNICIPALITY,
-    selected_show_municipality_boundaries: bool = False,
     status: int = 200,
 ):
     """Render the game index template.
@@ -595,9 +582,6 @@ def render_game_index(
             active_game.canton.abbreviation if active_game.canton_id else ""
         )
         selected_target_type = active_game.target_type
-        selected_show_municipality_boundaries = (
-            active_game.show_municipality_boundaries
-        )
         turns = list(
             active_game.turns.select_related(
                 "municipality_target__canton",
@@ -659,9 +643,6 @@ def render_game_index(
             "reveal_guess_lng": reveal_guess_lng,
             "selected_canton": selected_canton,
             "selected_game_mode": selected_game_mode,
-            "selected_show_municipality_boundaries": (
-                selected_show_municipality_boundaries
-            ),
             "selected_target_type": selected_target_type,
             "show_game_map": active_game is None
             or (current_turn is not None or last_guess is not None),
@@ -689,8 +670,7 @@ def normalize_start_form_selection(
     mode: str,
     canton: str,
     target_type: str,
-    show_municipality_boundaries: bool,
-) -> tuple[str, str, str, bool]:
+) -> tuple[str, str, str]:
     """Return safe start-form values for re-rendering after validation errors."""
     selected_mode = mode if mode in Game.Mode.values else Game.Mode.SWITZERLAND
     selected_target_type = (
@@ -698,16 +678,11 @@ def normalize_start_form_selection(
         if target_type in Game.TargetType.values
         else Game.TargetType.MUNICIPALITY
     )
-    selected_show_municipality_boundaries = bool(
-        show_municipality_boundaries
-        and selected_target_type == Game.TargetType.VILLAGE
-    )
     if selected_mode != Game.Mode.CANTON:
         return (
             selected_mode,
             "",
             selected_target_type,
-            selected_show_municipality_boundaries,
         )
 
     selected_canton = canton.strip().upper()
@@ -717,13 +692,11 @@ def normalize_start_form_selection(
             selected_mode,
             "",
             selected_target_type,
-            selected_show_municipality_boundaries,
         )
     return (
         selected_mode,
         selected_canton,
         selected_target_type,
-        selected_show_municipality_boundaries,
     )
 
 
@@ -736,11 +709,7 @@ def map_context_for_game(game: Game | None) -> dict[str, str]:
         else "geo:municipality_boundaries_geojson"
     )
     municipality_overlay_url = ""
-    if (
-        game is not None
-        and game.target_type == Game.TargetType.VILLAGE
-        and game.show_municipality_boundaries
-    ):
+    if game is not None and game.target_type == Game.TargetType.VILLAGE:
         municipality_overlay_url = (
             reverse("geo:municipality_boundaries_geojson") + scope_query
         )

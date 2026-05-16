@@ -23,7 +23,6 @@ class GameAdmin(admin.ModelAdmin):
         "owner_label",
         "target_type",
         "map_label",
-        "show_municipality_boundaries",
         "status",
         "total_score",
         "started_at",
@@ -31,7 +30,6 @@ class GameAdmin(admin.ModelAdmin):
     )
     list_filter = (
         "target_type",
-        "show_municipality_boundaries",
         "mode",
         "canton",
         "status",

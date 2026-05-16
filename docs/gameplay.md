@@ -34,12 +34,11 @@ Players first choose the map scope:
 Players then choose what to find:
 
 - `Municipalities`: the classic mode. The target polygons are municipalities.
-- `Villages`: target polygons are village/locality boundaries. An optional
-  `Show municipalities` setting adds municipality outlines as extra context.
+- `Villages`: target polygons are village/locality boundaries.
 
-The game mode, target type, canton, and overlay setting are persisted on the
-game record. This matters for scoring, history, summary replays, profile
-statistics, and the "play again" action.
+The game mode, target type, and canton are persisted on the game record. This
+matters for scoring, history, summary replays, profile statistics, and the "play
+again" action.
 
 ## Guest And Account Play
 
@@ -86,8 +85,8 @@ like municipality games: five rounds, the same scoring system, the same summary
 and history replay, and the same account statistics.
 
 Village games can optionally show municipality outlines in addition to village
-boundaries. This overlay is visual context only. It does not change the target,
-distance calculation, scoring, or validation.
+boundaries from the map settings menu. This overlay is visual context only. It
+does not change the target, distance calculation, scoring, or validation.
 
 ## Guessing
 
@@ -218,6 +217,9 @@ Outline visibility:
 - `Cantons only`
 - `Municipalities only`
 - `Off`
+
+Village maps also show a `Show municipalities` setting. It toggles municipality
+outlines on top of the village boundaries.
 
 Map settings affect display only. They do not affect validation, distance
 calculation, scoring, or history.
