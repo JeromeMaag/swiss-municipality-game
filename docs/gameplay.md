@@ -160,7 +160,7 @@ After five rounds, the summary page shows:
 
 The summary has two follow-up actions:
 
-- `Play again`: starts a new game with the same mode and canton.
+- `Play again`: starts a new game with the same mode, target type, and canton.
 - `Change game mode`: returns to the game setup screen.
 
 ## History

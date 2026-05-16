@@ -796,6 +796,9 @@ class GeoJSONEndpointTests(TestCase):
             municipality=self.municipality,
             geom=make_test_geometry(),
         )
+        GeoDatasetVersion.objects.filter(pk=self.dataset_version.pk).update(
+            villages_updated_at=timezone.now(),
+        )
 
         response = self.client.get(url, HTTP_IF_NONE_MATCH=first_etag)
         data = self.assert_geojson_response(response)
@@ -1307,14 +1310,63 @@ class ImportVillagesCommandTests(TestCase):
 
     def test_resolve_dataset_version_uses_imported_boundary_dataset(self) -> None:
         """Explicit village imports ignore unrelated versions with same label."""
-        GeoDatasetVersion.objects.create(
-            name="unrelated",
+        unrelated_dataset = GeoDatasetVersion.objects.create(
+            name="unrelatedBOUNDARIES",
             version_label=self.dataset_version.version_label,
+        )
+        unrelated_canton = Canton.objects.create(
+            dataset_version=unrelated_dataset,
+            bfs_number=2,
+            abbreviation="BE",
+            name="Bern",
+            geom=make_test_geometry(),
+        )
+        Municipality.objects.create(
+            dataset_version=unrelated_dataset,
+            bfs_number=351,
+            name="Bern",
+            canton=unrelated_canton,
+            geom=make_test_geometry(),
+        )
+        GeoDatasetVersion.objects.filter(pk=self.dataset_version.pk).update(
+            imported_at=timezone.now() + timedelta(seconds=1),
         )
 
         dataset_version = resolve_village_dataset_version(
             self.dataset_version.version_label,
         )
+
+        self.assertEqual(dataset_version, self.dataset_version)
+
+    def test_resolve_dataset_version_falls_back_within_dataset_family(self) -> None:
+        """Implicit village imports do not hop to another boundary dataset."""
+        current_empty_dataset = GeoDatasetVersion.objects.create(
+            name=self.dataset_version.name,
+            version_label="2027-01-01",
+        )
+        unrelated_dataset = GeoDatasetVersion.objects.create(
+            name="unrelatedBOUNDARIES",
+            version_label="2027-01-01",
+        )
+        unrelated_canton = Canton.objects.create(
+            dataset_version=unrelated_dataset,
+            bfs_number=2,
+            abbreviation="BE",
+            name="Bern",
+            geom=make_test_geometry(),
+        )
+        Municipality.objects.create(
+            dataset_version=unrelated_dataset,
+            bfs_number=351,
+            name="Bern",
+            canton=unrelated_canton,
+            geom=make_test_geometry(),
+        )
+        GeoDatasetVersion.objects.filter(pk=current_empty_dataset.pk).update(
+            imported_at=timezone.now() + timedelta(seconds=1),
+        )
+
+        dataset_version = resolve_village_dataset_version("")
 
         self.assertEqual(dataset_version, self.dataset_version)
 
@@ -1332,12 +1384,14 @@ class ImportVillagesCommandTests(TestCase):
                 call_command("import_villages", str(source), stdout=output)
 
         village = Village.objects.get()
+        self.dataset_version.refresh_from_db()
         self.assertEqual(village.name, "Aadorf")
         self.assertEqual(village.canton, self.canton)
         self.assertEqual(village.municipality, self.municipality)
         self.assertEqual(village.valid_from.isoformat(), "2026-01-01")
         self.assertTrue(village.is_active)
         self.assertIsNotNone(village.label_point)
+        self.assertIsNotNone(self.dataset_version.villages_updated_at)
         self.assertIn("Imported 1 villages", output.getvalue())
         self.assertIn("Skipped 1 rows without Swiss canton", output.getvalue())
 
@@ -1367,8 +1421,10 @@ class ImportVillagesCommandTests(TestCase):
         result = import_villages(self.village_gdf().iloc[:1], self.dataset_version, options)
 
         village = Village.objects.get(source_identifier="village-1")
+        self.dataset_version.refresh_from_db()
         self.assertEqual(len(result.villages), 1)
         self.assertEqual(village.name, "Aadorf")
+        self.assertIsNotNone(self.dataset_version.villages_updated_at)
         self.assertEqual(Village.objects.count(), 1)
 
     def test_command_rejects_without_boundary_dataset(self) -> None:
@@ -1419,6 +1475,35 @@ class ImportVillagesCommandTests(TestCase):
             )
 
         self.assertEqual(resolved.name, "AMTOVZ_LOCALITY.geojson")
+
+    def test_resolve_layer_source_accepts_matching_directory_datasource(self) -> None:
+        """Layer source resolution can return a directory-backed datasource."""
+        with TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir)
+            (source / "AMTOVZ_LOCALITY.gdb").mkdir()
+            (source / "AMTOVZ_ZIP.geojson").write_text("{}", encoding="utf-8")
+
+            resolved = resolve_village_layer_source(
+                source,
+                "AMTOVZ_LOCALITY",
+                source,
+            )
+
+        self.assertEqual(resolved.name, "AMTOVZ_LOCALITY.gdb")
+
+    def test_resolve_layer_source_accepts_single_directory_datasource(self) -> None:
+        """Layer source resolution accepts a single supported datasource folder."""
+        with TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir)
+            (source / "villages.gdb").mkdir()
+
+            resolved = resolve_village_layer_source(
+                source,
+                "AMTOVZ_LOCALITY",
+                source,
+            )
+
+        self.assertEqual(resolved.name, "villages.gdb")
 
 
 class ImportSwissBoundaries3DCommandTests(TestCase):

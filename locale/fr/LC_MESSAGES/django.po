@@ -453,5 +453,11 @@ msgstr "Les événements doivent appartenir exactement à un utilisateur ou à u
 msgid "At least %(count)s active %(targets)s are required to start a game."
 msgstr "Il faut au moins %(count)s %(targets)s actives pour commencer une partie."
 
+msgid "At least %(count)s active targets are required to start a game."
+msgstr "Il faut au moins %(count)s cibles actives pour commencer une partie."
+
 msgid "Choose a valid target type."
 msgstr "Choisis un type de cible valide."
+
+msgid "Turn target does not exist."
+msgstr "La cible de la manche n'existe pas."

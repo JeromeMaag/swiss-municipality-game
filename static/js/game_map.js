@@ -552,7 +552,7 @@
           summaryState,
           colors,
           boundaryState.outlineLayers,
-          boundaryState.hasMunicipalityOverlay
+          boundaryState.hasVillageLayer
         )
       );
     }
@@ -661,7 +661,7 @@
 
     syncOutlineLayerPickers(
       boundaryState.outlineLayers,
-      boundaryState.hasMunicipalityOverlay
+      boundaryState.hasVillageLayer
     );
     pickers.forEach(function (picker) {
       picker.addEventListener("change", function () {
@@ -674,12 +674,12 @@
         }
         const normalizedLayers = normalizeOutlineLayers(
           serializeOutlineLayers(outlineLayers),
-          boundaryState.hasMunicipalityOverlay
+          boundaryState.hasVillageLayer
         );
         storeOutlineLayers(normalizedLayers);
         syncOutlineLayerPickers(
           normalizedLayers,
-          boundaryState.hasMunicipalityOverlay
+          boundaryState.hasVillageLayer
         );
         boundaryState.outlineLayers = normalizedLayers;
         applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
@@ -1345,10 +1345,9 @@
     });
     const backgroundMapId = readStoredBackgroundMapId();
     const boundaryLineMode = readStoredBoundaryLineMode();
-    const hasMunicipalityOverlay = Boolean(
-      mapElement.dataset.municipalityOverlayUrl
-    );
-    const outlineLayers = readStoredOutlineLayers(hasMunicipalityOverlay);
+    const hasVillageLayer =
+      mapElement.dataset.targetBoundaryLayer === "villages";
+    const outlineLayers = readStoredOutlineLayers(hasVillageLayer);
     const baseLayerState = {
       layer: addBaseMapLayer(
         map,
@@ -1359,7 +1358,7 @@
     };
     const boundaryState = {
       cantonLayer: null,
-      hasMunicipalityOverlay: hasMunicipalityOverlay,
+      hasVillageLayer: hasVillageLayer,
       lineMode: boundaryLineMode,
       mapId: backgroundMapId,
       municipalityLayer: null,
@@ -1400,7 +1399,7 @@
         summaryState,
         initialBoundaryColors,
         boundaryState.outlineLayers,
-        boundaryState.hasMunicipalityOverlay
+        boundaryState.hasVillageLayer
       ),
     }).then(function (municipalityLayer) {
       boundaryState.municipalityLayer = municipalityLayer;

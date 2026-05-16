@@ -150,9 +150,9 @@ class GameServiceHelperTests(TestCase):
         municipality = self.create_distance_target(
             (
                 (8.4, 47.4),
-                (8.5, 47.4),
-                (8.5, 47.5),
-                (8.4, 47.5),
+                (8.6, 47.4),
+                (8.6, 47.6),
+                (8.4, 47.6),
                 (8.4, 47.4),
             )
         )
@@ -251,12 +251,23 @@ class GameServiceHelperTests(TestCase):
             )
         )
 
-        scoring_max_distance_m = calculate_scoring_max_distance_m_for_dataset(
+        village_scoring_max_distance_m = calculate_scoring_max_distance_m_for_dataset(
             target.dataset_version_id,
             target_type=Game.TargetType.VILLAGE,
         )
+        municipality_scoring_max_distance_m = (
+            calculate_scoring_max_distance_m_for_dataset(
+                target.dataset_version_id,
+                target_type=Game.TargetType.MUNICIPALITY,
+            )
+        )
 
-        self.assertGreater(scoring_max_distance_m, 0)
+        self.assertGreater(village_scoring_max_distance_m, 0)
+        self.assertGreater(municipality_scoring_max_distance_m, 0)
+        self.assertNotEqual(
+            village_scoring_max_distance_m,
+            municipality_scoring_max_distance_m,
+        )
 
     def test_target_id_for_turn_uses_game_target_type(self) -> None:
         """Target id lookup follows the owning game's target type."""
@@ -1782,6 +1793,7 @@ class GameStartTests(TestCase):
                 f'{reverse("geo:village_boundaries_geojson")}"'
             ),
         )
+        self.assertContains(game_response, 'data-target-boundary-layer="villages"')
         self.assertContains(
             game_response,
             (
@@ -1806,6 +1818,10 @@ class GameStartTests(TestCase):
         self.assertEqual(game.target_type, Game.TargetType.MUNICIPALITY)
 
         game_response = self.client.get(reverse("game:index"))
+        self.assertContains(
+            game_response,
+            'data-target-boundary-layer="municipalities"',
+        )
         self.assertContains(game_response, 'data-municipality-overlay-url=""')
 
     def test_start_view_scopes_village_overlay_to_canton(self) -> None:

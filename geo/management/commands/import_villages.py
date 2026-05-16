@@ -15,6 +15,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.db.models.deletion import ProtectedError
+from django.utils import timezone
 
 from geo.management.commands._http import open_url_with_validated_redirects
 from geo.management.commands.import_boundaries import (
@@ -36,6 +37,7 @@ OFFICIAL_VILLAGE_SHAPE_URL = (
 OFFICIAL_VILLAGE_LAYER = "AMTOVZ_LOCALITY"
 ALLOWED_URL_SCHEMES = {"https"}
 ALLOWED_URL_HOSTS = {"data.geo.admin.ch"}
+DIRECTORY_VECTOR_SUFFIXES = {".gdb"}
 UNIX_FILE_TYPE_MASK = 0o170000
 UNIX_SYMLINK_TYPE = 0o120000
 
@@ -205,7 +207,12 @@ def resolve_dataset_version(requested_version: str) -> GeoDatasetVersion:
     Raises:
         CommandError: If the requested or current dataset version is unavailable.
     """
+    current_dataset_version = get_current_dataset_version()
+    if current_dataset_version is None:
+        raise CommandError("Import canton and municipality boundaries first.")
+
     boundary_versions = GeoDatasetVersion.objects.filter(
+        name=current_dataset_version.name,
         cantons__isnull=False,
         municipalities__isnull=False,
     ).distinct()
@@ -221,9 +228,7 @@ def resolve_dataset_version(requested_version: str) -> GeoDatasetVersion:
             )
         return dataset_version
 
-    dataset_version = get_current_dataset_version()
-    if dataset_version is None:
-        raise CommandError("Import canton and municipality boundaries first.")
+    dataset_version = current_dataset_version
     if not boundary_versions.filter(pk=dataset_version.pk).exists():
         dataset_version = boundary_versions.order_by("-imported_at", "-id").first()
     if dataset_version is None:
@@ -315,6 +320,9 @@ def resolve_layer_source(source: Path, layer: str, tmp_path: Path) -> Path:
             raise CommandError(f"Unsupported village datasource: {source}")
         return source
 
+    if is_supported_vector_directory(source):
+        return source
+
     if not source.is_dir():
         raise CommandError(f"Datasource is not a file or folder: {source}")
 
@@ -322,9 +330,8 @@ def resolve_layer_source(source: Path, layer: str, tmp_path: Path) -> Path:
     matching = [
         candidate
         for candidate in sorted(source.rglob("*"))
-        if candidate.is_file()
-        and candidate.suffix.lower() in VECTOR_SUFFIXES
-        and candidate.stem.lower() == layer_lower
+        if is_supported_vector_source(candidate)
+        and vector_source_name(candidate) == layer_lower
     ]
     if matching:
         return matching[0]
@@ -332,7 +339,7 @@ def resolve_layer_source(source: Path, layer: str, tmp_path: Path) -> Path:
     candidates = [
         candidate
         for candidate in sorted(source.rglob("*"))
-        if candidate.is_file() and candidate.suffix.lower() in VECTOR_SUFFIXES
+        if is_supported_vector_source(candidate)
     ]
     if len(candidates) == 1:
         return candidates[0]
@@ -344,6 +351,24 @@ def resolve_layer_source(source: Path, layer: str, tmp_path: Path) -> Path:
         f"Multiple vector datasources found. Could not find layer {layer}:\n"
         f"{candidate_list}"
     )
+
+
+def is_supported_vector_source(path: Path) -> bool:
+    """Return whether a file or folder is a supported vector datasource."""
+    return (
+        path.is_file()
+        and path.suffix.lower() in VECTOR_SUFFIXES
+    ) or is_supported_vector_directory(path)
+
+
+def is_supported_vector_directory(path: Path) -> bool:
+    """Return whether a folder is a supported directory-backed datasource."""
+    return path.is_dir() and path.suffix.lower() in DIRECTORY_VECTOR_SUFFIXES
+
+
+def vector_source_name(path: Path) -> str:
+    """Return a layer-comparison name for a vector datasource path."""
+    return path.stem.lower()
 
 
 def extract_zip(archive_path: Path, destination: Path) -> None:
@@ -531,6 +556,12 @@ def import_villages(
             },
         )
         villages.append(village)
+
+    village_update_time = timezone.now()
+    GeoDatasetVersion.objects.filter(pk=dataset_version.pk).update(
+        villages_updated_at=village_update_time,
+    )
+    dataset_version.villages_updated_at = village_update_time
 
     return VillageImportResult(
         villages=villages,

@@ -5,7 +5,7 @@ import hashlib
 
 from django.core.cache import cache
 from django.http import Http404, HttpResponse, HttpResponseNotModified
-from django.db.models import Count, Max, QuerySet
+from django.db.models import QuerySet
 from django.utils.cache import patch_cache_control
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET
@@ -43,7 +43,7 @@ class VillageBoundaryScope:
 
     villages: QuerySet[Village]
     canton_key: str
-    data_key: str
+    version_key: str
 
 
 def geojson_response(data: str, etag: str = "") -> HttpResponse:
@@ -228,22 +228,18 @@ def village_boundary_scope(request, dataset_version: GeoDatasetVersion) -> Villa
         if canton
         else get_villages_for_dataset(dataset_version)
     )
-    stats = villages.aggregate(
-        count=Count("id"),
-        updated_at=Max("updated_at"),
-    )
-    updated_at = stats["updated_at"]
-    updated_key = updated_at.isoformat() if updated_at is not None else "empty"
+    updated_at = dataset_version.villages_updated_at
+    version_key = updated_at.isoformat() if updated_at is not None else "empty"
     return VillageBoundaryScope(
         villages=villages,
         canton_key=canton_scope_key(canton),
-        data_key=f"count:{stats['count']}:updated:{updated_key}",
+        version_key=version_key,
     )
 
 
 def village_boundary_scope_key(scope: VillageBoundaryScope) -> str:
     """Return a cache-key suffix that changes when village data changes."""
-    parts = ["villages", scope.data_key]
+    parts = ["villages", f"updated:{scope.version_key}"]
     if scope.canton_key:
         parts.append(scope.canton_key)
     return ":".join(parts)

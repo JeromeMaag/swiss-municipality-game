@@ -708,6 +708,11 @@ def map_context_for_game(game: Game | None) -> dict[str, str]:
         if game is not None and game.target_type == Game.TargetType.VILLAGE
         else "geo:municipality_boundaries_geojson"
     )
+    target_boundary_layer = (
+        "villages"
+        if game is not None and game.target_type == Game.TargetType.VILLAGE
+        else "municipalities"
+    )
     municipality_overlay_url = ""
     if game is not None and game.target_type == Game.TargetType.VILLAGE:
         municipality_overlay_url = (
@@ -717,6 +722,7 @@ def map_context_for_game(game: Game | None) -> dict[str, str]:
         "canton_boundaries_url": reverse("geo:cantons_geojson") + scope_query,
         "map_label": game.map_label if game is not None else "CH",
         "target_boundaries_url": reverse(target_boundaries_route) + scope_query,
+        "target_boundary_layer": target_boundary_layer,
         "municipality_overlay_url": municipality_overlay_url,
     }
 

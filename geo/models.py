@@ -16,6 +16,7 @@ class GeoDatasetVersion(models.Model):
     version_label = models.CharField(max_length=80)
     source_url = models.URLField(blank=True)
     imported_at = models.DateTimeField(auto_now_add=True)
+    villages_updated_at = models.DateTimeField(blank=True, null=True)
     notes = models.TextField(blank=True)
 
     class Meta:

@@ -10,9 +10,9 @@ class GeoDatasetVersionAdmin(admin.ModelAdmin):
     """Admin configuration for geodata dataset versions."""
 
     change_list_template = "admin/geo/geodatasetversion/change_list.html"
-    list_display = ("name", "version_label", "imported_at")
+    list_display = ("name", "version_label", "imported_at", "villages_updated_at")
     search_fields = ("name", "version_label", "source_url")
-    readonly_fields = ("imported_at",)
+    readonly_fields = ("imported_at", "villages_updated_at")
 
 
 @admin.register(Canton)

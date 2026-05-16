@@ -1,6 +1,7 @@
 """Services for game lifecycle operations."""
 
 import math
+import random
 from dataclasses import dataclass
 
 from django.contrib.gis.geos import GEOSGeometry, Point
@@ -296,7 +297,8 @@ def start_game_for_player(
                 target_type=target_type,
             )
             target_config = target_type_config(game_scope.target_type)
-            if game_scope.targets.count() < TURN_COUNT:
+            target_count = game_scope.targets.count()
+            if target_count < TURN_COUNT:
                 existing_game = get_active_game_for_player(player)
                 if existing_game is not None:
                     return existing_game
@@ -313,7 +315,10 @@ def start_game_for_player(
                 canton_id=game_scope.canton.id if game_scope.canton else None,
                 target_type=game_scope.target_type,
             )
-            selected_target_ids = sample_target_ids(game_scope.targets)
+            selected_target_ids = sample_target_ids(
+                game_scope.targets,
+                target_count=target_count,
+            )
             game = Game.objects.create(
                 mode=game_scope.mode,
                 target_type=game_scope.target_type,
@@ -357,9 +362,23 @@ def start_game_for_player(
 
 def sample_target_ids(
     targets: QuerySet[Municipality] | QuerySet[Village],
+    *,
+    target_count: int,
 ) -> list[int]:
     """Return a random fixed-size sample of target ids without loading all ids."""
-    return list(targets.order_by("?").values_list("id", flat=True)[:TURN_COUNT])
+    offsets = sorted(random.SystemRandom().sample(range(target_count), TURN_COUNT))
+    ordered_ids = targets.order_by("id").values_list("id", flat=True)
+    target_ids: list[int] = []
+    for offset in offsets:
+        selected_id = list(ordered_ids[offset : offset + 1])
+        if selected_id:
+            target_ids.append(selected_id[0])
+    if len(target_ids) != TURN_COUNT:
+        raise NotEnoughMunicipalitiesError(
+            _("At least %(count)s active targets are required to start a game.")
+            % {"count": TURN_COUNT}
+        )
+    return target_ids
 
 
 def resolve_game_scope(
