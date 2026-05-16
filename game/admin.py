@@ -21,13 +21,23 @@ class GameAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "owner_label",
+        "target_type",
         "map_label",
+        "show_municipality_boundaries",
         "status",
         "total_score",
         "started_at",
         "finished_at",
     )
-    list_filter = ("mode", "canton", "status", "started_at", "finished_at")
+    list_filter = (
+        "target_type",
+        "show_municipality_boundaries",
+        "mode",
+        "canton",
+        "status",
+        "started_at",
+        "finished_at",
+    )
     search_fields = ("user__username", "guest_key")
     autocomplete_fields = ("user", "canton")
     readonly_fields = ("started_at",)

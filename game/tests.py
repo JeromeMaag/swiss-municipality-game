@@ -366,6 +366,8 @@ class GameModelTests(TestCase):
         game = Game.objects.create(user=self.user)
 
         self.assertEqual(game.status, Game.Status.ACTIVE)
+        self.assertEqual(game.target_type, Game.TargetType.MUNICIPALITY)
+        self.assertFalse(game.show_municipality_boundaries)
         self.assertEqual(game.total_score, 0)
         self.assertIn("Game", str(game))
 
@@ -409,6 +411,38 @@ class GameModelTests(TestCase):
             with self.subTest(mode=game.mode, canton=game.canton):
                 with self.assertRaises(ValidationError):
                     game.full_clean()
+
+    def test_village_games_can_show_municipality_boundaries(self) -> None:
+        """Village games can store whether municipality boundaries are shown."""
+        game = Game(
+            user=self.user,
+            target_type=Game.TargetType.VILLAGE,
+            show_municipality_boundaries=True,
+        )
+
+        game.full_clean()
+
+        self.assertTrue(game.show_municipality_boundaries)
+
+    def test_municipality_games_cannot_show_municipality_boundaries(self) -> None:
+        """Municipality boundary overlay is only meaningful for village games."""
+        game = Game(
+            user=self.user,
+            target_type=Game.TargetType.MUNICIPALITY,
+            show_municipality_boundaries=True,
+        )
+
+        with self.assertRaises(ValidationError):
+            game.full_clean()
+
+    def test_database_rejects_municipality_overlay_for_municipality_games(self) -> None:
+        """Database constraints keep overlay settings tied to village games."""
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Game.objects.create(
+                user=self.user,
+                target_type=Game.TargetType.MUNICIPALITY,
+                show_municipality_boundaries=True,
+            )
 
     def test_finished_game_requires_finished_at(self) -> None:
         """Finished games require a finish timestamp during validation."""

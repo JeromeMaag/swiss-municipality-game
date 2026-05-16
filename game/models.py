@@ -11,6 +11,8 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 GAME_STATUS_ACTIVE = "active"
 GAME_MODE_SWITZERLAND = "switzerland"
 GAME_MODE_CANTON = "canton"
+GAME_TARGET_TYPE_MUNICIPALITY = "municipality"
+GAME_TARGET_TYPE_VILLAGE = "village"
 
 
 class Game(models.Model):
@@ -28,6 +30,12 @@ class Game(models.Model):
 
         SWITZERLAND = GAME_MODE_SWITZERLAND, "Switzerland"
         CANTON = GAME_MODE_CANTON, "Single canton"
+
+    class TargetType(models.TextChoices):
+        """Allowed geographic target types for a game."""
+
+        MUNICIPALITY = GAME_TARGET_TYPE_MUNICIPALITY, "Municipality"
+        VILLAGE = GAME_TARGET_TYPE_VILLAGE, "Village"
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -51,6 +59,12 @@ class Game(models.Model):
         choices=Mode.choices,
         default=Mode.SWITZERLAND,
     )
+    target_type = models.CharField(
+        max_length=20,
+        choices=TargetType.choices,
+        default=TargetType.MUNICIPALITY,
+    )
+    show_municipality_boundaries = models.BooleanField(default=False)
     canton = models.ForeignKey(
         "geo.Canton",
         blank=True,
@@ -82,6 +96,10 @@ class Game(models.Model):
                 name="game_guest_status_idx",
             ),
             models.Index(fields=["mode", "canton"], name="game_mode_canton_idx"),
+            models.Index(
+                fields=["target_type", "mode", "canton"],
+                name="game_target_scope_idx",
+            ),
             models.Index(fields=["status", "started_at"]),
         ]
         constraints = [
@@ -125,6 +143,13 @@ class Game(models.Model):
                 ),
                 name="game_mode_canton_consistency",
             ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(target_type=GAME_TARGET_TYPE_VILLAGE)
+                    | models.Q(show_municipality_boundaries=False)
+                ),
+                name="game_municipality_overlay_village_only",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -152,11 +177,11 @@ class Game(models.Model):
         return "CH"
 
     def clean(self) -> None:
-        """Validate game ownership, scoring extent, and lifecycle consistency.
+        """Validate game ownership, scope, target type, and lifecycle consistency.
 
         Raises:
-            ValidationError: If ownership is invalid, the scoring extent is
-                non-finite, or a finished game has no finish timestamp.
+            ValidationError: If ownership, scope, target-type settings, scoring
+                extent, or finished-game lifecycle data is invalid.
         """
         super().clean()
         if (self.user_id is None) == (not self.guest_key):
@@ -170,6 +195,18 @@ class Game(models.Model):
         if self.mode == self.Mode.CANTON and self.canton_id is None:
             raise ValidationError(
                 {"canton": "Single-canton games require a canton."}
+            )
+        if (
+            self.target_type == self.TargetType.MUNICIPALITY
+            and self.show_municipality_boundaries
+        ):
+            raise ValidationError(
+                {
+                    "show_municipality_boundaries": (
+                        "Municipality boundary overlay is only configurable for "
+                        "village games."
+                    )
+                }
             )
         if (
             self.scoring_max_distance_m is not None
