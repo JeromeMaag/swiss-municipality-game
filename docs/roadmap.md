@@ -2,7 +2,6 @@
 ## Gameplay Ideas
 
 - Guided learning mode
-- Settlements or place names instead of municipalities
 - Historical municipality datasets as a game mode
 - Configurable round counts, such as 5, 10, or 20 rounds
 - Endless practice mode

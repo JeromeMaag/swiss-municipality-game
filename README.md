@@ -1,9 +1,9 @@
 # 🇨🇭 Find the Municipality! 🇨🇭
 
-Find Swiss municipalities on the map.
+Find Swiss municipalities and villages on the map.
 
 Find the Municipality! is a small geography game for Switzerland. Play a
-five-round game, place your pin on the map, reveal the municipality, and compare
+five-round game, place your pin on the map, reveal the target area, and compare
 your distance and score. You can play without an account, or sign in to keep
 history and personal statistics.
 
@@ -14,15 +14,17 @@ history and personal statistics.
 
 ## Features
 
-- Five-round Swiss municipality guessing game
+- Five-round Swiss municipality and village guessing game
 - Switzerland-wide and single-canton modes
+- Optional municipality overlay for village rounds
 - Guest play without registration
 - Account history and personal statistics
 - Map reveal with score, distance, pins, and reveal lines
 - Finished-game summary and replayable history maps
 - Switchable map backgrounds and outline styles
 - English, German, and French interface
-- Official swisstopo municipality boundaries and BFS STATPOP population data
+- Official swisstopo municipality and village boundaries plus BFS STATPOP
+  population data
 
 ## Quick Start
 
@@ -62,10 +64,15 @@ python manage.py seed_dev_geodata
 ```powershell
 # Official Swiss boundaries and population data
 python manage.py setup_geodata
+
+# Optional but required for village games
+python manage.py import_villages
 ```
 
 The official import downloads swissBOUNDARIES3D municipality boundaries and BFS
-STATPOP population data. It can take a while.
+STATPOP population data. The village import downloads swisstopo locality
+boundaries and attaches them to the current dataset. Both imports can take a
+while.
 
 Start the server:
 
@@ -87,8 +94,9 @@ account; it is not part of the public player experience.
 - `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, and `DATABASE_URL` are configured via
   environment variables.
 - The included `docker-compose.yml` is intended for local development only.
-- Official geodata can be imported from the Django admin or with
-  `python manage.py setup_geodata`.
+- Official municipality geodata can be imported from the Django admin or with
+  `python manage.py setup_geodata`; village geodata is imported with
+  `python manage.py import_villages`.
 - Create a superuser only when you need admin access:
 
 ```powershell

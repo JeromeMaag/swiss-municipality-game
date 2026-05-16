@@ -540,6 +540,17 @@ class GameModelTests(TestCase):
 
         self.assertTrue(game.show_municipality_boundaries)
 
+    def test_game_target_type_label_matches_target_type(self) -> None:
+        """Games expose a player-facing target type label."""
+        municipality_game = Game(user=self.user)
+        village_game = Game(
+            user=self.user,
+            target_type=Game.TargetType.VILLAGE,
+        )
+
+        self.assertEqual(municipality_game.target_type_label, "Municipalities")
+        self.assertEqual(village_game.target_type_label, "Villages")
+
     def test_municipality_games_cannot_show_municipality_boundaries(self) -> None:
         """Municipality boundary overlay is only meaningful for village games."""
         game = Game(
