@@ -80,7 +80,10 @@ class Command(BaseCommand):
         parser.add_argument(
             "--source-url",
             default="",
-            help="Optional source URL stored only in command output.",
+            help=(
+                "Optional source URL. When no source path is provided, this URL "
+                "is downloaded instead of the default official swisstopo archive."
+            ),
         )
         parser.add_argument(
             "--layer",

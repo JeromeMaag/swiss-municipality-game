@@ -254,7 +254,6 @@
                   value="municipality"
                   form="{% if request.user.is_authenticated %}game-start-form{% else %}guest-start-form{% endif %}"
                   {% if selected_target_type == "municipality" %}checked{% endif %}
-                  data-target-type-choice
                 >
                 <span>
                   <strong>{% trans "Municipalities" %}</strong>
@@ -268,7 +267,6 @@
                   value="village"
                   form="{% if request.user.is_authenticated %}game-start-form{% else %}guest-start-form{% endif %}"
                   {% if selected_target_type == "village" %}checked{% endif %}
-                  data-target-type-choice
                 >
                 <span>
                   <strong>{% trans "Villages" %}</strong>
