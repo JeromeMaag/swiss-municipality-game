@@ -3,7 +3,7 @@
 from django.db.models import QuerySet
 
 from .constants import DEV_GEODATA_DATASET_NAME
-from .models import Canton, GeoDatasetVersion, Municipality
+from .models import Canton, GeoDatasetVersion, Municipality, Village
 
 
 DEVELOPMENT_DATASET_NAMES = frozenset({DEV_GEODATA_DATASET_NAME})
@@ -112,6 +112,39 @@ def get_municipalities_for_canton(canton: Canton) -> QuerySet[Municipality]:
         A queryset of active municipalities ordered by internal id.
     """
     return Municipality.objects.filter(
+        canton=canton,
+        dataset_version=canton.dataset_version,
+        is_active=True,
+    ).order_by("id")
+
+
+def get_villages_for_dataset(
+    dataset_version: GeoDatasetVersion,
+) -> QuerySet[Village]:
+    """Return active villages for one dataset version.
+
+    Args:
+        dataset_version: Dataset version to query.
+
+    Returns:
+        A queryset of active villages ordered by internal id.
+    """
+    return Village.objects.filter(
+        dataset_version=dataset_version,
+        is_active=True,
+    ).order_by("id")
+
+
+def get_villages_for_canton(canton: Canton) -> QuerySet[Village]:
+    """Return active villages for one canton.
+
+    Args:
+        canton: Canton to query.
+
+    Returns:
+        A queryset of active villages ordered by internal id.
+    """
+    return Village.objects.filter(
         canton=canton,
         dataset_version=canton.dataset_version,
         is_active=True,

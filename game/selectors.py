@@ -78,6 +78,8 @@ def get_finished_games_for_player(player: PlayerIdentity) -> QuerySet[Game]:
             "id",
             "user",
             "guest_key",
+            "target_type",
+            "show_municipality_boundaries",
             "mode",
             "canton",
             "canton__abbreviation",
@@ -106,7 +108,11 @@ def get_finished_game_summary_for_player(
         None when the game does not exist or is not available for summaries.
     """
     turns = (
-        Turn.objects.select_related("municipality_target__canton", "guess")
+        Turn.objects.select_related(
+            "municipality_target__canton",
+            "village_target__canton",
+            "guess",
+        )
         .defer(
             "municipality_target__geom",
             "municipality_target__geom_simplified",
@@ -114,6 +120,12 @@ def get_finished_game_summary_for_player(
             "municipality_target__canton__geom",
             "municipality_target__canton__geom_simplified",
             "municipality_target__canton__label_point",
+            "village_target__geom",
+            "village_target__geom_simplified",
+            "village_target__label_point",
+            "village_target__canton__geom",
+            "village_target__canton__geom_simplified",
+            "village_target__canton__label_point",
         )
         .order_by("turn_number")
     )

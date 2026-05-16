@@ -26,8 +26,10 @@ from .scoring import calculate_score
 from .services import (
     GuessSubmissionError,
     InvalidGameModeError,
+    InvalidGameTargetTypeError,
     InvalidGuessCoordinatesError,
     NotEnoughMunicipalitiesError,
+    calculate_scoring_max_distance_m_for_dataset,
     _calculate_guess_distances,
     _ensure_game_scoring_max_distance_m,
     _normalize_coordinate,
@@ -36,6 +38,7 @@ from .services import (
     start_game_for_player,
     submit_guess,
     submit_guess_for_player,
+    target_id_for_turn,
 )
 from .selectors import (
     get_active_game,
@@ -119,6 +122,22 @@ class GameServiceHelperTests(TestCase):
             geom=geometry,
         )
 
+    def create_distance_village_target(
+        self,
+        coordinates: tuple[tuple[float, float], ...],
+    ) -> Village:
+        """Create a village target with exact WGS84 test geometry."""
+        municipality = self.create_distance_target(coordinates)
+        return Village.objects.create(
+            dataset_version=municipality.dataset_version,
+            source_identifier="distance-village",
+            name="Distance Village",
+            postal_code="9999",
+            canton=municipality.canton,
+            municipality=municipality,
+            geom=municipality.geom,
+        )
+
     def test_normalize_coordinate_accepts_bounds(self) -> None:
         """Coordinate normalization accepts inclusive boundary values."""
         self.assertEqual(
@@ -150,12 +169,100 @@ class GameServiceHelperTests(TestCase):
                     _normalize_turn_id(value)
 
     def test_calculate_guess_distances_rejects_missing_targets(self) -> None:
-        """Distance calculation fails clearly for missing municipality targets."""
+        """Distance calculation fails clearly for missing targets."""
         with self.assertRaisesMessage(
             GuessSubmissionError,
-            "Target municipality does not exist.",
+            "Target does not exist.",
         ):
             _calculate_guess_distances(point=Point(8.0, 47.0, srid=4326), target_id=0)
+
+    def test_calculate_guess_distances_supports_village_targets(self) -> None:
+        """Distance calculation can use village polygons as targets."""
+        target = self.create_distance_village_target(
+            (
+                (8.0, 47.0),
+                (8.1, 47.0),
+                (8.1, 47.1),
+                (8.0, 47.1),
+                (8.0, 47.0),
+            )
+        )
+
+        distances = _calculate_guess_distances(
+            point=Point(8.2, 47.05, srid=4326),
+            target_id=target.id,
+            target_type=Game.TargetType.VILLAGE,
+        )
+
+        self.assertAlmostEqual(
+            distances.distance_to_municipality_m,
+            7_598.50117843,
+            delta=0.01,
+        )
+        self.assertAlmostEqual(
+            distances.distance_to_boundary_m,
+            7_598.50117843,
+            delta=0.01,
+        )
+        self.assertAlmostEqual(
+            distances.nearest_boundary_point.x,
+            8.1,
+            delta=0.000001,
+        )
+
+    def test_scoring_extent_supports_village_targets(self) -> None:
+        """Scoring map extent can be calculated from active village targets."""
+        target = self.create_distance_village_target(
+            (
+                (8.0, 47.0),
+                (8.1, 47.0),
+                (8.1, 47.1),
+                (8.0, 47.1),
+                (8.0, 47.0),
+            )
+        )
+
+        scoring_max_distance_m = calculate_scoring_max_distance_m_for_dataset(
+            target.dataset_version_id,
+            target_type=Game.TargetType.VILLAGE,
+        )
+
+        self.assertGreater(scoring_max_distance_m, 0)
+
+    def test_target_id_for_turn_uses_game_target_type(self) -> None:
+        """Target id lookup follows the owning game's target type."""
+        municipality = self.create_distance_target(
+            ((0, 0), (1, 0), (1, 1), (0, 1), (0, 0))
+        )
+        village = Village.objects.create(
+            dataset_version=municipality.dataset_version,
+            source_identifier="turn-village",
+            name="Turn Village",
+            postal_code="9999",
+            canton=municipality.canton,
+            municipality=municipality,
+            geom=municipality.geom,
+        )
+        municipality_game = Game.objects.create(
+            user=get_user_model().objects.create_user(username="municipality-player")
+        )
+        village_game = Game.objects.create(
+            user=get_user_model().objects.create_user(username="village-player"),
+            target_type=Game.TargetType.VILLAGE,
+        )
+        municipality_turn = Turn.objects.create(
+            game=municipality_game,
+            turn_number=1,
+            municipality_target=municipality,
+        )
+        village_turn = Turn.objects.create(
+            game=village_game,
+            turn_number=1,
+            village_target=village,
+        )
+
+        self.assertEqual(target_id_for_turn(municipality_turn), municipality.id)
+        self.assertEqual(target_id_for_turn(village_turn), village.id)
 
     def test_calculate_guess_distances_matches_known_meridian_distance(self) -> None:
         """Distance calculation matches a known WGS84 meridian distance."""
@@ -806,6 +913,42 @@ class GuessSubmissionServiceTests(TestCase):
             )
         return game, turns
 
+    def create_village_game_with_turns(
+        self,
+        turn_count: int = 1,
+    ) -> tuple[Game, list[Turn]]:
+        """Create a village-target game with unique target villages."""
+        game = Game.objects.create(
+            user=self.user,
+            target_type=Game.TargetType.VILLAGE,
+        )
+        turns = []
+        for index in range(turn_count):
+            municipality = Municipality.objects.create(
+                dataset_version=self.dataset_version,
+                bfs_number=360 + index,
+                name=f"Village Parent {index + 1}",
+                canton=self.canton,
+                geom=make_test_geometry(),
+            )
+            village = Village.objects.create(
+                dataset_version=self.dataset_version,
+                source_identifier=f"guess-village-{index + 1}",
+                name=f"Village {index + 1}",
+                postal_code=f"83{index:02d}",
+                canton=self.canton,
+                municipality=municipality,
+                geom=make_test_geometry(),
+            )
+            turns.append(
+                Turn.objects.create(
+                    game=game,
+                    turn_number=index + 1,
+                    village_target=village,
+                )
+            )
+        return game, turns
+
     def test_submit_guess_persists_exact_hit_and_starts_next_turn(self) -> None:
         """Submitting an exact hit creates a guess and starts the next turn."""
         game, turns = self.create_game_with_turns(turn_count=2)
@@ -876,6 +1019,21 @@ class GuessSubmissionServiceTests(TestCase):
                 event_type=GameEvent.Type.GUESS_CONFIRMED,
             ).exists()
         )
+
+    def test_submit_guess_scores_village_target(self) -> None:
+        """Submitting a village-game guess uses the village target geometry."""
+        game, turns = self.create_village_game_with_turns()
+
+        result = submit_guess(self.user, turns[0].id, 47.05, 8.05)
+
+        game.refresh_from_db()
+        turns[0].refresh_from_db()
+        self.assertEqual(game.target_type, Game.TargetType.VILLAGE)
+        self.assertIsNone(turns[0].municipality_target_id)
+        self.assertIsNotNone(turns[0].village_target_id)
+        self.assertAlmostEqual(result.guess.distance_to_municipality_m, 0, places=3)
+        self.assertEqual(result.guess.score, 1000)
+        self.assertEqual(game.total_score, 1000)
 
     def test_submit_guess_scores_outside_polygon_distance(self) -> None:
         """Submitting outside the target polygon stores positive distances."""
@@ -1068,6 +1226,40 @@ class GameStartTests(TestCase):
             )
         return municipalities
 
+    def create_villages(
+        self,
+        count: int,
+        is_active: bool = True,
+        canton: Canton | None = None,
+    ) -> list[Village]:
+        """Create villages for game target selection."""
+        villages = []
+        canton = canton or self.canton
+        existing_count = Village.objects.filter(
+            dataset_version=self.dataset_version
+        ).count()
+        for index in range(count):
+            municipality = Municipality.objects.create(
+                dataset_version=self.dataset_version,
+                bfs_number=2000 + existing_count + index,
+                name=f"Village Parent {existing_count + index + 1}",
+                canton=canton,
+                geom=make_test_geometry(),
+            )
+            villages.append(
+                Village.objects.create(
+                    dataset_version=self.dataset_version,
+                    source_identifier=f"village-{existing_count + index + 1}",
+                    name=f"Village {existing_count + index + 1}",
+                    postal_code=f"83{index:02d}",
+                    canton=canton,
+                    municipality=municipality,
+                    geom=make_test_geometry(),
+                    is_active=is_active,
+                )
+            )
+        return villages
+
     def create_canton(self, abbreviation: str, name: str) -> Canton:
         """Create another canton in the current dataset."""
         return Canton.objects.create(
@@ -1207,6 +1399,81 @@ class GameStartTests(TestCase):
                 PlayerIdentity.for_user(self.user),
                 mode=Game.Mode.CANTON,
                 canton_abbreviation="BE",
+            )
+
+        self.assertFalse(Game.objects.exists())
+
+    def test_start_game_for_player_uses_village_targets(self) -> None:
+        """Village games sample village targets and store overlay settings."""
+        villages = self.create_villages(5)
+
+        game = start_game_for_player(
+            PlayerIdentity.for_user(self.user),
+            target_type=Game.TargetType.VILLAGE,
+            show_municipality_boundaries=True,
+        )
+
+        turns = list(game.turns.order_by("turn_number"))
+        self.assertEqual(game.target_type, Game.TargetType.VILLAGE)
+        self.assertTrue(game.show_municipality_boundaries)
+        self.assertEqual(len(turns), 5)
+        self.assertEqual(len({turn.village_target_id for turn in turns}), 5)
+        self.assertTrue(
+            {turn.village_target_id for turn in turns}.issubset(
+                {village.id for village in villages}
+            )
+        )
+        self.assertTrue(all(turn.municipality_target_id is None for turn in turns))
+        self.assertGreater(game.scoring_max_distance_m, 0)
+
+    def test_start_game_for_player_uses_single_canton_village_scope(self) -> None:
+        """Single-canton village games only target villages from that canton."""
+        bern = self.create_canton("BE", "Bern")
+        self.create_villages(5)
+        bern_villages = self.create_villages(5, canton=bern)
+
+        game = start_game_for_player(
+            PlayerIdentity.for_user(self.user),
+            mode=Game.Mode.CANTON,
+            canton_abbreviation="BE",
+            target_type=Game.TargetType.VILLAGE,
+        )
+
+        self.assertEqual(game.mode, Game.Mode.CANTON)
+        self.assertEqual(game.target_type, Game.TargetType.VILLAGE)
+        self.assertEqual(game.canton, bern)
+        self.assertEqual(game.turns.count(), 5)
+        self.assertEqual(
+            set(game.turns.values_list("village_target__canton_id", flat=True)),
+            {bern.id},
+        )
+        self.assertTrue(
+            set(game.turns.values_list("village_target_id", flat=True)).issubset(
+                {village.id for village in bern_villages}
+            )
+        )
+
+    def test_start_game_village_scope_requires_enough_active_villages(self) -> None:
+        """Village games count active villages, not municipalities."""
+        self.create_villages(4)
+        self.create_municipalities(5)
+
+        with self.assertRaises(NotEnoughMunicipalitiesError):
+            start_game_for_player(
+                PlayerIdentity.for_user(self.user),
+                target_type=Game.TargetType.VILLAGE,
+            )
+
+        self.assertFalse(Game.objects.exists())
+
+    def test_start_game_rejects_invalid_target_type(self) -> None:
+        """Unknown target types are rejected before game creation."""
+        self.create_municipalities(5)
+
+        with self.assertRaises(InvalidGameTargetTypeError):
+            start_game_for_player(
+                PlayerIdentity.for_user(self.user),
+                target_type="invalid",
             )
 
         self.assertFalse(Game.objects.exists())

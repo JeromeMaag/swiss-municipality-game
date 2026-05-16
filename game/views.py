@@ -33,6 +33,7 @@ from .services import (
     calculate_nearest_boundary_point,
     start_game_for_player,
     submit_guess_for_player,
+    target_id_for_turn,
 )
 
 
@@ -382,7 +383,8 @@ def nearest_boundary_point_for_guess(guess: Guess) -> Point:
         return guess.nearest_boundary_point
     return calculate_nearest_boundary_point(
         point=guess.point,
-        target_id=guess.turn.municipality_target_id,
+        target_id=target_id_for_turn(guess.turn),
+        target_type=guess.turn.game.target_type,
     )
 
 
@@ -488,6 +490,7 @@ def get_last_guess_result(request, player=None) -> Guess | None:
             "turn__turn_number",
             "turn__game__id",
             "turn__game__mode",
+            "turn__game__target_type",
             "turn__game__canton",
             "turn__game__canton__abbreviation",
             "turn__game__status",
