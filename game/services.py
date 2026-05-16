@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from django.contrib.gis.geos import GEOSGeometry, Point
 from django.db import IntegrityError, connection, transaction
-from django.db.models import Max, Min, QuerySet
+from django.db.models import QuerySet
 from django.utils import timezone
 from django.utils.translation import gettext as _, gettext_lazy
 
@@ -368,45 +368,18 @@ def sample_target_ids(
     *,
     target_count: int,
 ) -> list[int]:
-    """Return a random fixed-size sample without full-table random sorting."""
-    id_bounds = targets.aggregate(min_id=Min("id"), max_id=Max("id"))
-    min_id = id_bounds["min_id"]
-    max_id = id_bounds["max_id"]
-    if min_id is None or max_id is None:
-        raise NotEnoughTargetsError(
-            _("At least %(count)s active targets are required to start a game.")
-            % {"count": TURN_COUNT}
-        )
-
+    """Return a random fixed-size sample with bounded query count."""
     randomizer = random.SystemRandom()
+    offsets = sorted(randomizer.sample(range(target_count), TURN_COUNT))
     ordered_targets = targets.order_by("id")
-    target_ids: list[int] = []
-    seen_ids: set[int] = set()
-    attempts = max(TURN_COUNT * 20, 40)
-    while len(target_ids) < TURN_COUNT and attempts > 0:
-        attempts -= 1
-        random_id = randomizer.randint(min_id, max_id)
-        selected_id = (
-            ordered_targets.filter(id__gte=random_id)
-            .values_list("id", flat=True)
-            .first()
-        )
-        if selected_id is None:
-            selected_id = ordered_targets.values_list("id", flat=True).first()
-        if selected_id is not None and selected_id not in seen_ids:
-            target_ids.append(selected_id)
-            seen_ids.add(selected_id)
-
-    if len(target_ids) != TURN_COUNT:
-        fallback_limit = min(target_count, TURN_COUNT * 4)
-        fallback_ids = ordered_targets.values_list("id", flat=True)[:fallback_limit]
-        for selected_id in fallback_ids:
-            if selected_id not in seen_ids:
-                target_ids.append(selected_id)
-                seen_ids.add(selected_id)
-            if len(target_ids) == TURN_COUNT:
-                break
-
+    window_start = offsets[0]
+    window_size = offsets[-1] - window_start + 1
+    window_ids = list(
+        ordered_targets.values_list("id", flat=True)[
+            window_start : window_start + window_size
+        ]
+    )
+    target_ids = [window_ids[offset - window_start] for offset in offsets]
     if len(target_ids) != TURN_COUNT:
         raise NotEnoughTargetsError(
             _("At least %(count)s active targets are required to start a game.")
