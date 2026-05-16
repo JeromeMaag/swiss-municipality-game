@@ -12,7 +12,7 @@ import zipfile
 
 import pandas as pd
 from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models.deletion import ProtectedError
 from django.utils import timezone
 
@@ -514,14 +514,6 @@ def import_villages(
             skipped_without_canton += 1
             continue
 
-        municipality = (
-            None
-            if options["skip_municipality_assignment"]
-            else find_municipality(
-                geom,
-                canton,
-            )
-        )
         status = to_str(row_value(row, options["status_field"]))
         is_active = not status or status == options["active_status"]
 
@@ -532,7 +524,7 @@ def import_villages(
                 "name": name,
                 "postal_code": to_str(row_value(row, options["postal_code_field"])),
                 "canton": canton,
-                "municipality": municipality,
+                "municipality": None,
                 "geom": geom,
                 "geom_simplified": simplified_geom,
                 "label_point": geom.point_on_surface,
@@ -542,6 +534,9 @@ def import_villages(
             },
         )
         villages.append(village)
+
+    if not options["skip_municipality_assignment"]:
+        assign_village_municipalities(villages, dataset_version)
 
     village_update_time = timezone.now()
     GeoDatasetVersion.objects.filter(pk=dataset_version.pk).update(
@@ -591,32 +586,52 @@ def find_canton(
     return None
 
 
-def find_municipality(
-    geom,
-    canton: Canton,
-) -> Municipality | None:
-    """Find the municipality containing a village label point.
+def assign_village_municipalities(
+    villages: list[Village],
+    dataset_version: GeoDatasetVersion,
+) -> None:
+    """Assign unambiguous parent municipalities to imported villages in bulk.
 
     Args:
-        geom: Village geometry.
-        canton: Matched village canton.
-
-    Returns:
-        Matching municipality, or None when assignment is not unambiguous.
+        villages: Imported villages to assign.
+        dataset_version: Dataset version of the imported village rows.
     """
-    label_point = geom.point_on_surface
-    matches = list(
-        Municipality.objects.filter(
-            dataset_version=canton.dataset_version,
-            canton=canton,
-            is_active=True,
-            geom__intersects=label_point,
+    village_ids = [village.id for village in villages]
+    if not village_ids:
+        return
+
+    village_table = connection.ops.quote_name(Village._meta.db_table)
+    municipality_table = connection.ops.quote_name(Municipality._meta.db_table)
+    query = f"""
+        WITH matches AS (
+            SELECT
+                village.id AS village_id,
+                MIN(municipality.id) AS municipality_id,
+                COUNT(municipality.id) AS match_count
+            FROM {village_table} village
+            JOIN {municipality_table} municipality
+              ON municipality.dataset_version_id = village.dataset_version_id
+             AND municipality.canton_id = village.canton_id
+             AND municipality.is_active = TRUE
+             AND ST_Intersects(municipality.geom, village.label_point)
+            WHERE village.dataset_version_id = %s
+              AND village.id = ANY(%s)
+              AND village.label_point IS NOT NULL
+            GROUP BY village.id
         )
-        .order_by("id")[:2]
-    )
-    if len(matches) == 1:
-        return matches[0]
-    return None
+        UPDATE {village_table} village
+        SET municipality_id = matches.municipality_id
+        FROM matches
+        WHERE village.id = matches.village_id
+          AND matches.match_count = 1
+        RETURNING village.id, village.municipality_id
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(query, [dataset_version.id, village_ids])
+        assigned_municipalities = dict(cursor.fetchall())
+
+    for village in villages:
+        village.municipality_id = assigned_municipalities.get(village.id)
 
 
 def to_date(value: Any) -> date | None:
