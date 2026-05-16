@@ -245,8 +245,10 @@
         return layer;
       })
       .catch(function () {
-        map.getContainer().classList.add("game-map--boundary-error");
-        showMapStatus(map, options.errorMessage);
+        if (!options.suppressGlobalError) {
+          map.getContainer().classList.add("game-map--boundary-error");
+          showMapStatus(map, options.errorMessage);
+        }
         return null;
       });
   }
@@ -1418,6 +1420,7 @@
         errorMessage: "Municipality overlay could not be loaded.",
         fitBounds: false,
         renderer: vectorRenderer,
+        suppressGlobalError: true,
         style: municipalityOverlayStyle(
           initialBoundaryColors,
           boundaryState.outlineLayers

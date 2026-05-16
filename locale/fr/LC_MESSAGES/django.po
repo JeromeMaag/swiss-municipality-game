@@ -309,6 +309,24 @@ msgstr "Communes"
 msgid "Villages"
 msgstr "Localités"
 
+msgid "municipalities"
+msgstr "communes"
+
+msgid "villages"
+msgstr "localités"
+
+msgid "Target"
+msgstr "Cible"
+
+msgid "What to find"
+msgstr "Que chercher ?"
+
+msgid "Default"
+msgstr "Par défaut"
+
+msgid "New"
+msgstr "Nouveau"
+
 msgid "Active municipalities"
 msgstr "Communes actives"
 
@@ -431,3 +449,9 @@ msgstr "Libellés de communes introuvables."
 
 msgid "Events must belong to exactly one user or guest."
 msgstr "Les événements doivent appartenir exactement à un utilisateur ou à un invité."
+
+msgid "At least %(count)s active %(targets)s are required to start a game."
+msgstr "Il faut au moins %(count)s %(targets)s actives pour commencer une partie."
+
+msgid "Choose a valid target type."
+msgstr "Choisis un type de cible valide."

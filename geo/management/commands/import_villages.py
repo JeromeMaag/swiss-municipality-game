@@ -205,9 +205,13 @@ def resolve_dataset_version(requested_version: str) -> GeoDatasetVersion:
     Raises:
         CommandError: If the requested or current dataset version is unavailable.
     """
+    boundary_versions = GeoDatasetVersion.objects.filter(
+        cantons__isnull=False,
+        municipalities__isnull=False,
+    ).distinct()
     if requested_version:
         dataset_version = (
-            GeoDatasetVersion.objects.filter(version_label=requested_version)
+            boundary_versions.filter(version_label=requested_version)
             .order_by("-imported_at", "name")
             .first()
         )
@@ -218,6 +222,10 @@ def resolve_dataset_version(requested_version: str) -> GeoDatasetVersion:
         return dataset_version
 
     dataset_version = get_current_dataset_version()
+    if dataset_version is None:
+        raise CommandError("Import canton and municipality boundaries first.")
+    if not boundary_versions.filter(pk=dataset_version.pk).exists():
+        dataset_version = boundary_versions.order_by("-imported_at", "-id").first()
     if dataset_version is None:
         raise CommandError("Import canton and municipality boundaries first.")
     return dataset_version
@@ -450,14 +458,26 @@ def import_villages(
         Imported villages and skipped row counts.
     """
     cantons = list(Canton.objects.filter(dataset_version=dataset_version))
-    municipalities = []
+    municipalities_by_canton: dict[int, list[Municipality]] = {}
     if not options["skip_municipality_assignment"]:
-        municipalities = list(
+        municipalities = (
             Municipality.objects.filter(
                 dataset_version=dataset_version,
                 is_active=True,
             ).select_related("canton")
         )
+        for municipality in municipalities:
+            municipalities_by_canton.setdefault(
+                municipality.canton_id,
+                [],
+            ).append(municipality)
+
+    canton_by_abbreviation = {canton.abbreviation: canton for canton in cantons}
+    canton_by_bfs = {
+        canton.bfs_number: canton
+        for canton in cantons
+        if canton.bfs_number is not None
+    }
 
     villages = []
     skipped_without_canton = 0
@@ -474,12 +494,23 @@ def import_villages(
         if not source_identifier or not name:
             raise CommandError("Village rows require source identifier and name values.")
 
-        canton = find_canton(row, geom, cantons, options)
+        canton = find_canton(
+            row,
+            geom,
+            cantons,
+            options,
+            canton_by_abbreviation,
+            canton_by_bfs,
+        )
         if canton is None:
             skipped_without_canton += 1
             continue
 
-        municipality = find_municipality(geom, canton, municipalities)
+        municipality = find_municipality(
+            geom,
+            canton,
+            municipalities_by_canton.get(canton.id, []),
+        )
         status = to_str(row_value(row, options["status_field"]))
         is_active = not status or status == options["active_status"]
 
@@ -512,6 +543,8 @@ def find_canton(
     geom,
     cantons: list[Canton],
     options: dict[str, Any],
+    by_abbreviation: dict[str, Canton],
+    by_bfs: dict[int, Canton],
 ) -> Canton | None:
     """Find the canton for a village row.
 
@@ -520,17 +553,12 @@ def find_canton(
         geom: Village geometry.
         cantons: Dataset cantons.
         options: Parsed command options.
+        by_abbreviation: Canton lookup by abbreviation.
+        by_bfs: Canton lookup by BFS number.
 
     Returns:
         The matching canton, or None for rows outside Swiss cantons.
     """
-    by_abbreviation = {canton.abbreviation: canton for canton in cantons}
-    by_bfs = {
-        canton.bfs_number: canton
-        for canton in cantons
-        if canton.bfs_number is not None
-    }
-
     abbreviation = to_str(row_value(row, options["canton_abbreviation_field"]))
     if abbreviation and abbreviation in by_abbreviation:
         return by_abbreviation[abbreviation]
@@ -556,7 +584,7 @@ def find_municipality(
     Args:
         geom: Village geometry.
         canton: Matched village canton.
-        municipalities: Candidate municipalities.
+        municipalities: Candidate municipalities already scoped to the canton.
 
     Returns:
         Matching municipality, or None when assignment is not unambiguous.
@@ -565,8 +593,7 @@ def find_municipality(
     matches = [
         municipality
         for municipality in municipalities
-        if municipality.canton_id == canton.id
-        and (
+        if (
             municipality.geom.contains(label_point)
             or municipality.geom.intersects(label_point)
         )

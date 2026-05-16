@@ -82,6 +82,7 @@ from .management.commands.import_swissboundaries3d import (
 from .management.commands.import_villages import (
     download_asset as download_village_asset,
     import_villages,
+    resolve_dataset_version as resolve_village_dataset_version,
     resolve_layer_source as resolve_village_layer_source,
     safe_extract_zip as safe_extract_village_zip,
 )
@@ -779,6 +780,30 @@ class GeoJSONEndpointTests(TestCase):
         self.assertEqual(len(data["features"]), 1)
         self.assertEqual(data["features"][0]["properties"]["id"], other_village.id)
 
+    def test_village_boundaries_etag_changes_when_villages_change(self) -> None:
+        """Village boundary cache keys change after village data imports."""
+        url = reverse("geo:village_boundaries_geojson")
+        first_response = self.client.get(url)
+        first_data = self.assert_geojson_response(first_response)
+        first_etag = first_response["ETag"]
+
+        Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier="village-2",
+            name="Second Village",
+            postal_code="8356",
+            canton=self.canton,
+            municipality=self.municipality,
+            geom=make_test_geometry(),
+        )
+
+        response = self.client.get(url, HTTP_IF_NONE_MATCH=first_etag)
+        data = self.assert_geojson_response(response)
+
+        self.assertEqual(len(first_data["features"]), 1)
+        self.assertEqual(len(data["features"]), 2)
+        self.assertNotEqual(response["ETag"], first_etag)
+
     def test_municipality_labels_include_reveal_properties(self) -> None:
         """Municipality label endpoint returns names for reveal mode."""
         turn = self.grant_label_access()
@@ -1279,6 +1304,19 @@ class ImportVillagesCommandTests(TestCase):
             ],
             crs="EPSG:4326",
         )
+
+    def test_resolve_dataset_version_uses_imported_boundary_dataset(self) -> None:
+        """Explicit village imports ignore unrelated versions with same label."""
+        GeoDatasetVersion.objects.create(
+            name="unrelated",
+            version_label=self.dataset_version.version_label,
+        )
+
+        dataset_version = resolve_village_dataset_version(
+            self.dataset_version.version_label,
+        )
+
+        self.assertEqual(dataset_version, self.dataset_version)
 
     def test_command_imports_villages_for_current_dataset(self) -> None:
         """Command imports villages and skips rows outside Swiss cantons."""

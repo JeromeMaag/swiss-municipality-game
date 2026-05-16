@@ -51,6 +51,26 @@ from .statistics import build_player_statistics
 from .views import build_summary_reveals, get_last_guess_result, parse_tracking_request
 
 
+def make_offset_test_geometry(
+    *,
+    min_x: float = 8.4,
+    min_y: float = 47.4,
+    size: float = 0.1,
+) -> MultiPolygon:
+    """Create a square test geometry away from the default fixture."""
+    polygon = Polygon(
+        (
+            (min_x, min_y),
+            (min_x + size, min_y),
+            (min_x + size, min_y + size),
+            (min_x, min_y + size),
+            (min_x, min_y),
+        ),
+        srid=4326,
+    )
+    return MultiPolygon(polygon, srid=4326)
+
+
 class ScoringTests(TestCase):
     """Tests for game scoring helpers."""
 
@@ -127,7 +147,16 @@ class GameServiceHelperTests(TestCase):
         coordinates: tuple[tuple[float, float], ...],
     ) -> Village:
         """Create a village target with exact WGS84 test geometry."""
-        municipality = self.create_distance_target(coordinates)
+        municipality = self.create_distance_target(
+            (
+                (8.4, 47.4),
+                (8.5, 47.4),
+                (8.5, 47.5),
+                (8.4, 47.5),
+                (8.4, 47.4),
+            )
+        )
+        village_geometry = MultiPolygon(Polygon(coordinates, srid=4326), srid=4326)
         return Village.objects.create(
             dataset_version=municipality.dataset_version,
             source_identifier="distance-village",
@@ -135,7 +164,7 @@ class GameServiceHelperTests(TestCase):
             postal_code="9999",
             canton=municipality.canton,
             municipality=municipality,
-            geom=municipality.geom,
+            geom=village_geometry,
         )
 
     def test_normalize_coordinate_accepts_bounds(self) -> None:
@@ -670,6 +699,59 @@ class GameModelTests(TestCase):
                 with self.assertRaises(ValidationError):
                     turn.full_clean()
 
+    def test_turn_target_must_belong_to_canton_game_scope(self) -> None:
+        """Turn validation rejects targets outside a single-canton game scope."""
+        bern = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=2,
+            abbreviation="BE",
+            name="Bern",
+            geom=make_offset_test_geometry(),
+        )
+        bern_municipality = Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=351,
+            name="Bern",
+            canton=bern,
+            geom=make_offset_test_geometry(),
+        )
+        bern_village = Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier="bern-village",
+            name="Bern Village",
+            canton=bern,
+            municipality=bern_municipality,
+            geom=make_offset_test_geometry(),
+        )
+        municipality_game = Game.objects.create(
+            user=self.user,
+            mode=Game.Mode.CANTON,
+            canton=self.canton,
+        )
+        village_game = Game.objects.create(
+            user=self.other_user,
+            mode=Game.Mode.CANTON,
+            target_type=Game.TargetType.VILLAGE,
+            canton=self.canton,
+        )
+        invalid_turns = [
+            Turn(
+                game=municipality_game,
+                turn_number=1,
+                municipality_target=bern_municipality,
+            ),
+            Turn(
+                game=village_game,
+                turn_number=1,
+                village_target=bern_village,
+            ),
+        ]
+
+        for turn in invalid_turns:
+            with self.subTest(game_target_type=turn.game.target_type):
+                with self.assertRaises(ValidationError):
+                    turn.full_clean()
+
     def test_database_rejects_turns_without_exactly_one_target(self) -> None:
         """Database constraints reject turns without one concrete target."""
         game = Game.objects.create(user=self.user)
@@ -909,7 +991,7 @@ class GuessSubmissionServiceTests(TestCase):
                 bfs_number=360 + index,
                 name=f"Village Parent {index + 1}",
                 canton=self.canton,
-                geom=make_test_geometry(),
+                geom=make_offset_test_geometry(min_x=8.4 + (index * 0.2)),
             )
             village = Village.objects.create(
                 dataset_version=self.dataset_version,
@@ -1443,6 +1525,19 @@ class GameStartTests(TestCase):
             )
 
         self.assertFalse(Game.objects.exists())
+
+    def test_start_game_not_enough_targets_message_translates_target_type(self) -> None:
+        """Setup errors translate the interpolated target type label."""
+        self.create_villages(4)
+
+        with translation.override("de"):
+            with self.assertRaises(NotEnoughMunicipalitiesError) as error:
+                start_game_for_player(
+                    PlayerIdentity.for_user(self.user),
+                    target_type=Game.TargetType.VILLAGE,
+                )
+
+        self.assertIn("Dörfer", str(error.exception))
 
     def test_start_game_rejects_invalid_target_type(self) -> None:
         """Unknown target types are rejected before game creation."""

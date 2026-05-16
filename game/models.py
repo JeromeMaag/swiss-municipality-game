@@ -347,6 +347,25 @@ class Turn(models.Model):
             errors.setdefault("village_target", []).append(
                 "Target village must be active."
             )
+        if (
+            self.game_id
+            and self.game.mode == Game.Mode.CANTON
+            and self.game.canton_id is not None
+        ):
+            if (
+                self.municipality_target_id
+                and self.municipality_target.canton_id != self.game.canton_id
+            ):
+                errors.setdefault("municipality_target", []).append(
+                    "Turn target must belong to the game's canton."
+                )
+            if (
+                self.village_target_id
+                and self.village_target.canton_id != self.game.canton_id
+            ):
+                errors.setdefault("village_target", []).append(
+                    "Turn target must belong to the game's canton."
+                )
 
         if errors:
             raise ValidationError(errors)

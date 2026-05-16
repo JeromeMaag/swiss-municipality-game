@@ -1,14 +1,13 @@
 """Services for game lifecycle operations."""
 
 import math
-import random
 from dataclasses import dataclass
 
 from django.contrib.gis.geos import GEOSGeometry, Point
 from django.db import IntegrityError, connection, transaction
 from django.db.models import QuerySet
 from django.utils import timezone
-from django.utils.translation import gettext as _
+from django.utils.translation import gettext as _, gettext_lazy
 
 from geo.models import Canton, Municipality, Village
 from geo.selectors import (
@@ -40,7 +39,7 @@ NEAREST_BOUNDARY_POINT_SQL = """
 
 
 class NotEnoughMunicipalitiesError(ValueError):
-    """Raised when there are not enough active municipalities to start a game."""
+    """Raised when there are not enough active targets to start a game."""
 
 
 class InvalidGameModeError(ValueError):
@@ -84,7 +83,7 @@ class TargetTypeConfig:
         target_type: Game target type value.
         model: Geo model used by this target type.
         turn_field_id: Turn foreign-key id field storing this target.
-        display_name: Human-readable plural target name.
+        display_name: Translatable human-readable plural target name.
     """
 
     target_type: str
@@ -97,13 +96,13 @@ MUNICIPALITY_TARGET_CONFIG = TargetTypeConfig(
     target_type=Game.TargetType.MUNICIPALITY,
     model=Municipality,
     turn_field_id="municipality_target_id",
-    display_name="municipalities",
+    display_name=gettext_lazy("municipalities"),
 )
 VILLAGE_TARGET_CONFIG = TargetTypeConfig(
     target_type=Game.TargetType.VILLAGE,
     model=Village,
     turn_field_id="village_target_id",
-    display_name="villages",
+    display_name=gettext_lazy("villages"),
 )
 
 
@@ -297,8 +296,7 @@ def start_game_for_player(
                 target_type=target_type,
             )
             target_config = target_type_config(game_scope.target_type)
-            target_ids = list(game_scope.targets.values_list("id", flat=True))
-            if len(target_ids) < TURN_COUNT:
+            if game_scope.targets.count() < TURN_COUNT:
                 existing_game = get_active_game_for_player(player)
                 if existing_game is not None:
                     return existing_game
@@ -315,7 +313,7 @@ def start_game_for_player(
                 canton_id=game_scope.canton.id if game_scope.canton else None,
                 target_type=game_scope.target_type,
             )
-            selected_target_ids = random.SystemRandom().sample(target_ids, TURN_COUNT)
+            selected_target_ids = sample_target_ids(game_scope.targets)
             game = Game.objects.create(
                 mode=game_scope.mode,
                 target_type=game_scope.target_type,
@@ -355,6 +353,13 @@ def start_game_for_player(
         if existing_game is not None:
             return existing_game
         raise
+
+
+def sample_target_ids(
+    targets: QuerySet[Municipality] | QuerySet[Village],
+) -> list[int]:
+    """Return a random fixed-size sample of target ids without loading all ids."""
+    return list(targets.order_by("?").values_list("id", flat=True)[:TURN_COUNT])
 
 
 def resolve_game_scope(

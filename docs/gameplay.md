@@ -28,8 +28,9 @@ without direct labels.
 The start screen shows the map first and keeps setup controls in the sidebar.
 Players first choose the map scope:
 
-- `Switzerland`: targets can be any active municipality in Switzerland.
-- `Single canton`: targets are limited to the selected canton.
+- `Switzerland`: targets can be any active target of the selected target type.
+- `Single canton`: targets are limited to the selected target type in the
+  selected canton.
 
 Players then choose what to find:
 
@@ -84,9 +85,10 @@ Village games use official village/locality polygons as targets. They behave
 like municipality games: five rounds, the same scoring system, the same summary
 and history replay, and the same account statistics.
 
-Village games can optionally show municipality outlines in addition to village
-boundaries from the map settings menu. This overlay is visual context only. It
-does not change the target, distance calculation, scoring, or validation.
+Village games can show village, municipality, and canton boundaries
+independently from the map settings menu. Municipality and canton boundaries
+are visual context only. They do not change the target, distance calculation,
+scoring, or validation.
 
 ## Guessing
 
@@ -131,7 +133,7 @@ distance = 0 m
 score = 1000
 ```
 
-If the pin is outside the municipality, the score follows an exponential decay
+If the pin is outside the target area, the score follows an exponential decay
 curve. The curve is scaled by the playable map extent:
 
 ```text
