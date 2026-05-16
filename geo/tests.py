@@ -79,6 +79,12 @@ from .management.commands.import_swissboundaries3d import (
     select_geopackage_asset,
     select_stac_item,
 )
+from .management.commands.import_villages import (
+    download_asset as download_village_asset,
+    import_villages,
+    resolve_layer_source as resolve_village_layer_source,
+    safe_extract_zip as safe_extract_village_zip,
+)
 from .models import Canton, GeoDatasetVersion, Municipality, Village
 from .serializers import feature_collection, get_display_geometry
 from .selectors import (
@@ -1126,6 +1132,171 @@ class ImportBoundariesCommandTests(TestCase):
         self.assertIsNotNone(municipality.label_point)
         self.assertEqual(Canton.objects.count(), 1)
         self.assertEqual(Municipality.objects.count(), 1)
+
+
+class ImportVillagesCommandTests(TestCase):
+    """Tests for village/locality import command behavior."""
+
+    def setUp(self) -> None:
+        """Create shared boundary fixtures for village imports."""
+        self.dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2026-01-01",
+        )
+        self.canton = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+        self.municipality = Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=261,
+            name="Zurich",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+    def village_gdf(self):
+        """Return fake village rows for command tests."""
+        return gpd.GeoDataFrame(
+            [
+                {
+                    "LOCALITYID": "village-1",
+                    "NAME": "Aadorf",
+                    "STATUS": "REAL",
+                    "VALIDITY": "2026-01-01",
+                    "geometry": Polygon(
+                        (
+                            (8.02, 47.02),
+                            (8.08, 47.02),
+                            (8.08, 47.08),
+                            (8.02, 47.08),
+                            (8.02, 47.02),
+                        )
+                    ),
+                },
+                {
+                    "LOCALITYID": "liechtenstein-1",
+                    "NAME": "Vaduz",
+                    "STATUS": "REAL",
+                    "VALIDITY": "2026-01-01",
+                    "geometry": Polygon(
+                        (
+                            (9.50, 47.10),
+                            (9.55, 47.10),
+                            (9.55, 47.15),
+                            (9.50, 47.15),
+                            (9.50, 47.10),
+                        )
+                    ),
+                },
+            ],
+            crs="EPSG:4326",
+        )
+
+    def test_command_imports_villages_for_current_dataset(self) -> None:
+        """Command imports villages and skips rows outside Swiss cantons."""
+        output = StringIO()
+        with TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "villages.shp"
+            source.write_text("", encoding="utf-8")
+
+            with mock.patch(
+                "geo.management.commands.import_villages.read_village_layer",
+                return_value=self.village_gdf(),
+            ):
+                call_command("import_villages", str(source), stdout=output)
+
+        village = Village.objects.get()
+        self.assertEqual(village.name, "Aadorf")
+        self.assertEqual(village.canton, self.canton)
+        self.assertEqual(village.municipality, self.municipality)
+        self.assertEqual(village.valid_from.isoformat(), "2026-01-01")
+        self.assertTrue(village.is_active)
+        self.assertIsNotNone(village.label_point)
+        self.assertIn("Imported 1 villages", output.getvalue())
+        self.assertIn("Skipped 1 rows without Swiss canton", output.getvalue())
+
+    def test_import_villages_updates_existing_source_identifier(self) -> None:
+        """Village imports update existing rows with the same source identifier."""
+        options = {
+            "active_status": "REAL",
+            "canton_abbreviation_field": "",
+            "canton_bfs_field": "",
+            "name_field": "NAME",
+            "postal_code_field": "",
+            "simplify_tolerance": 0.0,
+            "skip_municipality_assignment": False,
+            "source_identifier_field": "LOCALITYID",
+            "status_field": "STATUS",
+            "valid_from_field": "VALIDITY",
+            "valid_to_field": "",
+        }
+        Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier="village-1",
+            name="Old Name",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+        result = import_villages(self.village_gdf().iloc[:1], self.dataset_version, options)
+
+        village = Village.objects.get(source_identifier="village-1")
+        self.assertEqual(len(result.villages), 1)
+        self.assertEqual(village.name, "Aadorf")
+        self.assertEqual(Village.objects.count(), 1)
+
+    def test_command_rejects_without_boundary_dataset(self) -> None:
+        """Village imports require an existing geodata version."""
+        Municipality.objects.all().delete()
+        Canton.objects.all().delete()
+        GeoDatasetVersion.objects.all().delete()
+
+        with self.assertRaisesMessage(
+            CommandError,
+            "Import canton and municipality boundaries first.",
+        ):
+            call_command("import_villages", stdout=StringIO())
+
+    def test_download_asset_rejects_untrusted_hosts(self) -> None:
+        """Official village downloads reject hosts outside the allowlist."""
+        with self.assertRaisesMessage(CommandError, "URL host 'example.test'"):
+            download_village_asset(
+                "https://example.test/villages.shp.zip",
+                Path("asset.zip"),
+            )
+
+    def test_safe_extract_zip_rejects_path_traversal(self) -> None:
+        """Village ZIP extraction rejects archive members outside the target."""
+        archive = mock.Mock()
+        member = mock.Mock()
+        member.filename = "../outside.shp"
+        member.external_attr = 0
+        member.is_dir.return_value = False
+        archive.infolist.return_value = [member]
+
+        with self.assertRaisesMessage(CommandError, "Unsafe path found"):
+            safe_extract_village_zip(archive, Path("data/raw/import-test"))
+
+        archive.open.assert_not_called()
+
+    def test_resolve_layer_source_prefers_matching_layer_name(self) -> None:
+        """Layer source resolution picks the requested vector from a folder."""
+        with TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir)
+            (source / "AMTOVZ_LOCALITY.geojson").write_text("{}", encoding="utf-8")
+            (source / "AMTOVZ_ZIP.geojson").write_text("{}", encoding="utf-8")
+
+            resolved = resolve_village_layer_source(
+                source,
+                "AMTOVZ_LOCALITY",
+                source,
+            )
+
+        self.assertEqual(resolved.name, "AMTOVZ_LOCALITY.geojson")
 
 
 class ImportSwissBoundaries3DCommandTests(TestCase):
