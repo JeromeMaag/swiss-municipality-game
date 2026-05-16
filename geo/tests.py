@@ -86,7 +86,11 @@ from .management.commands.import_villages import (
     safe_extract_zip as safe_extract_village_zip,
 )
 from .models import Canton, GeoDatasetVersion, Municipality, Village
-from .serializers import feature_collection, get_display_geometry
+from .serializers import (
+    feature_collection,
+    get_display_geometry,
+    serialize_village_boundaries,
+)
 from .selectors import (
     get_cantons_for_dataset,
     get_current_cantons,
@@ -516,6 +520,25 @@ class GeoSerializerTests(TestCase):
 
         self.assertEqual(get_display_geometry(self.canton), self.canton.geom)
 
+    def test_serialize_village_boundaries_omits_names(self) -> None:
+        """Village boundaries expose neutral ids but no village names."""
+        village = Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier="village-1",
+            name="Aadorf",
+            postal_code="8355",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+        data = json.loads(serialize_village_boundaries([village]))
+
+        properties = data["features"][0]["properties"]
+        self.assertEqual(properties["id"], village.id)
+        self.assertNotIn("name", properties)
+        self.assertNotIn("postal_code", properties)
+        self.assertNotIn("canton", properties)
+
 
 class GeoJSONEndpointTests(TestCase):
     """Tests for geodata GeoJSON endpoints."""
@@ -549,6 +572,17 @@ class GeoJSONEndpointTests(TestCase):
             name="Zurich",
             canton=self.canton,
             population=443000,
+            geom=make_test_geometry(),
+            geom_simplified=make_test_geometry(),
+            label_point=Point(8.05, 47.05, srid=4326),
+        )
+        self.village = Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier="village-1",
+            name="Aadorf",
+            postal_code="8355",
+            canton=self.canton,
+            municipality=self.municipality,
             geom=make_test_geometry(),
             geom_simplified=make_test_geometry(),
             label_point=Point(8.05, 47.05, srid=4326),
@@ -618,6 +652,7 @@ class GeoJSONEndpointTests(TestCase):
         urls = [
             reverse("geo:cantons_geojson"),
             reverse("geo:municipality_boundaries_geojson"),
+            reverse("geo:village_boundaries_geojson"),
         ]
 
         for url in urls:
@@ -696,6 +731,53 @@ class GeoJSONEndpointTests(TestCase):
 
         self.assertEqual(len(data["features"]), 1)
         self.assertEqual(data["features"][0]["properties"]["id"], other_municipality.id)
+
+    def test_village_boundaries_do_not_include_names(self) -> None:
+        """Village boundary endpoint does not reveal village names."""
+        response = self.client.get(reverse("geo:village_boundaries_geojson"))
+        data = self.assert_geojson_response(response)
+
+        properties = data["features"][0]["properties"]
+        self.assertEqual(properties["id"], self.village.id)
+        self.assertNotIn("source_identifier", properties)
+        self.assertNotIn("name", properties)
+        self.assertNotIn("postal_code", properties)
+        self.assertNotIn("canton", properties)
+
+    def test_village_boundaries_support_canton_filter(self) -> None:
+        """Village boundary endpoint can return one selected canton."""
+        other_canton = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=2,
+            abbreviation="BE",
+            name="Bern",
+            geom=make_test_geometry(),
+        )
+        other_municipality = Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=351,
+            name="Bern",
+            canton=other_canton,
+            geom=make_test_geometry(),
+        )
+        other_village = Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier="village-bern",
+            name="Bern Village",
+            postal_code="3000",
+            canton=other_canton,
+            municipality=other_municipality,
+            geom=make_test_geometry(),
+        )
+
+        response = self.client.get(
+            reverse("geo:village_boundaries_geojson"),
+            {"canton": "BE"},
+        )
+        data = self.assert_geojson_response(response)
+
+        self.assertEqual(len(data["features"]), 1)
+        self.assertEqual(data["features"][0]["properties"]["id"], other_village.id)
 
     def test_municipality_labels_include_reveal_properties(self) -> None:
         """Municipality label endpoint returns names for reveal mode."""
@@ -903,12 +985,14 @@ class GeoJSONEndpointTests(TestCase):
 
     def test_feature_collection_endpoints_are_empty_without_dataset(self) -> None:
         """Feature collection endpoints return empty data before import."""
+        Village.objects.all().delete()
         Municipality.objects.all().delete()
         Canton.objects.all().delete()
         GeoDatasetVersion.objects.all().delete()
         urls = [
             reverse("geo:cantons_geojson"),
             reverse("geo:municipality_boundaries_geojson"),
+            reverse("geo:village_boundaries_geojson"),
         ]
 
         for url in urls:

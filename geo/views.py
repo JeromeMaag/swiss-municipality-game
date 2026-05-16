@@ -18,11 +18,14 @@ from .selectors import (
     get_municipalities_for_dataset,
     get_municipality_labels_for_canton,
     get_municipality_labels_for_dataset,
+    get_villages_for_canton,
+    get_villages_for_dataset,
 )
 from .serializers import (
     serialize_canton_boundaries,
     serialize_municipality_boundaries,
     serialize_municipality_labels,
+    serialize_village_boundaries,
 )
 
 
@@ -244,6 +247,29 @@ def municipality_boundaries(request):
             get_municipalities_for_canton(canton)
             if canton
             else get_municipalities_for_dataset(dataset_version)
+        ),
+        lambda dataset_version: requested_canton_filter(request, dataset_version),
+        canton_scope_key,
+    )
+
+
+@require_GET
+def village_boundaries(request):
+    """Return current village boundaries without village names.
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        A GeoJSON FeatureCollection response.
+    """
+    return cached_geojson_response(
+        request,
+        "villages",
+        lambda dataset_version, canton: serialize_village_boundaries(
+            get_villages_for_canton(canton)
+            if canton
+            else get_villages_for_dataset(dataset_version)
         ),
         lambda dataset_version: requested_canton_filter(request, dataset_version),
         canton_scope_key,

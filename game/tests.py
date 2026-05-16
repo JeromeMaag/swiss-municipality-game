@@ -1708,6 +1708,13 @@ class GameStartTests(TestCase):
 
         game_response = self.client.get(reverse("game:index"))
         self.assertContains(game_response, first_turn.village_target.name)
+        self.assertContains(
+            game_response,
+            (
+                'data-municipality-boundaries-url="'
+                f'{reverse("geo:village_boundaries_geojson")}"'
+            ),
+        )
 
     def test_start_view_ignores_canton_for_switzerland_mode(self) -> None:
         """Switzerland mode ignores a posted canton from non-JS form controls."""

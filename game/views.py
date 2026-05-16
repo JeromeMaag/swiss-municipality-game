@@ -729,11 +729,16 @@ def normalize_start_form_selection(
 def map_context_for_game(game: Game | None) -> dict[str, str]:
     """Return map labels and GeoJSON URLs for a game scope."""
     scope_query = map_scope_query_for_game(game)
+    target_boundaries_route = (
+        "geo:village_boundaries_geojson"
+        if game is not None and game.target_type == Game.TargetType.VILLAGE
+        else "geo:municipality_boundaries_geojson"
+    )
     return {
         "canton_boundaries_url": reverse("geo:cantons_geojson") + scope_query,
         "map_label": game.map_label if game is not None else "CH",
         "municipality_boundaries_url": (
-            reverse("geo:municipality_boundaries_geojson") + scope_query
+            reverse(target_boundaries_route) + scope_query
         ),
     }
 

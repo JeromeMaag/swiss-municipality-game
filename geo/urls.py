@@ -15,6 +15,11 @@ urlpatterns = [
         name="municipality_boundaries_geojson",
     ),
     path(
+        "api/village-boundaries.geojson/",
+        views.village_boundaries,
+        name="village_boundaries_geojson",
+    ),
+    path(
         "api/municipality-labels.geojson/",
         views.municipality_labels,
         name="municipality_labels_geojson",

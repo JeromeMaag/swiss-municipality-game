@@ -6,7 +6,7 @@ from typing import Any
 
 from django.contrib.gis.geos import GEOSGeometry
 
-from .models import Canton, Municipality
+from .models import Canton, Municipality, Village
 
 
 FeatureProperties = dict[str, Any]
@@ -60,11 +60,11 @@ def feature_collection(
     return '{"type":"FeatureCollection","features":[' + ",".join(features) + "]}"
 
 
-def get_display_geometry(obj: Canton | Municipality) -> GEOSGeometry:
+def get_display_geometry(obj: Canton | Municipality | Village) -> GEOSGeometry:
     """Return the simplified geometry when available, otherwise the full geometry.
 
     Args:
-        obj: Canton or municipality instance.
+        obj: Canton, municipality, or village instance.
 
     Returns:
         The geometry intended for map display.
@@ -109,6 +109,24 @@ def serialize_municipality_boundaries(
         get_display_geometry,
         lambda municipality: {
             "id": municipality.id,
+        },
+    )
+
+
+def serialize_village_boundaries(villages: Iterable[Village]) -> str:
+    """Serialize village boundaries without gameplay-spoiling names.
+
+    Args:
+        villages: Village objects to serialize.
+
+    Returns:
+        A GeoJSON FeatureCollection string with neutral village identifiers.
+    """
+    return feature_collection(
+        villages,
+        get_display_geometry,
+        lambda village: {
+            "id": village.id,
         },
     )
 
