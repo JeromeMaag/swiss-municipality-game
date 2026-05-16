@@ -618,7 +618,11 @@
     document.addEventListener(
       "keydown",
       function (event) {
-        if (event.key !== "Escape" || hasOpenAuthModal()) {
+        if (
+          event.key !== "Escape" ||
+          hasOpenAuthModal() ||
+          isFormShortcutTarget(event.target)
+        ) {
           return;
         }
         event.preventDefault();
@@ -645,6 +649,15 @@
       target.closest(
         'a[href], button, input, select, textarea, [contenteditable="true"]'
       )
+    );
+  }
+
+  function isFormShortcutTarget(target) {
+    if (!(target instanceof Element)) {
+      return false;
+    }
+    return Boolean(
+      target.closest('input, select, textarea, [contenteditable="true"]')
     );
   }
 
