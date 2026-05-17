@@ -34,6 +34,7 @@ from .services import (
     _ensure_game_scoring_max_distance_m,
     _normalize_coordinate,
     _normalize_turn_id,
+    sample_target_ids,
     start_game,
     start_game_for_player,
     submit_guess,
@@ -303,6 +304,14 @@ class GameServiceHelperTests(TestCase):
 
         self.assertEqual(target_id_for_turn(municipality_turn), municipality.id)
         self.assertEqual(target_id_for_turn(village_turn), village.id)
+
+    def test_sample_target_ids_rejects_shrinking_target_window(self) -> None:
+        """Target sampling handles stale target counts without IndexError."""
+        with self.assertRaises(NotEnoughTargetsError):
+            sample_target_ids(
+                Municipality.objects.none(),
+                target_count=5,
+            )
 
     def test_calculate_guess_distances_matches_known_meridian_distance(self) -> None:
         """Distance calculation matches a known WGS84 meridian distance."""
@@ -748,6 +757,19 @@ class GameModelTests(TestCase):
                 turn_number=1,
                 village_target=self.village,
             )
+
+    def test_turn_save_validates_foreign_key_attname_updates(self) -> None:
+        """Turn partial saves validate FK attname updates too."""
+        game = Game.objects.create(user=self.user)
+        turn = Turn.objects.create(
+            game=game,
+            turn_number=1,
+            municipality_target=self.municipality,
+        )
+        turn.village_target_id = self.village.id
+
+        with self.assertRaises(ValidationError):
+            turn.save(update_fields=["village_target_id"])
 
     def test_turn_target_must_belong_to_canton_game_scope(self) -> None:
         """Turn validation rejects targets outside a single-canton game scope."""

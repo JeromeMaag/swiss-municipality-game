@@ -379,12 +379,12 @@ def sample_target_ids(
             window_start : window_start + window_size
         ]
     )
-    target_ids = [window_ids[offset - window_start] for offset in offsets]
-    if len(target_ids) != TURN_COUNT:
+    if len(window_ids) < window_size:
         raise NotEnoughTargetsError(
             _("At least %(count)s active targets are required to start a game.")
             % {"count": TURN_COUNT}
         )
+    target_ids = [window_ids[offset - window_start] for offset in offsets]
     return target_ids
 
 

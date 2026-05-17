@@ -414,7 +414,14 @@ class Turn(models.Model):
     def save(self, *args, **kwargs) -> None:
         """Persist the turn after enforcing target consistency rules."""
         update_fields = kwargs.get("update_fields")
-        target_fields = {"game", "municipality_target", "village_target"}
+        target_fields = {
+            "game",
+            "game_id",
+            "municipality_target",
+            "municipality_target_id",
+            "village_target",
+            "village_target_id",
+        }
         if (
             self._state.adding
             or update_fields is None
