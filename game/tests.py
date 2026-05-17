@@ -1871,6 +1871,7 @@ class GameStartTests(TestCase):
     def test_game_index_shows_start_form_without_active_game(self) -> None:
         """Logged-in game index renders the map shell and start form."""
         self.client.force_login(self.user)
+        query_prefix = f"?dataset={self.dataset_version.id}&amp;v="
 
         response = self.client.get(reverse("game:index"))
 
@@ -1899,6 +1900,20 @@ class GameStartTests(TestCase):
         self.assertContains(response, "data-background-map-picker")
         self.assertContains(response, "Boundary lines")
         self.assertContains(response, "data-boundary-line-picker")
+        self.assertContains(
+            response,
+            (
+                'data-canton-boundaries-url="'
+                f'{reverse("geo:cantons_geojson")}{query_prefix}'
+            ),
+        )
+        self.assertContains(
+            response,
+            (
+                'data-target-boundaries-url="'
+                f'{reverse("geo:municipality_boundaries_geojson")}{query_prefix}'
+            ),
+        )
         self.assertContains(response, "Auto")
         self.assertContains(response, "White")
         self.assertContains(response, "Black")
@@ -1994,7 +2009,7 @@ class GameStartTests(TestCase):
         game = Game.objects.get()
         self.assertEqual(game.mode, Game.Mode.CANTON)
         self.assertEqual(game.canton, self.canton)
-        query = f"?dataset={game.dataset_version_id}&amp;canton=ZH"
+        query_prefix = f"?dataset={game.dataset_version_id}&amp;v="
 
         game_response = self.client.get(reverse("game:index"))
         self.assertContains(game_response, "ZH")
@@ -2002,16 +2017,17 @@ class GameStartTests(TestCase):
             game_response,
             (
                 'data-canton-boundaries-url="'
-                f'{reverse("geo:cantons_geojson")}{query}"'
+                f'{reverse("geo:cantons_geojson")}{query_prefix}'
             ),
         )
         self.assertContains(
             game_response,
             (
                 'data-target-boundaries-url="'
-                f'{reverse("geo:municipality_boundaries_geojson")}{query}"'
+                f'{reverse("geo:municipality_boundaries_geojson")}{query_prefix}'
             ),
         )
+        self.assertContains(game_response, "&amp;canton=ZH")
 
     def test_start_view_starts_village_game(self) -> None:
         """Game start view accepts village targets."""
@@ -2040,7 +2056,8 @@ class GameStartTests(TestCase):
             game_response,
             (
                 'data-target-boundaries-url="'
-                f'{reverse("geo:village_boundaries_geojson")}?dataset={game.dataset_version_id}"'
+                f'{reverse("geo:village_boundaries_geojson")}'
+                f'?dataset={game.dataset_version_id}&amp;v='
             ),
         )
         self.assertContains(game_response, 'data-target-boundary-layer="villages"')
@@ -2048,7 +2065,8 @@ class GameStartTests(TestCase):
             game_response,
             (
                 'data-municipality-overlay-url="'
-                f'{reverse("geo:municipality_boundaries_geojson")}?dataset={game.dataset_version_id}"'
+                f'{reverse("geo:municipality_boundaries_geojson")}'
+                f'?dataset={game.dataset_version_id}&amp;v='
             ),
         )
         self.assertContains(game_response, 'data-outline-layer-setting="villages" hidden')
@@ -2090,22 +2108,23 @@ class GameStartTests(TestCase):
 
         self.assertRedirects(response, reverse("game:index"))
         game = Game.objects.get()
-        query = f"?dataset={game.dataset_version_id}&amp;canton=ZH"
+        query_prefix = f"?dataset={game.dataset_version_id}&amp;v="
         game_response = self.client.get(reverse("game:index"))
         self.assertContains(
             game_response,
             (
                 'data-target-boundaries-url="'
-                f'{reverse("geo:village_boundaries_geojson")}{query}"'
+                f'{reverse("geo:village_boundaries_geojson")}{query_prefix}'
             ),
         )
         self.assertContains(
             game_response,
             (
                 'data-municipality-overlay-url="'
-                f'{reverse("geo:municipality_boundaries_geojson")}{query}"'
+                f'{reverse("geo:municipality_boundaries_geojson")}{query_prefix}'
             ),
         )
+        self.assertContains(game_response, "&amp;canton=ZH")
 
     def test_start_view_ignores_canton_for_switzerland_mode(self) -> None:
         """Switzerland mode ignores a posted canton from non-JS form controls."""
@@ -2891,7 +2910,7 @@ class GameStartTests(TestCase):
         self.client.force_login(self.user)
         game = start_game(self.user)
         first_turn = game.turns.order_by("turn_number").first()
-        query = f"?dataset={game.dataset_version_id}"
+        query_prefix = f"?dataset={game.dataset_version_id}&amp;v="
         future_targets = [
             turn.municipality_target.name
             for turn in game.turns.order_by("turn_number")
@@ -2942,13 +2961,16 @@ class GameStartTests(TestCase):
         )
         self.assertContains(
             response,
-            f'data-canton-boundaries-url="{reverse("geo:cantons_geojson")}{query}"',
+            (
+                f'data-canton-boundaries-url="{reverse("geo:cantons_geojson")}'
+                f"{query_prefix}"
+            ),
         )
         self.assertContains(
             response,
             (
                 'data-target-boundaries-url="'
-                f'{reverse("geo:municipality_boundaries_geojson")}{query}"'
+                f'{reverse("geo:municipality_boundaries_geojson")}{query_prefix}'
             ),
         )
         self.assertNotContains(response, "data-municipality-labels-url")
@@ -2977,7 +2999,7 @@ class GameStartTests(TestCase):
             (
                 'data-target-boundaries-url="'
                 f'{reverse("geo:municipality_boundaries_geojson")}'
-                f'?dataset={game.dataset_version_id}"'
+                f'?dataset={game.dataset_version_id}&amp;v='
             ),
         )
         self.assertNotContains(
@@ -3332,7 +3354,7 @@ class GameSummaryTests(TestCase):
             (
                 'data-target-boundaries-url="'
                 f'{reverse("geo:municipality_boundaries_geojson")}'
-                f'?dataset={game.dataset_version_id}"'
+                f'?dataset={game.dataset_version_id}&amp;v='
             ),
         )
         self.assertNotContains(
@@ -3343,7 +3365,7 @@ class GameSummaryTests(TestCase):
     def test_summary_uses_canton_game_scope(self) -> None:
         """Summary maps and play-again form preserve single-canton games."""
         game = self.create_finished_game(mode=Game.Mode.CANTON, canton=self.canton)
-        query = f"?dataset={game.dataset_version_id}&amp;canton=ZH"
+        query_prefix = f"?dataset={game.dataset_version_id}&amp;v="
         self.client.force_login(self.user)
 
         response = self.client.get(reverse("game:summary", args=[game.id]))
@@ -3352,16 +3374,17 @@ class GameSummaryTests(TestCase):
             response,
             (
                 'data-canton-boundaries-url="'
-                f'{reverse("geo:cantons_geojson")}{query}"'
+                f'{reverse("geo:cantons_geojson")}{query_prefix}'
             ),
         )
         self.assertContains(
             response,
             (
                 'data-target-boundaries-url="'
-                f'{reverse("geo:municipality_boundaries_geojson")}{query}"'
+                f'{reverse("geo:municipality_boundaries_geojson")}{query_prefix}'
             ),
         )
+        self.assertContains(response, "&amp;canton=ZH")
         self.assertContains(response, 'name="game_mode"')
         self.assertContains(response, 'value="canton"')
         self.assertContains(response, 'name="canton"')
@@ -3374,7 +3397,7 @@ class GameSummaryTests(TestCase):
         game = self.create_finished_game(
             target_type=Game.TargetType.VILLAGE,
         )
-        query = f"?dataset={game.dataset_version_id}"
+        query_prefix = f"?dataset={game.dataset_version_id}&amp;v="
         self.client.force_login(self.user)
 
         response = self.client.get(reverse("game:summary", args=[game.id]))
@@ -3383,14 +3406,14 @@ class GameSummaryTests(TestCase):
             response,
             (
                 'data-target-boundaries-url="'
-                f'{reverse("geo:village_boundaries_geojson")}{query}"'
+                f'{reverse("geo:village_boundaries_geojson")}{query_prefix}'
             ),
         )
         self.assertContains(
             response,
             (
                 'data-municipality-overlay-url="'
-                f'{reverse("geo:municipality_boundaries_geojson")}{query}"'
+                f'{reverse("geo:municipality_boundaries_geojson")}{query_prefix}'
             ),
         )
         self.assertContains(response, "Summary Village 1")
@@ -3538,7 +3561,7 @@ class GameSummaryTests(TestCase):
     def test_history_detail_uses_canton_game_scope(self) -> None:
         """History replay maps preserve a single-canton game scope."""
         game = self.create_finished_game(mode=Game.Mode.CANTON, canton=self.canton)
-        query = f"?dataset={game.dataset_version_id}&amp;canton=ZH"
+        query_prefix = f"?dataset={game.dataset_version_id}&amp;v="
         self.client.force_login(self.user)
 
         response = self.client.get(reverse("game:history_detail", args=[game.id]))
@@ -3549,16 +3572,17 @@ class GameSummaryTests(TestCase):
             response,
             (
                 'data-canton-boundaries-url="'
-                f'{reverse("geo:cantons_geojson")}{query}"'
+                f'{reverse("geo:cantons_geojson")}{query_prefix}'
             ),
         )
         self.assertContains(
             response,
             (
                 'data-target-boundaries-url="'
-                f'{reverse("geo:municipality_boundaries_geojson")}{query}"'
+                f'{reverse("geo:municipality_boundaries_geojson")}{query_prefix}'
             ),
         )
+        self.assertContains(response, "&amp;canton=ZH")
         self.assertEqual(response.context["selected_game"], game)
 
     def test_history_detail_uses_village_overlay_scope(self) -> None:
@@ -3566,7 +3590,7 @@ class GameSummaryTests(TestCase):
         game = self.create_finished_game(
             target_type=Game.TargetType.VILLAGE,
         )
-        query = f"?dataset={game.dataset_version_id}"
+        query_prefix = f"?dataset={game.dataset_version_id}&amp;v="
         self.client.force_login(self.user)
 
         response = self.client.get(reverse("game:history_detail", args=[game.id]))
@@ -3576,14 +3600,14 @@ class GameSummaryTests(TestCase):
             response,
             (
                 'data-target-boundaries-url="'
-                f'{reverse("geo:village_boundaries_geojson")}{query}"'
+                f'{reverse("geo:village_boundaries_geojson")}{query_prefix}'
             ),
         )
         self.assertContains(
             response,
             (
                 'data-municipality-overlay-url="'
-                f'{reverse("geo:municipality_boundaries_geojson")}{query}"'
+                f'{reverse("geo:municipality_boundaries_geojson")}{query_prefix}'
             ),
         )
         self.assertContains(response, "Summary Village 1")

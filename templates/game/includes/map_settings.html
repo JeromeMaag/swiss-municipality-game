@@ -1,8 +1,28 @@
 {% load i18n %}
 
-<section class="map-settings-control" aria-label="{% trans 'Map settings' %}">
+<section class="map-settings-control" aria-label="{% trans 'Map controls' %}">
+  <div class="map-zoom-controls" aria-label="{% trans 'Map zoom' %}">
+    <button
+      class="map-control-button"
+      type="button"
+      aria-label="{% trans 'Zoom in' %}"
+      title="{% trans 'Zoom in' %}"
+      data-map-zoom-in
+    >
+      +
+    </button>
+    <button
+      class="map-control-button"
+      type="button"
+      aria-label="{% trans 'Zoom out' %}"
+      title="{% trans 'Zoom out' %}"
+      data-map-zoom-out
+    >
+      &minus;
+    </button>
+  </div>
   <button
-    class="map-settings-button"
+    class="map-control-button map-settings-button"
     type="button"
     aria-label="{% trans 'Map settings' %}"
     aria-expanded="false"

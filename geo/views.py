@@ -24,6 +24,8 @@ from .selectors import (
     get_villages_for_dataset,
 )
 from .serializers import (
+    BOUNDARY_DETAIL_SIMPLE,
+    BOUNDARY_DETAILS,
     serialize_canton_boundaries,
     serialize_municipality_boundaries,
     serialize_municipality_labels,
@@ -242,6 +244,16 @@ def requested_dataset_version(request) -> GeoDatasetVersion | None:
     return dataset_version
 
 
+def requested_boundary_detail(request) -> str:
+    """Return requested boundary geometry detail."""
+    detail = request.GET.get("detail", BOUNDARY_DETAIL_SIMPLE).strip().lower()
+    if not detail:
+        detail = BOUNDARY_DETAIL_SIMPLE
+    if detail not in BOUNDARY_DETAILS:
+        raise Http404(_("Boundary detail not found."))
+    return detail
+
+
 def canton_scope_key(canton) -> str:
     """Return the cache-key suffix for an optional canton filter."""
     return f"canton:{canton.abbreviation}" if canton is not None else ""
@@ -282,11 +294,13 @@ def canton_boundaries(request):
     Returns:
         A GeoJSON FeatureCollection response.
     """
+    detail = requested_boundary_detail(request)
     return cached_geojson_response(
         request,
-        "cantons",
+        f"cantons:detail:{detail}",
         lambda dataset_version, canton: serialize_canton_boundaries(
-            [canton] if canton else get_cantons_for_dataset(dataset_version)
+            [canton] if canton else get_cantons_for_dataset(dataset_version),
+            detail=detail,
         ),
         lambda dataset_version: requested_canton_filter(request, dataset_version),
         canton_scope_key,
@@ -303,13 +317,15 @@ def municipality_boundaries(request):
     Returns:
         A GeoJSON FeatureCollection response.
     """
+    detail = requested_boundary_detail(request)
     return cached_geojson_response(
         request,
-        "municipalities",
+        f"municipalities:detail:{detail}",
         lambda dataset_version, canton: serialize_municipality_boundaries(
             get_municipalities_for_canton(canton)
             if canton
-            else get_municipalities_for_dataset(dataset_version)
+            else get_municipalities_for_dataset(dataset_version),
+            detail=detail,
         ),
         lambda dataset_version: requested_canton_filter(request, dataset_version),
         canton_scope_key,
@@ -326,11 +342,13 @@ def village_boundaries(request):
     Returns:
         A GeoJSON FeatureCollection response.
     """
+    detail = requested_boundary_detail(request)
     return cached_geojson_response(
         request,
-        "villages",
+        f"villages:detail:{detail}",
         lambda dataset_version, scope: serialize_village_boundaries(
-            scope.villages
+            scope.villages,
+            detail=detail,
         ),
         lambda dataset_version: village_boundary_scope(request, dataset_version),
         village_boundary_scope_key,
