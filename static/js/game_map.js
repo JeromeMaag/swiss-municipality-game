@@ -37,6 +37,9 @@
   const COMPACT_TALL_SIDEBAR_HEIGHT_RATIO = 0.64;
   const COMPACT_TOP_PADDING_RATIO = 0.18;
   const VECTOR_RENDERER_PADDING = 0.2;
+  const GUESS_CLICK_TOLERANCE = 14;
+  const GUESS_TAP_TOLERANCE = 26;
+  const GUESS_DRAG_SUPPRESSION_MS = 160;
 
   function swisstopoWmtsUrl(layer, extension) {
     return (
@@ -845,6 +848,44 @@
     return value.toFixed(5);
   }
 
+  function eventClientPoint(event) {
+    const touch =
+      event.touches && event.touches.length
+        ? event.touches[0]
+        : event.changedTouches && event.changedTouches.length
+          ? event.changedTouches[0]
+          : null;
+    if (touch) {
+      return { x: touch.clientX, y: touch.clientY };
+    }
+    if (
+      Number.isFinite(event.clientX) &&
+      Number.isFinite(event.clientY)
+    ) {
+      return { x: event.clientX, y: event.clientY };
+    }
+    return null;
+  }
+
+  function isPrimaryGuessPress(event) {
+    if (event.isPrimary === false) {
+      return false;
+    }
+    return event.button === undefined || event.button === 0;
+  }
+
+  function guessPressTolerance(event) {
+    return event.pointerType === "touch" || event.type.startsWith("touch")
+      ? GUESS_TAP_TOLERANCE
+      : GUESS_CLICK_TOLERANCE;
+  }
+
+  function pointsMovedPastTolerance(startPoint, currentPoint, tolerance) {
+    const deltaX = currentPoint.x - startPoint.x;
+    const deltaY = currentPoint.y - startPoint.y;
+    return deltaX * deltaX + deltaY * deltaY > tolerance * tolerance;
+  }
+
   function createGuessMarkerIcon(label, revealed) {
     let className = "guess-marker";
     if (label) {
@@ -893,18 +934,73 @@
       return;
     }
 
+    const mapContainer = map.getContainer();
     const latitudeInput = form.querySelector("[data-guess-lat]");
     const longitudeInput = form.querySelector("[data-guess-lng]");
     const confirmButton = form.querySelector("[data-confirm-guess]");
     let marker = null;
     let selectedLatLng = null;
+    let pressState = null;
+    let pressMovedPastTolerance = false;
+    let mapDragging = false;
+    let lastDragAt = 0;
 
-    map.on("click", function (event) {
-      const latitude = formatCoordinate(event.latlng.lat);
-      const longitude = formatCoordinate(event.latlng.lng);
+    function resetPressState() {
+      pressState = null;
+      pressMovedPastTolerance = false;
+    }
+
+    function beginGuessPress(event) {
+      if (!isPrimaryGuessPress(event)) {
+        return;
+      }
+      const point = eventClientPoint(event);
+      if (!point) {
+        resetPressState();
+        return;
+      }
+      pressState = {
+        point: point,
+        tolerance: guessPressTolerance(event),
+      };
+      pressMovedPastTolerance = false;
+    }
+
+    function updateGuessPress(event) {
+      if (!pressState) {
+        return;
+      }
+      const point = eventClientPoint(event);
+      if (
+        point &&
+        pointsMovedPastTolerance(
+          pressState.point,
+          point,
+          pressState.tolerance
+        )
+      ) {
+        pressMovedPastTolerance = true;
+        lastDragAt = Date.now();
+      }
+    }
+
+    function endGuessPress(event) {
+      updateGuessPress(event);
+      window.setTimeout(resetPressState, 0);
+    }
+
+    function shouldIgnoreGuessClick() {
+      const recentlyDragged =
+        Date.now() - lastDragAt < GUESS_DRAG_SUPPRESSION_MS;
+      return mapDragging || pressMovedPastTolerance || recentlyDragged;
+    }
+
+    function placeGuessPin(latlng) {
+      const latitude = formatCoordinate(latlng.lat);
+      const longitude = formatCoordinate(latlng.lng);
       const previousLatLng = selectedLatLng;
       const hadMarker = marker !== null;
-      selectedLatLng = event.latlng;
+      selectedLatLng = latlng;
 
       if (marker === null) {
         marker = createGuessMarker(map, selectedLatLng);
@@ -928,6 +1024,45 @@
           : null,
         zoom: map.getZoom(),
       });
+    }
+
+    if (window.PointerEvent) {
+      mapContainer.addEventListener("pointerdown", beginGuessPress);
+      mapContainer.addEventListener("pointermove", updateGuessPress);
+      mapContainer.addEventListener("pointerup", endGuessPress);
+      mapContainer.addEventListener("pointercancel", resetPressState);
+    } else {
+      mapContainer.addEventListener("mousedown", beginGuessPress);
+      mapContainer.addEventListener("mousemove", updateGuessPress);
+      mapContainer.addEventListener("mouseup", endGuessPress);
+      mapContainer.addEventListener("touchstart", beginGuessPress, {
+        passive: true,
+      });
+      mapContainer.addEventListener("touchmove", updateGuessPress, {
+        passive: true,
+      });
+      mapContainer.addEventListener("touchend", endGuessPress);
+      mapContainer.addEventListener("touchcancel", resetPressState);
+    }
+
+    map.on("dragstart", function () {
+      mapDragging = true;
+      lastDragAt = Date.now();
+    });
+
+    map.on("dragend", function () {
+      mapDragging = false;
+      lastDragAt = Date.now();
+      resetPressState();
+    });
+
+    map.on("click", function (event) {
+      if (shouldIgnoreGuessClick()) {
+        resetPressState();
+        return;
+      }
+      placeGuessPin(event.latlng);
+      resetPressState();
     });
   }
 
@@ -1347,11 +1482,13 @@
     });
     const map = window.L.map(mapElement, {
       attributionControl: true,
+      clickTolerance: GUESS_CLICK_TOLERANCE,
       maxBounds: switzerlandBounds,
       maxBoundsViscosity: 1,
       minZoom: DEFAULT_MIN_ZOOM,
       preferCanvas: true,
       renderer: vectorRenderer,
+      tapTolerance: GUESS_TAP_TOLERANCE,
       worldCopyJump: false,
       zoomControl: true,
     });
