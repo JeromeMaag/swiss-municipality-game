@@ -731,6 +731,7 @@ def map_context_for_game(game: Game | None) -> dict[str, str]:
         )
     return {
         "canton_boundaries_url": reverse("geo:cantons_geojson") + boundary_scope_query,
+        "map_scope_bounds": map_scope_bounds_for_game(game),
         "map_label": game.map_label if game is not None else "CH",
         "target_boundaries_url": reverse(target_boundaries_route) + target_scope_query,
         "target_boundary_layer": target_boundary_layer,
@@ -766,6 +767,19 @@ def map_scope_query_for_game(
     if game.mode == Game.Mode.CANTON and game.canton_id is not None:
         query["canton"] = game.canton.abbreviation
     return "?" + urlencode(query) if query else ""
+
+
+def map_scope_bounds_for_game(game: Game | None) -> str:
+    """Return a Leaflet-friendly map scope bounds string for a game."""
+    if (
+        game is None
+        or game.mode != Game.Mode.CANTON
+        or game.canton_id is None
+        or game.canton.geom is None
+    ):
+        return ""
+    min_lng, min_lat, max_lng, max_lat = game.canton.geom.extent
+    return f"{min_lat:.6f},{min_lng:.6f},{max_lat:.6f},{max_lng:.6f}"
 
 
 def boundary_version_for_dataset(dataset_version, *, boundary_source: str) -> str:

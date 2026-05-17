@@ -127,6 +127,23 @@
     return Number.isFinite(value) ? value : fallback;
   }
 
+  function readMapScopeBounds(element) {
+    const rawBounds = element.dataset.scopeBounds || "";
+    const parts = rawBounds.split(",").map(function (part) {
+      return Number.parseFloat(part);
+    });
+    if (parts.length !== 4 || parts.some(function (part) {
+      return !Number.isFinite(part);
+    })) {
+      return null;
+    }
+
+    return window.L.latLngBounds(
+      [parts[0], parts[1]],
+      [parts[2], parts[3]]
+    );
+  }
+
   function isCompactMap(map) {
     return map.getSize().x <= MOBILE_BREAKPOINT_WIDTH;
   }
@@ -516,15 +533,23 @@
       const fitBounds = Boolean(syncOptions && syncOptions.fitBounds);
       syncToken += 1;
       const token = syncToken;
-      if (!options.url || !shouldShow()) {
+      if (!options.url || (!shouldShow() && !fitBounds)) {
         removeCurrentLayer();
         return Promise.resolve(null);
       }
 
       const detail = desiredDetail();
       return loadLayer(detail).then(function (layer) {
-        if (token !== syncToken || layer === null || detail !== desiredDetail() || !shouldShow()) {
+        if (token !== syncToken || layer === null || detail !== desiredDetail()) {
           return currentLayer();
+        }
+        if (!shouldShow()) {
+          removeCurrentLayer();
+          // Use hidden target data for scope fitting without rendering the layer.
+          if (fitBounds && layer.getLayers().length > 0) {
+            fitBoundaryLayerBounds(map, layer);
+          }
+          return layer;
         }
         return showLayer(layer, detail, fitBounds);
       });
@@ -915,6 +940,7 @@
     revealState,
     summaryState,
     bounds,
+    scopeBounds,
     fallbackUrl
   ) {
     const pickers = document.querySelectorAll("[data-background-map-picker]");
@@ -939,7 +965,8 @@
           map,
           boundaryState.municipalityLayer,
           revealState,
-          summaryState
+          summaryState,
+          scopeBounds
         );
         applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
       });
@@ -1903,14 +1930,31 @@
     }
   }
 
-  function refitMapView(map, municipalityLayer, revealState, summaryState) {
+  function fitScopeBounds(map, scopeBounds) {
+    if (scopeBounds && scopeBounds.isValid()) {
+      map.fitBounds(scopeBounds, mapFitOptions(map, 10, 24));
+    }
+  }
+
+  function refitMapView(
+    map,
+    municipalityLayer,
+    revealState,
+    summaryState,
+    scopeBounds
+  ) {
     if (municipalityLayer === null) {
+      if (!revealState && !summaryState) {
+        fitScopeBounds(map, scopeBounds);
+      }
       return;
     }
     if (revealState) {
       fitRevealBounds(map, municipalityLayer, revealState);
     } else if (summaryState) {
       fitSummaryBounds(map, municipalityLayer, summaryState);
+    } else if (scopeBounds) {
+      fitScopeBounds(map, scopeBounds);
     } else {
       fitBoundaryLayerBounds(map, municipalityLayer);
     }
@@ -1929,6 +1973,7 @@
     const latitude = readNumber(mapElement, "centerLat", 46.8182);
     const longitude = readNumber(mapElement, "centerLng", 8.2275);
     const zoom = readNumber(mapElement, "zoom", 8);
+    const scopeBounds = readMapScopeBounds(mapElement);
     const labelMinZoom = readNumber(mapElement, "labelMinZoom", 11);
     const revealState = readRevealState(mapElement);
     const summaryState = readSummaryState();
@@ -1952,6 +1997,10 @@
 
     map.setView([latitude, longitude], zoom);
     constrainMapToBounds(map, switzerlandBounds, backgroundMapId);
+    if (scopeBounds) {
+      map.invalidateSize();
+      fitScopeBounds(map, scopeBounds);
+    }
     let resizeFitTimeout = null;
     let baseLayerState = null;
     let boundaryState = null;
@@ -1966,7 +2015,8 @@
         map,
         boundaryState ? boundaryState.municipalityLayer : null,
         revealState,
-        summaryState
+        summaryState,
+        scopeBounds
       );
     }
     map.on("resize", function () {
@@ -2098,6 +2148,27 @@
 
     map.on("zoomend", syncBoundaryDetailForZoom);
     const syncZoomControls = initializeMapZoomControls(map);
+    function runStableMapFit() {
+      refreshMapFit();
+      syncZoomControls();
+    }
+    function scheduleStableMapFit() {
+      const runOnFrame = function () {
+        if (window.requestAnimationFrame) {
+          window.requestAnimationFrame(runStableMapFit);
+        } else {
+          window.setTimeout(runStableMapFit, 0);
+        }
+      };
+      map.whenReady(runOnFrame);
+      if (baseLayerState && baseLayerState.layer) {
+        baseLayerState.layer.once("load", runStableMapFit);
+      }
+      window.addEventListener("load", runStableMapFit, { once: true });
+      [80, 220, 420, 900, 1500].forEach(function (delay) {
+        window.setTimeout(runStableMapFit, delay);
+      });
+    }
     applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
     initializeBackgroundMapPicker(
       map,
@@ -2106,6 +2177,7 @@
       revealState,
       summaryState,
       switzerlandBounds,
+      scopeBounds,
       mapElement.dataset.baseMapUrl
     );
     initializeBoundaryLinePicker(map, boundaryState, revealState, summaryState);
@@ -2126,7 +2198,7 @@
     mapElement.dataset.initialized = "true";
 
     syncBoundaryLayers({
-      fitTarget: !revealState && !summaryState,
+      fitTarget: !revealState && !summaryState && !scopeBounds,
     }).then(function () {
       const targetLayer = boundaryState.municipalityLayer;
       if (revealState) {
@@ -2145,15 +2217,15 @@
         summaryState.reveals.forEach(function (reveal) {
           drawRevealDistanceLine(map, targetLayer, reveal);
         });
+      } else {
+        refitMapView(map, targetLayer, revealState, summaryState, scopeBounds);
       }
       applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
       syncZoomControls();
       return null;
     });
 
-    window.setTimeout(function () {
-      refreshMapFit();
-    }, 0);
+    scheduleStableMapFit();
   }
 
   function initializeAuthChoiceModal() {

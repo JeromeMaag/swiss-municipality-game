@@ -1914,6 +1914,7 @@ class GameStartTests(TestCase):
                 f'{reverse("geo:municipality_boundaries_geojson")}{query_prefix}'
             ),
         )
+        self.assertContains(response, 'data-scope-bounds=""')
         self.assertContains(response, "Auto")
         self.assertContains(response, "White")
         self.assertContains(response, "Black")
@@ -2019,6 +2020,10 @@ class GameStartTests(TestCase):
                 'data-canton-boundaries-url="'
                 f'{reverse("geo:cantons_geojson")}{query_prefix}'
             ),
+        )
+        self.assertContains(
+            game_response,
+            'data-scope-bounds="47.000000,8.000000,47.100000,8.100000"',
         )
         self.assertContains(
             game_response,
