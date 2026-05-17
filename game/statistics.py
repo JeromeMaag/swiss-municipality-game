@@ -126,8 +126,11 @@ def build_player_statistics(user) -> dict:
 
 def parse_advanced_statistics_filters(params) -> AdvancedStatisticsFilters:
     """Normalize query parameters for the detailed statistics page."""
-    canton = params.get("canton", "all") or "all"
-    if canton != "all":
+    canton = (params.get("canton", "all") or "all").strip()
+    if not canton:
+        canton = "all"
+    elif canton != "all":
+        canton = canton.upper()
         canton_exists = get_current_cantons().filter(abbreviation=canton).exists()
         canton = canton if canton_exists else "all"
     game_mode = params.get("game_mode", "all") or "all"
@@ -154,7 +157,7 @@ def parse_advanced_statistics_filters(params) -> AdvancedStatisticsFilters:
 def build_player_advanced_statistics(user, filters: AdvancedStatisticsFilters) -> dict:
     """Build detailed per-canton and per-target statistics for one user."""
     guesses = filtered_finished_guesses(user, filters)
-    target_stats = build_target_statistics(guesses, filters.sort)
+    target_stats = build_target_statistics(guesses, filters.sort, filters.target_type)
     visible_target_stats = target_stats
     target_stats_limited = False
     if filters.canton == "all" and len(target_stats) > TARGET_TABLE_LIMIT:
@@ -162,9 +165,12 @@ def build_player_advanced_statistics(user, filters: AdvancedStatisticsFilters) -
         target_stats_limited = True
     return {
         "available_cantons": list(
-            get_current_cantons().values("abbreviation", "name").distinct()
+            get_current_cantons()
+            .order_by("abbreviation")
+            .values("abbreviation", "name")
+            .distinct()
         ),
-        "canton_stats": build_canton_statistics(guesses),
+        "canton_stats": build_canton_statistics(guesses, filters.target_type),
         "filters": filters,
         "filter_options": build_filter_options(),
         "overview": build_advanced_overview(guesses, filters),
@@ -319,23 +325,25 @@ def count_total_targets(filters: AdvancedStatisticsFilters) -> int:
     return total
 
 
-def build_canton_statistics(guesses) -> list[dict]:
+def build_canton_statistics(guesses, target_type: str) -> list[dict]:
     """Return performance grouped by selected target canton."""
     stats_by_canton: dict[str, dict] = {}
-    add_grouped_canton_rows(
-        stats_by_canton,
-        guesses.filter(turn__game__target_type=Game.TargetType.MUNICIPALITY),
-        "turn__municipality_target_id",
-        "turn__municipality_target__canton__abbreviation",
-        "turn__municipality_target__canton__name",
-    )
-    add_grouped_canton_rows(
-        stats_by_canton,
-        guesses.filter(turn__game__target_type=Game.TargetType.VILLAGE),
-        "turn__village_target_id",
-        "turn__village_target__canton__abbreviation",
-        "turn__village_target__canton__name",
-    )
+    if target_type in ("all", Game.TargetType.MUNICIPALITY):
+        add_grouped_canton_rows(
+            stats_by_canton,
+            guesses.filter(turn__game__target_type=Game.TargetType.MUNICIPALITY),
+            "turn__municipality_target_id",
+            "turn__municipality_target__canton__abbreviation",
+            "turn__municipality_target__canton__name",
+        )
+    if target_type in ("all", Game.TargetType.VILLAGE):
+        add_grouped_canton_rows(
+            stats_by_canton,
+            guesses.filter(turn__game__target_type=Game.TargetType.VILLAGE),
+            "turn__village_target_id",
+            "turn__village_target__canton__abbreviation",
+            "turn__village_target__canton__name",
+        )
     stats = []
     for row in stats_by_canton.values():
         attempts = row["attempts"]
@@ -395,29 +403,31 @@ def add_grouped_canton_rows(
         current["targets_played"] += row["targets_played"] or 0
 
 
-def build_target_statistics(guesses, sort: str) -> list[dict]:
+def build_target_statistics(guesses, sort: str, target_type: str) -> list[dict]:
     """Return per-target performance rows sorted for the selected view."""
     stats = []
-    stats.extend(
-        target_statistics_for_type(
-            guesses.filter(turn__game__target_type=Game.TargetType.MUNICIPALITY),
-            Game.TargetType.MUNICIPALITY,
-            "turn__municipality_target_id",
-            "turn__municipality_target__name",
-            "turn__municipality_target__canton__abbreviation",
-            "turn__municipality_target__canton__name",
+    if target_type in ("all", Game.TargetType.MUNICIPALITY):
+        stats.extend(
+            target_statistics_for_type(
+                guesses.filter(turn__game__target_type=Game.TargetType.MUNICIPALITY),
+                Game.TargetType.MUNICIPALITY,
+                "turn__municipality_target_id",
+                "turn__municipality_target__name",
+                "turn__municipality_target__canton__abbreviation",
+                "turn__municipality_target__canton__name",
+            )
         )
-    )
-    stats.extend(
-        target_statistics_for_type(
-            guesses.filter(turn__game__target_type=Game.TargetType.VILLAGE),
-            Game.TargetType.VILLAGE,
-            "turn__village_target_id",
-            "turn__village_target__name",
-            "turn__village_target__canton__abbreviation",
-            "turn__village_target__canton__name",
+    if target_type in ("all", Game.TargetType.VILLAGE):
+        stats.extend(
+            target_statistics_for_type(
+                guesses.filter(turn__game__target_type=Game.TargetType.VILLAGE),
+                Game.TargetType.VILLAGE,
+                "turn__village_target_id",
+                "turn__village_target__name",
+                "turn__village_target__canton__abbreviation",
+                "turn__village_target__canton__name",
+            )
         )
-    )
     sorted_stats = sort_target_statistics(stats, sort)
     for index, item in enumerate(sorted_stats, start=1):
         item["rank"] = index
@@ -555,10 +565,10 @@ def build_weekly_trend(guesses) -> list[dict]:
             average_score=Avg("score"),
             hits=Count("id", filter=Q(score=EXACT_HIT_SCORE)),
         )
-        .order_by("bucket")
+        .order_by("-bucket")[:12]
     )
     trend = []
-    for row in rows[-12:]:
+    for row in reversed(rows):
         attempts = row["attempts"] or 0
         average_score = round_or_zero(row["average_score"])
         trend.append(

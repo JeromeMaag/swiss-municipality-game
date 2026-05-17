@@ -3801,7 +3801,7 @@ class GameSummaryTests(TestCase):
 
         response = self.client.get(
             reverse("profile_stats"),
-            {"canton": "TG", "sort": "hit_rate_desc"},
+            {"canton": " tg ", "sort": "hit_rate_desc"},
         )
         statistics = response.context["statistics"]
 
