@@ -859,6 +859,43 @@ a {
   z-index: 750;
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .game-map--guessing.leaflet-container,
+  .game-map--guessing.leaflet-container .leaflet-pane,
+  .game-map--guessing.leaflet-container .leaflet-interactive {
+    cursor: none;
+  }
+
+  .game-map--guessing.leaflet-container .leaflet-control-container,
+  .game-map--guessing.leaflet-container .leaflet-control-container * {
+    cursor: auto;
+  }
+
+  .game-map--guessing.leaflet-container .leaflet-control-zoom a {
+    cursor: pointer;
+  }
+}
+
+.guess-marker--ghost {
+  opacity: 0.68;
+  transform: translate(-50%, -100%) scale(0.9);
+  transform-origin: 50% 100%;
+  transition: opacity 120ms ease;
+  will-change: left, top;
+  z-index: 850;
+}
+
+.guess-marker--ghost[hidden],
+.game-map--dragging .guess-marker--ghost {
+  display: none;
+}
+
+.guess-marker--ghost .guess-marker-head {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.92) 0 0.21rem, transparent 0.23rem),
+    rgba(238, 46, 43, 0.82);
+}
+
 .guess-marker-head {
   background:
     radial-gradient(circle at 50% 50%, #ffffff 0 0.21rem, transparent 0.23rem),

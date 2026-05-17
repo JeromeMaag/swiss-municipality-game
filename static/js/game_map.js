@@ -886,6 +886,37 @@
     return deltaX * deltaX + deltaY * deltaY > tolerance * tolerance;
   }
 
+  function supportsGhostGuessPin() {
+    return (
+      window.matchMedia &&
+      window.matchMedia("(hover: hover) and (pointer: fine)").matches
+    );
+  }
+
+  function shouldShowGhostPinForEvent(event) {
+    return event.pointerType !== "touch" && !event.type.startsWith("touch");
+  }
+
+  function isLeafletControlTarget(target) {
+    return Boolean(
+      target &&
+        target.closest &&
+        target.closest(".leaflet-control-container")
+    );
+  }
+
+  function guessMarkerHtml(label) {
+    const markerLabel = label
+      ? '<span class="guess-marker-label">' + escapeHtml(label) + "</span>"
+      : "";
+    return (
+      '<span class="guess-marker-head">' +
+      markerLabel +
+      "</span>" +
+      '<span class="guess-marker-stem"></span>'
+    );
+  }
+
   function createGuessMarkerIcon(label, revealed) {
     let className = "guess-marker";
     if (label) {
@@ -894,20 +925,22 @@
     if (revealed) {
       className += " guess-marker--revealed";
     }
-    const markerLabel = label
-      ? '<span class="guess-marker-label">' + escapeHtml(label) + "</span>"
-      : "";
     return window.L.divIcon({
       className: className,
-      html: (
-        '<span class="guess-marker-head">' +
-        markerLabel +
-        "</span>" +
-        '<span class="guess-marker-stem"></span>'
-      ),
+      html: guessMarkerHtml(label),
       iconAnchor: [14, 36],
       iconSize: [29, 36],
     });
+  }
+
+  function createGhostGuessMarker(mapContainer) {
+    const ghostMarker = document.createElement("div");
+    ghostMarker.className = "guess-marker guess-marker--ghost";
+    ghostMarker.hidden = true;
+    ghostMarker.setAttribute("aria-hidden", "true");
+    ghostMarker.innerHTML = guessMarkerHtml("");
+    mapContainer.appendChild(ghostMarker);
+    return ghostMarker;
   }
 
   function createGuessMarker(map, latlng, label) {
@@ -944,16 +977,52 @@
     let pressMovedPastTolerance = false;
     let mapDragging = false;
     let lastDragAt = 0;
+    const ghostMarker = supportsGhostGuessPin()
+      ? createGhostGuessMarker(mapContainer)
+      : null;
+
+    if (ghostMarker) {
+      mapContainer.classList.add("game-map--guessing");
+    }
 
     function resetPressState() {
       pressState = null;
       pressMovedPastTolerance = false;
     }
 
+    function hideGhostMarker() {
+      if (ghostMarker) {
+        ghostMarker.hidden = true;
+      }
+    }
+
+    function updateGhostMarker(event) {
+      if (
+        !ghostMarker ||
+        mapDragging ||
+        pressState !== null ||
+        isLeafletControlTarget(event.target) ||
+        !shouldShowGhostPinForEvent(event)
+      ) {
+        hideGhostMarker();
+        return;
+      }
+      const point = eventClientPoint(event);
+      if (!point) {
+        hideGhostMarker();
+        return;
+      }
+      const mapRect = mapContainer.getBoundingClientRect();
+      ghostMarker.style.left = point.x - mapRect.left + "px";
+      ghostMarker.style.top = point.y - mapRect.top + "px";
+      ghostMarker.hidden = false;
+    }
+
     function beginGuessPress(event) {
       if (!isPrimaryGuessPress(event)) {
         return;
       }
+      hideGhostMarker();
       const point = eventClientPoint(event);
       if (!point) {
         resetPressState();
@@ -981,6 +1050,7 @@
       ) {
         pressMovedPastTolerance = true;
         lastDragAt = Date.now();
+        hideGhostMarker();
       }
     }
 
@@ -1027,18 +1097,30 @@
     }
 
     if (window.PointerEvent) {
+      mapContainer.addEventListener("pointerenter", updateGhostMarker);
+      mapContainer.addEventListener("pointerleave", hideGhostMarker);
       mapContainer.addEventListener("pointerdown", beginGuessPress);
       mapContainer.addEventListener("pointermove", updateGuessPress);
+      mapContainer.addEventListener("pointermove", updateGhostMarker);
       mapContainer.addEventListener("pointerup", endGuessPress);
       mapContainer.addEventListener("pointercancel", resetPressState);
     } else {
+      mapContainer.addEventListener("mouseenter", updateGhostMarker);
+      mapContainer.addEventListener("mouseleave", hideGhostMarker);
       mapContainer.addEventListener("mousedown", beginGuessPress);
       mapContainer.addEventListener("mousemove", updateGuessPress);
+      mapContainer.addEventListener("mousemove", updateGhostMarker);
       mapContainer.addEventListener("mouseup", endGuessPress);
       mapContainer.addEventListener("touchstart", beginGuessPress, {
         passive: true,
       });
+      mapContainer.addEventListener("touchstart", hideGhostMarker, {
+        passive: true,
+      });
       mapContainer.addEventListener("touchmove", updateGuessPress, {
+        passive: true,
+      });
+      mapContainer.addEventListener("touchmove", hideGhostMarker, {
         passive: true,
       });
       mapContainer.addEventListener("touchend", endGuessPress);
@@ -1048,21 +1130,27 @@
     map.on("dragstart", function () {
       mapDragging = true;
       lastDragAt = Date.now();
+      mapContainer.classList.add("game-map--dragging");
+      hideGhostMarker();
     });
 
     map.on("dragend", function () {
       mapDragging = false;
       lastDragAt = Date.now();
+      mapContainer.classList.remove("game-map--dragging");
       resetPressState();
+      hideGhostMarker();
     });
 
     map.on("click", function (event) {
       if (shouldIgnoreGuessClick()) {
         resetPressState();
+        hideGhostMarker();
         return;
       }
       placeGuessPin(event.latlng);
       resetPressState();
+      hideGhostMarker();
     });
   }
 
