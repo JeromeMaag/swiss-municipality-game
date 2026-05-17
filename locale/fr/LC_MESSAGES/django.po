@@ -461,3 +461,151 @@ msgstr "Choisis un type de cible valide."
 
 msgid "Turn target does not exist."
 msgstr "La cible de la manche n'existe pas."
+
+msgid "Detailed statistics"
+msgstr "Statistiques détaillées"
+
+msgid "Detailed stats"
+msgstr "Statistiques détaillées"
+
+msgid "Statistics filters"
+msgstr "Filtres statistiques"
+
+msgid "All targets"
+msgstr "Toutes les cibles"
+
+msgid "All Switzerland"
+msgstr "Toute la Suisse"
+
+msgid "All modes"
+msgstr "Tous les modes"
+
+msgid "All time"
+msgstr "Toute la période"
+
+msgid "Period"
+msgstr "Période"
+
+msgid "Sort"
+msgstr "Tri"
+
+msgid "Update"
+msgstr "Mettre à jour"
+
+msgid "Statistics overview"
+msgstr "Aperçu des statistiques"
+
+msgid "Hit rate"
+msgstr "Taux de réussite"
+
+msgid "Average round"
+msgstr "Manche moyenne"
+
+msgid "Targets played"
+msgstr "Cibles jouées"
+
+msgid "Coverage"
+msgstr "Couverture"
+
+msgid "Round detail"
+msgstr "Détail des manches"
+
+msgid "Recognition"
+msgstr "Reconnaissance"
+
+msgid "Exact hits"
+msgstr "Coups exacts"
+
+msgid "Near hits"
+msgstr "Presque réussites"
+
+msgid "Games represented"
+msgstr "Parties représentées"
+
+msgid "Best round score"
+msgstr "Meilleur score de manche"
+
+msgid "Total active targets"
+msgstr "Total des cibles actives"
+
+msgid "Highlights"
+msgstr "Points forts"
+
+msgid "Strongest targets"
+msgstr "Cibles les plus fortes"
+
+msgid "Finish games to unlock target strengths."
+msgstr "Termine des parties pour débloquer les points forts des cibles."
+
+msgid "Needs practice"
+msgstr "À travailler"
+
+msgid "No weak spots yet."
+msgstr "Pas encore de points faibles."
+
+msgid "Recent form"
+msgstr "Forme récente"
+
+msgid "Average score by week"
+msgstr "Score moyen par semaine"
+
+msgid "No finished rounds in this filter yet."
+msgstr "Aucune manche terminée pour ce filtre."
+
+msgid "Canton ranking"
+msgstr "Classement des cantons"
+
+msgid "Avg score"
+msgstr "Score moy."
+
+msgid "Targets"
+msgstr "Cibles"
+
+msgid "Avg distance"
+msgstr "Distance moy."
+
+msgid "No canton statistics for this filter yet."
+msgstr "Aucune statistique de canton pour ce filtre."
+
+msgid ""
+"Showing the first %(visible)s of %(total)s targets. Select a canton to inspect "
+"all targets in that canton."
+msgstr ""
+"Affichage des %(visible)s premières cibles sur %(total)s. Sélectionne un canton "
+"pour voir toutes les cibles de ce canton."
+
+msgid "Target ranking"
+msgstr "Classement des cibles"
+
+msgid "Rank"
+msgstr "Rang"
+
+msgid "Type"
+msgstr "Type"
+
+msgid "Last played"
+msgstr "Dernière partie"
+
+msgid "No target statistics for this filter yet."
+msgstr "Aucune statistique de cible pour ce filtre."
+
+msgid "Last 30 days"
+msgstr "30 derniers jours"
+
+msgid "Last 90 days"
+msgstr "90 derniers jours"
+
+msgid "Last year"
+msgstr "Dernière année"
+
+msgid "Best hit rate"
+msgstr "Meilleur taux de réussite"
+
+msgid "Best average score"
+msgstr "Meilleur score moyen"
+
+msgid "Most attempts"
+msgstr "Plus grand nombre d'essais"
+
+msgid "Best average distance"
+msgstr "Meilleure distance moyenne"
