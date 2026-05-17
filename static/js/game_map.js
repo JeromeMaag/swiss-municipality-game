@@ -7,6 +7,15 @@
   const DEFAULT_BACKGROUND_MAP_ID = "swissimage";
   const DEFAULT_BOUNDARY_LINE_MODE = "auto";
   const BOUNDARY_LINE_MODES = new Set(["auto", "white", "black"]);
+  const BOUNDARY_CACHE_LIMIT = 32;
+  const BOUNDARY_CACHE_NAME = "gemeindeguess.boundaries.v1";
+  const BOUNDARY_DETAIL_FULL = "full";
+  const BOUNDARY_DETAIL_SIMPLE = "simple";
+  const BOUNDARY_FULL_ZOOM = {
+    cantons: 8,
+    municipalities: 10,
+    villages: 12,
+  };
   const OUTLINE_LAYER_ORDER = [
     "cantons",
     "municipalities",
@@ -26,9 +35,12 @@
     surfaceRelief: "black",
     swissimage: "white",
   };
-  const DEFAULT_MIN_ZOOM = 8;
+  const FALLBACK_MAP_MIN_ZOOM = 8;
+  const MIN_ZOOM_MODE_FIXED = "fixed";
+  const MIN_ZOOM_MODE_COVER_SWITZERLAND = "coverSwitzerland";
   const DESKTOP_SIDEBAR_WIDTH = 360;
   const MOBILE_BREAKPOINT_WIDTH = 920;
+  const BOUNDS_COVER_PADDING = 24;
   const COMPACT_MIN_FIT_PADDING = 12;
   const COMPACT_MIN_BOTTOM_PADDING = 180;
   const COMPACT_MIN_AVAILABLE_MAP_HEIGHT = 96;
@@ -37,6 +49,12 @@
   const COMPACT_TALL_SIDEBAR_HEIGHT_RATIO = 0.64;
   const COMPACT_TOP_PADDING_RATIO = 0.18;
   const VECTOR_RENDERER_PADDING = 0.2;
+  const GUESS_CLICK_TOLERANCE = 14;
+  const GUESS_TAP_TOLERANCE = 26;
+  const GUESS_DRAG_SUPPRESSION_MS = 160;
+  const REVEAL_LINE_DELAY_MS = 420;
+  const REVEAL_PIN_DELAY_MS = 120;
+  const REVEAL_TARGET_DELAY_MS = 260;
 
   function swisstopoWmtsUrl(layer, extension) {
     return (
@@ -50,6 +68,8 @@
   const BACKGROUND_MAPS = {
     swissimage: {
       attribution: "Map data &copy; swisstopo",
+      minZoomFloor: 7,
+      minZoomMode: MIN_ZOOM_MODE_COVER_SWITZERLAND,
       maxNativeZoom: 18,
       maxZoom: 18,
       minZoom: 6,
@@ -57,6 +77,8 @@
     },
     surfaceRelief: {
       attribution: "Map data &copy; swisstopo",
+      minZoomFloor: 7,
+      minZoomMode: MIN_ZOOM_MODE_COVER_SWITZERLAND,
       maxNativeZoom: 18,
       maxZoom: 18,
       minZoom: 6,
@@ -67,6 +89,8 @@
     },
     lightRelief: {
       attribution: "Map data &copy; swisstopo",
+      minZoomFloor: 7,
+      minZoomMode: MIN_ZOOM_MODE_COVER_SWITZERLAND,
       maxNativeZoom: 18,
       maxZoom: 18,
       minZoom: 6,
@@ -79,6 +103,8 @@
       attribution:
         '&copy; <a href="https://carto.com/attributions">CARTO</a> ' +
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      mapMinZoom: 7,
+      minZoomMode: MIN_ZOOM_MODE_FIXED,
       maxNativeZoom: 20,
       maxZoom: 20,
       minZoom: 0,
@@ -87,6 +113,8 @@
     },
     none: {
       attribution: "",
+      mapMinZoom: 7,
+      minZoomMode: MIN_ZOOM_MODE_FIXED,
       maxNativeZoom: 18,
       maxZoom: 18,
       minZoom: 6,
@@ -97,6 +125,23 @@
   function readNumber(element, name, fallback) {
     const value = Number.parseFloat(element.dataset[name]);
     return Number.isFinite(value) ? value : fallback;
+  }
+
+  function readMapScopeBounds(element) {
+    const rawBounds = element.dataset.scopeBounds || "";
+    const parts = rawBounds.split(",").map(function (part) {
+      return Number.parseFloat(part);
+    });
+    if (parts.length !== 4 || parts.some(function (part) {
+      return !Number.isFinite(part);
+    })) {
+      return null;
+    }
+
+    return window.L.latLngBounds(
+      [parts[0], parts[1]],
+      [parts[2], parts[3]]
+    );
   }
 
   function isCompactMap(map) {
@@ -169,11 +214,89 @@
     }
   }
 
-  function constrainMapToBounds(map, bounds) {
-    map.setMinZoom(DEFAULT_MIN_ZOOM);
-    if (map.getZoom() < DEFAULT_MIN_ZOOM) {
-      map.setZoom(DEFAULT_MIN_ZOOM, { animate: false });
+  function backgroundMapConfig(mapId) {
+    return BACKGROUND_MAPS[normalizeBackgroundMapId(mapId)];
+  }
+
+  function initialBackgroundMinZoom(mapId) {
+    const backgroundMap = backgroundMapConfig(mapId);
+    if (backgroundMap.minZoomMode === MIN_ZOOM_MODE_FIXED) {
+      return backgroundMap.mapMinZoom || FALLBACK_MAP_MIN_ZOOM;
     }
+    if (backgroundMap.minZoomMode === MIN_ZOOM_MODE_COVER_SWITZERLAND) {
+      return backgroundMap.minZoomFloor || FALLBACK_MAP_MIN_ZOOM;
+    }
+    return FALLBACK_MAP_MIN_ZOOM;
+  }
+
+  function effectiveBoundsCoverSize(map) {
+    const size = map.getSize();
+    if (isCompactMap(map)) {
+      const compactPadding = compactMapEdgePadding(map, BOUNDS_COVER_PADDING);
+      return {
+        x: Math.max(1, size.x - compactPadding * 2),
+        y: Math.max(
+          1,
+          size.y -
+            compactPadding -
+            compactMapBottomPadding(map, compactPadding)
+        ),
+      };
+    }
+
+    return {
+      x: Math.max(
+        1,
+        size.x - DESKTOP_SIDEBAR_WIDTH - BOUNDS_COVER_PADDING * 2
+      ),
+      y: Math.max(1, size.y - BOUNDS_COVER_PADDING * 2),
+    };
+  }
+
+  function projectedBoundsSize(map, bounds, zoom) {
+    const northWest = map.project(bounds.getNorthWest(), zoom);
+    const southEast = map.project(bounds.getSouthEast(), zoom);
+    return {
+      x: Math.abs(southEast.x - northWest.x),
+      y: Math.abs(southEast.y - northWest.y),
+    };
+  }
+
+  function resolveBackgroundMinZoom(map, mapId, bounds) {
+    const backgroundMap = backgroundMapConfig(mapId);
+    if (backgroundMap.minZoomMode === MIN_ZOOM_MODE_FIXED) {
+      return backgroundMap.mapMinZoom || FALLBACK_MAP_MIN_ZOOM;
+    }
+    if (backgroundMap.minZoomMode !== MIN_ZOOM_MODE_COVER_SWITZERLAND) {
+      return FALLBACK_MAP_MIN_ZOOM;
+    }
+
+    const minZoomFloor = backgroundMap.minZoomFloor || FALLBACK_MAP_MIN_ZOOM;
+    const maxZoom = Number.isFinite(backgroundMap.maxZoom)
+      ? backgroundMap.maxZoom
+      : FALLBACK_MAP_MIN_ZOOM;
+    const visibleSize = effectiveBoundsCoverSize(map);
+    for (let zoom = minZoomFloor; zoom <= maxZoom; zoom += 1) {
+      const boundsSize = projectedBoundsSize(map, bounds, zoom);
+      if (boundsSize.x >= visibleSize.x && boundsSize.y >= visibleSize.y) {
+        return zoom;
+      }
+    }
+    return maxZoom;
+  }
+
+  function applyBackgroundMinZoom(map, mapId, bounds) {
+    const minZoom = resolveBackgroundMinZoom(map, mapId, bounds);
+    map.setMinZoom(minZoom);
+    map.fire("minzoomchange");
+    if (map.getZoom() < minZoom) {
+      map.setZoom(minZoom, { animate: false });
+    }
+    return minZoom;
+  }
+
+  function constrainMapToBounds(map, bounds, mapId) {
+    applyBackgroundMinZoom(map, mapId, bounds);
     map.panInsideBounds(bounds, { animate: false });
   }
 
@@ -212,33 +335,106 @@
     });
   }
 
+  function isSameOriginUrl(url) {
+    try {
+      return new URL(url, window.location.href).origin === window.location.origin;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function trimBoundaryCache(cache) {
+    if (!cache || typeof cache.keys !== "function") {
+      return;
+    }
+
+    cache.keys().then(function (keys) {
+      if (keys.length <= BOUNDARY_CACHE_LIMIT) {
+        return null;
+      }
+      return Promise.all(
+        keys.slice(0, keys.length - BOUNDARY_CACHE_LIMIT).map(function (key) {
+          return cache.delete(key);
+        })
+      );
+    }).catch(function () {
+      return null;
+    });
+  }
+
+  function boundaryUrlWithDetail(url, detail) {
+    const boundaryUrl = new URL(url, window.location.href);
+    boundaryUrl.searchParams.set("detail", detail);
+    return boundaryUrl.toString();
+  }
+
+  function fetchBoundaryData(url) {
+    if (!window.caches || !isSameOriginUrl(url)) {
+      return window.fetch(url, {
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/geo+json, application/json",
+        },
+      }).then(function (response) {
+        if (!response.ok) {
+          throw new Error("Boundary request failed with status " + response.status);
+        }
+        return response.json();
+      });
+    }
+
+    return window.caches.open(BOUNDARY_CACHE_NAME).then(function (cache) {
+      return cache.match(url).then(function (cachedResponse) {
+        if (cachedResponse) {
+          return cachedResponse.json();
+        }
+
+        return window.fetch(url, {
+          credentials: "same-origin",
+          headers: {
+            Accept: "application/geo+json, application/json",
+          },
+        }).then(function (response) {
+          if (!response.ok) {
+            throw new Error(
+              "Boundary request failed with status " + response.status
+            );
+          }
+          cache.put(url, response.clone()).then(function () {
+            trimBoundaryCache(cache);
+            return null;
+          }).catch(function () {
+            return null;
+          });
+          return response.json();
+        });
+      });
+    });
+  }
+
   function addBoundaryLayer(map, url, options) {
     if (!url) {
       return Promise.resolve(null);
     }
 
-    return window.fetch(url, {
-      cache: "no-cache",
-      credentials: "same-origin",
-      headers: {
-        Accept: "application/geo+json, application/json",
-      },
-    })
+    return fetchBoundaryData(url)
       .then(function (response) {
-        if (!response.ok) {
-          throw new Error("Boundary request failed with status " + response.status);
-        }
-        return response.json();
-      })
-      .then(function (data) {
-        const layer = window.L.geoJSON(data, {
+        const layer = window.L.geoJSON(response, {
           interactive: false,
           onEachFeature: options.onEachFeature,
           renderer: options.renderer,
           style: options.style,
-        }).addTo(map);
+        });
 
-        if (options.fitBounds && layer.getLayers().length > 0) {
+        if (options.addToMap !== false) {
+          layer.addTo(map);
+        }
+
+        if (
+          options.fitBounds &&
+          options.addToMap !== false &&
+          layer.getLayers().length > 0
+        ) {
           fitBoundaryLayerBounds(map, layer);
         }
 
@@ -251,6 +447,125 @@
         }
         return null;
       });
+  }
+
+  function boundaryDetailForZoom(map, layerId) {
+    const fullZoom = BOUNDARY_FULL_ZOOM[layerId] || Number.POSITIVE_INFINITY;
+    return map.getZoom() >= fullZoom ? BOUNDARY_DETAIL_FULL : BOUNDARY_DETAIL_SIMPLE;
+  }
+
+  function isBoundaryLayerVisible(boundaryState, layerId) {
+    return hasOutlineLayer(boundaryState.outlineLayers, layerId);
+  }
+
+  function createBoundaryLayerManager(map, options) {
+    const layersByDetail = {};
+    const requestsByDetail = {};
+    let currentDetail = null;
+    let syncToken = 0;
+
+    function currentLayer() {
+      return currentDetail ? layersByDetail[currentDetail] || null : null;
+    }
+
+    function desiredDetail() {
+      return boundaryDetailForZoom(map, options.layerId);
+    }
+
+    function shouldShow() {
+      return options.required() || options.visible();
+    }
+
+    function removeCurrentLayer() {
+      const layer = currentLayer();
+      if (layer !== null && map.hasLayer(layer)) {
+        map.removeLayer(layer);
+      }
+      currentDetail = null;
+    }
+
+    function loadLayer(detail) {
+      if (layersByDetail[detail]) {
+        return Promise.resolve(layersByDetail[detail]);
+      }
+      if (requestsByDetail[detail]) {
+        return requestsByDetail[detail];
+      }
+
+      requestsByDetail[detail] = addBoundaryLayer(
+        map,
+        boundaryUrlWithDetail(options.url, detail),
+        {
+          addToMap: false,
+          errorMessage: options.errorMessage,
+          onEachFeature: options.onEachFeature,
+          renderer: options.renderer,
+          style: options.style,
+          suppressGlobalError: options.suppressGlobalError,
+        }
+      ).then(function (layer) {
+        requestsByDetail[detail] = null;
+        if (layer !== null) {
+          layersByDetail[detail] = layer;
+        }
+        return layer;
+      });
+      return requestsByDetail[detail];
+    }
+
+    function showLayer(layer, detail, fitBounds) {
+      const previousLayer = currentLayer();
+      if (previousLayer !== null && previousLayer !== layer && map.hasLayer(previousLayer)) {
+        map.removeLayer(previousLayer);
+      }
+      currentDetail = detail;
+      layer.setStyle(options.style());
+      if (!map.hasLayer(layer)) {
+        layer.addTo(map);
+      }
+      if (fitBounds && layer.getLayers().length > 0) {
+        fitBoundaryLayerBounds(map, layer);
+      }
+      return layer;
+    }
+
+    function sync(syncOptions) {
+      const fitBounds = Boolean(syncOptions && syncOptions.fitBounds);
+      syncToken += 1;
+      const token = syncToken;
+      if (!options.url || (!shouldShow() && !fitBounds)) {
+        removeCurrentLayer();
+        return Promise.resolve(null);
+      }
+
+      const detail = desiredDetail();
+      return loadLayer(detail).then(function (layer) {
+        if (token !== syncToken || layer === null || detail !== desiredDetail()) {
+          return currentLayer();
+        }
+        if (!shouldShow()) {
+          removeCurrentLayer();
+          // Use hidden target data for scope fitting without rendering the layer.
+          if (fitBounds && layer.getLayers().length > 0) {
+            fitBoundaryLayerBounds(map, layer);
+          }
+          return layer;
+        }
+        return showLayer(layer, detail, fitBounds);
+      });
+    }
+
+    function setStyle() {
+      Object.keys(layersByDetail).forEach(function (detail) {
+        layersByDetail[detail].setStyle(options.style());
+      });
+    }
+
+    return {
+      getLayer: currentLayer,
+      setStyle: setStyle,
+      sync: sync,
+    };
   }
 
   function escapeHtml(value) {
@@ -553,24 +868,31 @@
     };
   }
 
-  function applyBoundaryLineTheme(map, boundaryState, revealState, summaryState) {
-    const theme = resolveBoundaryLineTheme(
-      boundaryState.mapId,
-      boundaryState.lineMode
+  function currentBoundaryLineColors(boundaryState) {
+    return boundaryLineColors(
+      resolveBoundaryLineTheme(boundaryState.mapId, boundaryState.lineMode)
     );
-    const colors = boundaryLineColors(theme);
-    if (boundaryState.municipalityLayer !== null) {
+  }
+
+  function applyBoundaryLineTheme(map, boundaryState, revealState, summaryState) {
+    const colors = currentBoundaryLineColors(boundaryState);
+    if (boundaryState.targetLayerManager !== null) {
+      boundaryState.targetLayerManager.setStyle();
+    } else if (boundaryState.municipalityLayer !== null) {
       boundaryState.municipalityLayer.setStyle(
         municipalityStyle(
           revealState,
           summaryState,
           colors,
           boundaryState.outlineLayers,
-          boundaryState.hasVillageLayer
+          boundaryState.hasVillageLayer,
+          boundaryState.revealTargetVisible
         )
       );
     }
-    if (boundaryState.municipalityOverlayLayer !== null) {
+    if (boundaryState.municipalityOverlayLayerManager !== null) {
+      boundaryState.municipalityOverlayLayerManager.setStyle();
+    } else if (boundaryState.municipalityOverlayLayer !== null) {
       boundaryState.municipalityOverlayLayer.setStyle(
         municipalityOverlayStyle(
           colors,
@@ -578,7 +900,9 @@
         )
       );
     }
-    if (boundaryState.cantonLayer !== null) {
+    if (boundaryState.cantonLayerManager !== null) {
+      boundaryState.cantonLayerManager.setStyle();
+    } else if (boundaryState.cantonLayer !== null) {
       boundaryState.cantonLayer.setStyle(
         cantonStyle(colors, boundaryState.outlineLayers)
       );
@@ -615,6 +939,8 @@
     boundaryState,
     revealState,
     summaryState,
+    bounds,
+    scopeBounds,
     fallbackUrl
   ) {
     const pickers = document.querySelectorAll("[data-background-map-picker]");
@@ -634,6 +960,14 @@
         baseLayerState.mapId = mapId;
         boundaryState.mapId = mapId;
         baseLayerState.layer = addBaseMapLayer(map, mapId, fallbackUrl);
+        constrainMapToBounds(map, bounds, mapId);
+        refitMapView(
+          map,
+          boundaryState.municipalityLayer,
+          revealState,
+          summaryState,
+          scopeBounds
+        );
         applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
       });
     });
@@ -666,7 +1000,8 @@
     map,
     boundaryState,
     revealState,
-    summaryState
+    summaryState,
+    syncBoundaryLayers
   ) {
     const pickers = document.querySelectorAll("[data-outline-layer-picker]");
     if (!pickers.length) {
@@ -700,6 +1035,7 @@
         );
         boundaryState.outlineLayers = normalizedLayers;
         applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
+        syncBoundaryLayers();
       });
     });
   }
@@ -756,6 +1092,35 @@
       true
     );
     toggle.dataset.initialized = "true";
+  }
+
+  function initializeMapZoomControls(map) {
+    const zoomInButton = document.querySelector("[data-map-zoom-in]");
+    const zoomOutButton = document.querySelector("[data-map-zoom-out]");
+    if (!zoomInButton || !zoomOutButton) {
+      return function () {
+        return null;
+      };
+    }
+
+    function syncZoomButtons() {
+      zoomInButton.disabled = map.getZoom() >= map.getMaxZoom();
+      zoomOutButton.disabled = map.getZoom() <= map.getMinZoom();
+    }
+
+    zoomInButton.addEventListener("click", function () {
+      if (!zoomInButton.disabled) {
+        map.zoomIn();
+      }
+    });
+    zoomOutButton.addEventListener("click", function () {
+      if (!zoomOutButton.disabled) {
+        map.zoomOut();
+      }
+    });
+    map.on("zoomend zoomlevelschange minzoomchange", syncZoomButtons);
+    syncZoomButtons();
+    return syncZoomButtons;
   }
 
   function hasOpenAuthModal() {
@@ -845,6 +1210,75 @@
     return value.toFixed(5);
   }
 
+  function eventClientPoint(event) {
+    const touch =
+      event.touches && event.touches.length
+        ? event.touches[0]
+        : event.changedTouches && event.changedTouches.length
+          ? event.changedTouches[0]
+          : null;
+    if (touch) {
+      return { x: touch.clientX, y: touch.clientY };
+    }
+    if (
+      Number.isFinite(event.clientX) &&
+      Number.isFinite(event.clientY)
+    ) {
+      return { x: event.clientX, y: event.clientY };
+    }
+    return null;
+  }
+
+  function isPrimaryGuessPress(event) {
+    if (event.isPrimary === false) {
+      return false;
+    }
+    return event.button === undefined || event.button === 0;
+  }
+
+  function guessPressTolerance(event) {
+    return event.pointerType === "touch" || event.type.startsWith("touch")
+      ? GUESS_TAP_TOLERANCE
+      : GUESS_CLICK_TOLERANCE;
+  }
+
+  function pointsMovedPastTolerance(startPoint, currentPoint, tolerance) {
+    const deltaX = currentPoint.x - startPoint.x;
+    const deltaY = currentPoint.y - startPoint.y;
+    return deltaX * deltaX + deltaY * deltaY > tolerance * tolerance;
+  }
+
+  function supportsGhostGuessPin() {
+    return (
+      window.matchMedia &&
+      window.matchMedia("(hover: hover) and (pointer: fine)").matches
+    );
+  }
+
+  function shouldShowGhostPinForEvent(event) {
+    return event.pointerType !== "touch" && !event.type.startsWith("touch");
+  }
+
+  function isLeafletControlTarget(target) {
+    return Boolean(
+      target &&
+        target.closest &&
+        target.closest(".leaflet-control-container")
+    );
+  }
+
+  function guessMarkerHtml(label) {
+    const markerLabel = label
+      ? '<span class="guess-marker-label">' + escapeHtml(label) + "</span>"
+      : "";
+    return (
+      '<span class="guess-marker-head">' +
+      markerLabel +
+      "</span>" +
+      '<span class="guess-marker-stem"></span>'
+    );
+  }
+
   function createGuessMarkerIcon(label, revealed) {
     let className = "guess-marker";
     if (label) {
@@ -853,20 +1287,22 @@
     if (revealed) {
       className += " guess-marker--revealed";
     }
-    const markerLabel = label
-      ? '<span class="guess-marker-label">' + escapeHtml(label) + "</span>"
-      : "";
     return window.L.divIcon({
       className: className,
-      html: (
-        '<span class="guess-marker-head">' +
-        markerLabel +
-        "</span>" +
-        '<span class="guess-marker-stem"></span>'
-      ),
+      html: guessMarkerHtml(label),
       iconAnchor: [14, 36],
       iconSize: [29, 36],
     });
+  }
+
+  function createGhostGuessMarker(mapContainer) {
+    const ghostMarker = document.createElement("div");
+    ghostMarker.className = "guess-marker guess-marker--ghost";
+    ghostMarker.hidden = true;
+    ghostMarker.setAttribute("aria-hidden", "true");
+    ghostMarker.innerHTML = guessMarkerHtml("");
+    mapContainer.appendChild(ghostMarker);
+    return ghostMarker;
   }
 
   function createGuessMarker(map, latlng, label) {
@@ -893,18 +1329,110 @@
       return;
     }
 
+    const mapContainer = map.getContainer();
     const latitudeInput = form.querySelector("[data-guess-lat]");
     const longitudeInput = form.querySelector("[data-guess-lng]");
     const confirmButton = form.querySelector("[data-confirm-guess]");
     let marker = null;
     let selectedLatLng = null;
+    let pressState = null;
+    let pressMovedPastTolerance = false;
+    let mapDragging = false;
+    let lastDragAt = 0;
+    const ghostMarker = supportsGhostGuessPin()
+      ? createGhostGuessMarker(mapContainer)
+      : null;
 
-    map.on("click", function (event) {
-      const latitude = formatCoordinate(event.latlng.lat);
-      const longitude = formatCoordinate(event.latlng.lng);
+    if (ghostMarker) {
+      mapContainer.classList.add("game-map--guessing");
+    }
+
+    function resetPressState() {
+      pressState = null;
+      pressMovedPastTolerance = false;
+    }
+
+    function hideGhostMarker() {
+      if (ghostMarker) {
+        ghostMarker.hidden = true;
+      }
+    }
+
+    function updateGhostMarker(event) {
+      if (
+        !ghostMarker ||
+        mapDragging ||
+        pressState !== null ||
+        isLeafletControlTarget(event.target) ||
+        !shouldShowGhostPinForEvent(event)
+      ) {
+        hideGhostMarker();
+        return;
+      }
+      const point = eventClientPoint(event);
+      if (!point) {
+        hideGhostMarker();
+        return;
+      }
+      const mapRect = mapContainer.getBoundingClientRect();
+      ghostMarker.style.left = point.x - mapRect.left + "px";
+      ghostMarker.style.top = point.y - mapRect.top + "px";
+      ghostMarker.hidden = false;
+    }
+
+    function beginGuessPress(event) {
+      if (!isPrimaryGuessPress(event)) {
+        return;
+      }
+      hideGhostMarker();
+      const point = eventClientPoint(event);
+      if (!point) {
+        resetPressState();
+        return;
+      }
+      pressState = {
+        point: point,
+        tolerance: guessPressTolerance(event),
+      };
+      pressMovedPastTolerance = false;
+    }
+
+    function updateGuessPress(event) {
+      if (!pressState) {
+        return;
+      }
+      const point = eventClientPoint(event);
+      if (
+        point &&
+        pointsMovedPastTolerance(
+          pressState.point,
+          point,
+          pressState.tolerance
+        )
+      ) {
+        pressMovedPastTolerance = true;
+        lastDragAt = Date.now();
+        hideGhostMarker();
+      }
+    }
+
+    function endGuessPress(event) {
+      updateGuessPress(event);
+      window.setTimeout(resetPressState, 0);
+    }
+
+    function shouldIgnoreGuessClick() {
+      const recentlyDragged =
+        Date.now() - lastDragAt < GUESS_DRAG_SUPPRESSION_MS;
+      return mapDragging || pressMovedPastTolerance || recentlyDragged;
+    }
+
+    function placeGuessPin(latlng) {
+      const latitude = formatCoordinate(latlng.lat);
+      const longitude = formatCoordinate(latlng.lng);
       const previousLatLng = selectedLatLng;
       const hadMarker = marker !== null;
-      selectedLatLng = event.latlng;
+      selectedLatLng = latlng;
 
       if (marker === null) {
         marker = createGuessMarker(map, selectedLatLng);
@@ -928,6 +1456,63 @@
           : null,
         zoom: map.getZoom(),
       });
+    }
+
+    if (window.PointerEvent) {
+      mapContainer.addEventListener("pointerenter", updateGhostMarker);
+      mapContainer.addEventListener("pointerleave", hideGhostMarker);
+      mapContainer.addEventListener("pointerdown", beginGuessPress);
+      mapContainer.addEventListener("pointermove", updateGuessPress);
+      mapContainer.addEventListener("pointermove", updateGhostMarker);
+      mapContainer.addEventListener("pointerup", endGuessPress);
+      mapContainer.addEventListener("pointercancel", resetPressState);
+    } else {
+      mapContainer.addEventListener("mouseenter", updateGhostMarker);
+      mapContainer.addEventListener("mouseleave", hideGhostMarker);
+      mapContainer.addEventListener("mousedown", beginGuessPress);
+      mapContainer.addEventListener("mousemove", updateGuessPress);
+      mapContainer.addEventListener("mousemove", updateGhostMarker);
+      mapContainer.addEventListener("mouseup", endGuessPress);
+      mapContainer.addEventListener("touchstart", beginGuessPress, {
+        passive: true,
+      });
+      mapContainer.addEventListener("touchstart", hideGhostMarker, {
+        passive: true,
+      });
+      mapContainer.addEventListener("touchmove", updateGuessPress, {
+        passive: true,
+      });
+      mapContainer.addEventListener("touchmove", hideGhostMarker, {
+        passive: true,
+      });
+      mapContainer.addEventListener("touchend", endGuessPress);
+      mapContainer.addEventListener("touchcancel", resetPressState);
+    }
+
+    map.on("dragstart", function () {
+      mapDragging = true;
+      lastDragAt = Date.now();
+      mapContainer.classList.add("game-map--dragging");
+      hideGhostMarker();
+    });
+
+    map.on("dragend", function () {
+      mapDragging = false;
+      lastDragAt = Date.now();
+      mapContainer.classList.remove("game-map--dragging");
+      resetPressState();
+      hideGhostMarker();
+    });
+
+    map.on("click", function (event) {
+      if (shouldIgnoreGuessClick()) {
+        resetPressState();
+        hideGhostMarker();
+        return;
+      }
+      placeGuessPin(event.latlng);
+      resetPressState();
+      hideGhostMarker();
     });
   }
 
@@ -1016,9 +1601,14 @@
     };
   }
 
-  function initializeReveal(map, revealState, mapElement) {
-    createRevealedGuessMarker(map, revealState.latlng);
-    map.getContainer().classList.add("game-map--reveal");
+  function prefersReducedMotion() {
+    return Boolean(
+      window.matchMedia &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
+  }
+
+  function trackRevealShown(map, revealState, mapElement) {
     const targetType =
       mapElement.dataset.targetBoundaryLayer === "villages"
         ? "village"
@@ -1034,6 +1624,30 @@
       payload.target_municipality_id = Number(revealState.targetId);
     }
     sendTrackingEvent(mapElement, "REVEAL_SHOWN", payload);
+  }
+
+  function initializeReveal(map, boundaryState, revealState, mapElement) {
+    map.getContainer().classList.add("game-map--reveal");
+    trackRevealShown(map, revealState, mapElement);
+
+    if (prefersReducedMotion()) {
+      createRevealedGuessMarker(map, revealState.latlng);
+      boundaryState.revealTargetVisible = true;
+      applyBoundaryLineTheme(map, boundaryState, revealState, null);
+      drawRevealDistanceLine(map, boundaryState.municipalityLayer, revealState);
+      return;
+    }
+
+    window.setTimeout(function () {
+      createRevealedGuessMarker(map, revealState.latlng);
+    }, REVEAL_PIN_DELAY_MS);
+    window.setTimeout(function () {
+      boundaryState.revealTargetVisible = true;
+      applyBoundaryLineTheme(map, boundaryState, revealState, null);
+    }, REVEAL_TARGET_DELAY_MS);
+    window.setTimeout(function () {
+      drawRevealDistanceLine(map, boundaryState.municipalityLayer, revealState);
+    }, REVEAL_LINE_DELAY_MS);
   }
 
   function initializeSummary(map, summaryState) {
@@ -1086,11 +1700,14 @@
     summaryState,
     colors,
     outlineLayers,
-    isVillageLayer
+    isVillageLayer,
+    revealTargetVisible
   ) {
     return function (feature) {
+      const isRevealTarget =
+        revealState && isTargetFeature(feature, revealState.targetId);
       if (
-        (revealState && isTargetFeature(feature, revealState.targetId)) ||
+        (isRevealTarget && revealTargetVisible !== false) ||
         isSummaryTargetFeature(feature, summaryState)
       ) {
         return {
@@ -1313,14 +1930,52 @@
     }
   }
 
-  function refitMapView(map, municipalityLayer, revealState, summaryState) {
+  function fitScopeBounds(map, scopeBounds) {
+    if (scopeBounds && scopeBounds.isValid()) {
+      map.fitBounds(scopeBounds, mapFitOptions(map, 10, 24));
+    }
+  }
+
+  function applyInitialMapView(
+    map,
+    bounds,
+    mapId,
+    scopeBounds,
+    latitude,
+    longitude,
+    zoom,
+    revealState,
+    summaryState
+  ) {
+    applyBackgroundMinZoom(map, mapId, bounds);
+    if (!revealState && !summaryState && scopeBounds) {
+      map.invalidateSize();
+      fitScopeBounds(map, scopeBounds);
+    } else {
+      map.setView([latitude, longitude], zoom);
+    }
+    map.panInsideBounds(bounds, { animate: false });
+  }
+
+  function refitMapView(
+    map,
+    municipalityLayer,
+    revealState,
+    summaryState,
+    scopeBounds
+  ) {
     if (municipalityLayer === null) {
+      if (!revealState && !summaryState) {
+        fitScopeBounds(map, scopeBounds);
+      }
       return;
     }
     if (revealState) {
       fitRevealBounds(map, municipalityLayer, revealState);
     } else if (summaryState) {
       fitSummaryBounds(map, municipalityLayer, summaryState);
+    } else if (scopeBounds) {
+      fitScopeBounds(map, scopeBounds);
     } else {
       fitBoundaryLayerBounds(map, municipalityLayer);
     }
@@ -1339,38 +1994,61 @@
     const latitude = readNumber(mapElement, "centerLat", 46.8182);
     const longitude = readNumber(mapElement, "centerLng", 8.2275);
     const zoom = readNumber(mapElement, "zoom", 8);
+    const scopeBounds = readMapScopeBounds(mapElement);
     const labelMinZoom = readNumber(mapElement, "labelMinZoom", 11);
     const revealState = readRevealState(mapElement);
     const summaryState = readSummaryState();
+    const backgroundMapId = readStoredBackgroundMapId();
+    const boundaryLineMode = readStoredBoundaryLineMode();
     const vectorRenderer = window.L.canvas({
       padding: VECTOR_RENDERER_PADDING,
     });
     const map = window.L.map(mapElement, {
       attributionControl: true,
+      clickTolerance: GUESS_CLICK_TOLERANCE,
       maxBounds: switzerlandBounds,
       maxBoundsViscosity: 1,
-      minZoom: DEFAULT_MIN_ZOOM,
+      minZoom: initialBackgroundMinZoom(backgroundMapId),
       preferCanvas: true,
       renderer: vectorRenderer,
+      tapTolerance: GUESS_TAP_TOLERANCE,
       worldCopyJump: false,
-      zoomControl: true,
+      zoomControl: false,
     });
 
-    map.setView([latitude, longitude], zoom);
-    constrainMapToBounds(map, switzerlandBounds);
-    let municipalityLayerForFit = null;
+    applyInitialMapView(
+      map,
+      switzerlandBounds,
+      backgroundMapId,
+      scopeBounds,
+      latitude,
+      longitude,
+      zoom,
+      revealState,
+      summaryState
+    );
     let resizeFitTimeout = null;
+    let baseLayerState = null;
+    let boundaryState = null;
     function refreshMapFit() {
       map.invalidateSize();
-      constrainMapToBounds(map, switzerlandBounds);
-      refitMapView(map, municipalityLayerForFit, revealState, summaryState);
+      constrainMapToBounds(
+        map,
+        switzerlandBounds,
+        baseLayerState ? baseLayerState.mapId : backgroundMapId
+      );
+      refitMapView(
+        map,
+        boundaryState ? boundaryState.municipalityLayer : null,
+        revealState,
+        summaryState,
+        scopeBounds
+      );
     }
     map.on("resize", function () {
       window.clearTimeout(resizeFitTimeout);
       resizeFitTimeout = window.setTimeout(refreshMapFit, 0);
     });
-    const backgroundMapId = readStoredBackgroundMapId();
-    const boundaryLineMode = readStoredBoundaryLineMode();
     const hasVillageLayer =
       mapElement.dataset.targetBoundaryLayer === "villages";
     const hasMunicipalityLayer =
@@ -1380,7 +2058,7 @@
       hasMunicipalityLayer,
       hasVillageLayer
     );
-    const baseLayerState = {
+    baseLayerState = {
       layer: addBaseMapLayer(
         map,
         backgroundMapId,
@@ -1388,19 +2066,114 @@
       ),
       mapId: backgroundMapId,
     };
-    const boundaryState = {
+    boundaryState = {
       cantonLayer: null,
+      cantonLayerManager: null,
       hasMunicipalityLayer: hasMunicipalityLayer,
       hasVillageLayer: hasVillageLayer,
       lineMode: boundaryLineMode,
       mapId: backgroundMapId,
       municipalityLayer: null,
       municipalityOverlayLayer: null,
+      municipalityOverlayLayerManager: null,
       outlineLayers: outlineLayers,
+      revealTargetVisible: !revealState,
+      targetLayerManager: null,
     };
-    const initialBoundaryColors = boundaryLineColors(
-      resolveBoundaryLineTheme(boundaryState.mapId, boundaryState.lineMode)
+
+    const targetLayerId = hasVillageLayer ? "villages" : "municipalities";
+    const requiresTargetLayer = Boolean(revealState || summaryState);
+    boundaryState.targetLayerManager = createBoundaryLayerManager(map, {
+      errorMessage: "Target boundaries could not be loaded.",
+      layerId: targetLayerId,
+      renderer: vectorRenderer,
+      required: function () {
+        return requiresTargetLayer;
+      },
+      style: function () {
+        return municipalityStyle(
+          revealState,
+          summaryState,
+          currentBoundaryLineColors(boundaryState),
+          boundaryState.outlineLayers,
+          boundaryState.hasVillageLayer,
+          boundaryState.revealTargetVisible
+        );
+      },
+      url: mapElement.dataset.targetBoundariesUrl,
+      visible: function () {
+        return isBoundaryLayerVisible(boundaryState, targetLayerId);
+      },
+    });
+    boundaryState.municipalityOverlayLayerManager = createBoundaryLayerManager(
+      map,
+      {
+        errorMessage: "Municipality overlay could not be loaded.",
+        layerId: "municipalities",
+        renderer: vectorRenderer,
+        required: function () {
+          return false;
+        },
+        style: function () {
+          return municipalityOverlayStyle(
+            currentBoundaryLineColors(boundaryState),
+            boundaryState.outlineLayers
+          );
+        },
+        suppressGlobalError: true,
+        url: mapElement.dataset.municipalityOverlayUrl,
+        visible: function () {
+          return isBoundaryLayerVisible(boundaryState, "municipalities");
+        },
+      }
     );
+    boundaryState.cantonLayerManager = createBoundaryLayerManager(map, {
+      errorMessage: "Canton boundaries could not be loaded.",
+      layerId: "cantons",
+      renderer: vectorRenderer,
+      required: function () {
+        return false;
+      },
+      style: function () {
+        return cantonStyle(
+          currentBoundaryLineColors(boundaryState),
+          boundaryState.outlineLayers
+        );
+      },
+      url: mapElement.dataset.cantonBoundariesUrl,
+      visible: function () {
+        return isBoundaryLayerVisible(boundaryState, "cantons");
+      },
+    });
+
+    function syncBoundaryLayers(syncOptions) {
+      const options = syncOptions || {};
+      return Promise.all([
+        boundaryState.targetLayerManager.sync({
+          fitBounds: Boolean(options.fitTarget),
+        }).then(function (layer) {
+          boundaryState.municipalityLayer = layer;
+          return layer;
+        }),
+        boundaryState.municipalityOverlayLayerManager.sync().then(
+          function (layer) {
+            boundaryState.municipalityOverlayLayer = layer;
+            return layer;
+          }
+        ),
+        boundaryState.cantonLayerManager.sync().then(function (layer) {
+          boundaryState.cantonLayer = layer;
+          return layer;
+        }),
+      ]);
+    }
+
+    function syncBoundaryDetailForZoom() {
+      syncBoundaryLayers();
+    }
+
+    map.on("zoomend", syncBoundaryDetailForZoom);
+    const syncZoomControls = initializeMapZoomControls(map);
     applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
     initializeBackgroundMapPicker(
       map,
@@ -1408,81 +2181,55 @@
       boundaryState,
       revealState,
       summaryState,
+      switzerlandBounds,
+      scopeBounds,
       mapElement.dataset.baseMapUrl
     );
     initializeBoundaryLinePicker(map, boundaryState, revealState, summaryState);
-    initializeOutlineLayerPickers(map, boundaryState, revealState, summaryState);
+    initializeOutlineLayerPickers(
+      map,
+      boundaryState,
+      revealState,
+      summaryState,
+      syncBoundaryLayers
+    );
     initializeMapSettingsMenu();
     window.L.control.scale({ imperial: false, metric: true }).addTo(map);
-    if (revealState) {
-      initializeReveal(map, revealState, mapElement);
-      initializeNextTurnTracking(mapElement);
-    } else if (summaryState) {
+    if (summaryState) {
       initializeSummary(map, summaryState);
-    } else {
+    } else if (!revealState) {
       initializeGuessInteraction(map, mapElement);
     }
     mapElement.dataset.initialized = "true";
-    addBoundaryLayer(map, mapElement.dataset.targetBoundariesUrl, {
-      errorMessage: "Target boundaries could not be loaded.",
-      fitBounds: !revealState && !summaryState,
-      renderer: vectorRenderer,
-      style: municipalityStyle(
-        revealState,
-        summaryState,
-        initialBoundaryColors,
-        boundaryState.outlineLayers,
-        boundaryState.hasVillageLayer
-      ),
-    }).then(function (municipalityLayer) {
-      boundaryState.municipalityLayer = municipalityLayer;
-      municipalityLayerForFit = municipalityLayer;
-      applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
-      if (revealState && municipalityLayer !== null) {
-        fitRevealBounds(map, municipalityLayer, revealState);
-        drawRevealDistanceLine(map, municipalityLayer, revealState);
-      }
-      if (summaryState && municipalityLayer !== null) {
-        fitSummaryBounds(map, municipalityLayer, summaryState);
-        summaryState.reveals.forEach(function (reveal) {
-          drawRevealDistanceLine(map, municipalityLayer, reveal);
-        });
-      }
-      return addBoundaryLayer(map, mapElement.dataset.municipalityOverlayUrl, {
-        errorMessage: "Municipality overlay could not be loaded.",
-        fitBounds: false,
-        renderer: vectorRenderer,
-        suppressGlobalError: true,
-        style: municipalityOverlayStyle(
-          initialBoundaryColors,
-          boundaryState.outlineLayers
-        ),
-      });
-    }).then(function (municipalityOverlayLayer) {
-      boundaryState.municipalityOverlayLayer = municipalityOverlayLayer;
-      applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
-      return addBoundaryLayer(map, mapElement.dataset.cantonBoundariesUrl, {
-        errorMessage: "Canton boundaries could not be loaded.",
-        fitBounds: false,
-        renderer: vectorRenderer,
-        style: cantonStyle(initialBoundaryColors, boundaryState.outlineLayers),
-      });
-    }).then(function (cantonLayer) {
-      boundaryState.cantonLayer = cantonLayer;
-      applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
+
+    syncBoundaryLayers({
+      fitTarget: !revealState && !summaryState && !scopeBounds,
+    }).then(function () {
+      const targetLayer = boundaryState.municipalityLayer;
       if (revealState) {
+        if (targetLayer !== null) {
+          fitRevealBounds(map, targetLayer, revealState);
+        }
+        initializeReveal(map, boundaryState, revealState, mapElement);
+        initializeNextTurnTracking(mapElement);
         initializeLabelLayer(
           map,
           mapElement.dataset.municipalityLabelsUrl,
           labelMinZoom
         );
+      } else if (summaryState && targetLayer !== null) {
+        fitSummaryBounds(map, targetLayer, summaryState);
+        summaryState.reveals.forEach(function (reveal) {
+          drawRevealDistanceLine(map, targetLayer, reveal);
+        });
+      } else {
+        refitMapView(map, targetLayer, revealState, summaryState, scopeBounds);
       }
+      applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
+      syncZoomControls();
       return null;
     });
 
-    window.setTimeout(function () {
-      refreshMapFit();
-    }, 0);
   }
 
   function initializeAuthChoiceModal() {

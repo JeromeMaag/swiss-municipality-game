@@ -275,13 +275,20 @@ a {
 }
 
 .map-settings-control {
+  display: grid;
+  gap: 0.42rem;
   position: absolute;
   right: 1rem;
   top: 1rem;
   z-index: 920;
 }
 
-.map-settings-button {
+.map-zoom-controls {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.map-control-button {
   align-items: center;
   appearance: none;
   background: rgba(11, 20, 25, 0.84);
@@ -291,8 +298,11 @@ a {
   color: #ffffff;
   cursor: pointer;
   display: inline-flex;
+  font-size: 1.25rem;
+  font-weight: 840;
   height: 2.75rem;
   justify-content: center;
+  line-height: 1;
   padding: 0;
   transition:
     background 160ms ease,
@@ -301,19 +311,24 @@ a {
   width: 2.75rem;
 }
 
-.map-settings-button:hover,
+.map-control-button:hover,
 .map-settings-button[aria-expanded="true"] {
   background: rgba(11, 20, 25, 0.94);
   border-color: rgba(255, 255, 255, 0.34);
 }
 
-.map-settings-button:focus-visible {
+.map-control-button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.map-control-button:focus-visible {
   border-color: rgba(255, 255, 255, 0.56);
   outline: 2px solid rgba(255, 255, 255, 0.35);
   outline-offset: 2px;
 }
 
-.map-settings-button:hover {
+.map-control-button:hover:not(:disabled) {
   transform: translateY(-1px);
 }
 
@@ -351,7 +366,7 @@ a {
 }
 
 @supports (backdrop-filter: blur(18px)) {
-  .map-settings-button,
+  .map-control-button,
   .map-settings-panel {
     backdrop-filter: blur(18px);
   }
@@ -825,17 +840,6 @@ a {
   left: 22.75rem;
 }
 
-.game-page .leaflet-control-zoom {
-  border: 0;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
-  margin-top: 1rem;
-}
-
-.game-page .leaflet-control-zoom a {
-  border-color: rgba(19, 31, 39, 0.12);
-  color: #101a20;
-}
-
 .game-page .leaflet-control-attribution {
   background: rgba(255, 255, 255, 0.84);
   border-radius: 6px 0 0;
@@ -857,6 +861,40 @@ a {
   top: 0;
   width: 1.8rem;
   z-index: 750;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .game-map--guessing.leaflet-container,
+  .game-map--guessing.leaflet-container .leaflet-pane,
+  .game-map--guessing.leaflet-container .leaflet-interactive {
+    cursor: none;
+  }
+
+  .game-map--guessing.leaflet-container .leaflet-control-container,
+  .game-map--guessing.leaflet-container .leaflet-control-container * {
+    cursor: auto;
+  }
+
+}
+
+.guess-marker--ghost {
+  opacity: 0.68;
+  transform: translate(-50%, -100%) scale(0.9);
+  transform-origin: 50% 100%;
+  transition: opacity 120ms ease;
+  will-change: left, top;
+  z-index: 850;
+}
+
+.guess-marker--ghost[hidden],
+.game-map--dragging .guess-marker--ghost {
+  display: none;
+}
+
+.guess-marker--ghost .guess-marker-head {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.92) 0 0.21rem, transparent 0.23rem),
+    rgba(238, 46, 43, 0.82);
 }
 
 .guess-marker-head {
@@ -1508,10 +1546,6 @@ a {
 
   .game-page .leaflet-left {
     left: 0.75rem;
-  }
-
-  .game-page .leaflet-control-zoom {
-    margin-top: 0.75rem;
   }
 
   .game-page .leaflet-bottom.leaflet-right {

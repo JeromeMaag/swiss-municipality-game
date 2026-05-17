@@ -13,7 +13,7 @@ from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
 from geo.constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
-from geo.selectors import get_current_cantons
+from geo.selectors import get_current_cantons, get_current_dataset_version
 from tracking.models import GameEvent
 from tracking.services import track_event
 
@@ -707,11 +707,17 @@ def normalize_start_form_selection(
 
 def map_context_for_game(game: Game | None) -> dict[str, str]:
     """Return map labels and GeoJSON URLs for a game scope."""
-    scope_query = map_scope_query_for_game(game)
+    boundary_scope_query = map_scope_query_for_game(game)
+    village_scope_query = map_scope_query_for_game(game, boundary_source="villages")
     target_boundaries_route = (
         "geo:village_boundaries_geojson"
         if game is not None and game.target_type == Game.TargetType.VILLAGE
         else "geo:municipality_boundaries_geojson"
+    )
+    target_scope_query = (
+        village_scope_query
+        if game is not None and game.target_type == Game.TargetType.VILLAGE
+        else boundary_scope_query
     )
     target_boundary_layer = (
         "villages"
@@ -721,24 +727,66 @@ def map_context_for_game(game: Game | None) -> dict[str, str]:
     municipality_overlay_url = ""
     if game is not None and game.target_type == Game.TargetType.VILLAGE:
         municipality_overlay_url = (
-            reverse("geo:municipality_boundaries_geojson") + scope_query
+            reverse("geo:municipality_boundaries_geojson") + boundary_scope_query
         )
     return {
-        "canton_boundaries_url": reverse("geo:cantons_geojson") + scope_query,
+        "canton_boundaries_url": reverse("geo:cantons_geojson") + boundary_scope_query,
+        "map_scope_bounds": map_scope_bounds_for_game(game),
         "map_label": game.map_label if game is not None else "CH",
-        "target_boundaries_url": reverse(target_boundaries_route) + scope_query,
+        "target_boundaries_url": reverse(target_boundaries_route) + target_scope_query,
         "target_boundary_layer": target_boundary_layer,
         "municipality_overlay_url": municipality_overlay_url,
     }
 
 
-def map_scope_query_for_game(game: Game | None) -> str:
+def map_scope_query_for_game(
+    game: Game | None,
+    *,
+    boundary_source: str = "boundaries",
+) -> str:
     """Return a query string restricting map GeoJSON to a game's scope."""
     if game is None:
-        return ""
+        dataset_version = get_current_dataset_version()
+        if dataset_version is None:
+            return ""
+        query = {
+            "dataset": dataset_version.id,
+            "v": boundary_version_for_dataset(
+                dataset_version,
+                boundary_source=boundary_source,
+            ),
+        }
+        return "?" + urlencode(query)
     query = {}
     if game.dataset_version_id:
         query["dataset"] = game.dataset_version_id
+        query["v"] = boundary_version_for_dataset(
+            game.dataset_version,
+            boundary_source=boundary_source,
+        )
     if game.mode == Game.Mode.CANTON and game.canton_id is not None:
         query["canton"] = game.canton.abbreviation
     return "?" + urlencode(query) if query else ""
+
+
+def map_scope_bounds_for_game(game: Game | None) -> str:
+    """Return a Leaflet-friendly map scope bounds string for a game."""
+    if (
+        game is None
+        or game.mode != Game.Mode.CANTON
+        or game.canton_id is None
+        or game.canton.geom is None
+    ):
+        return ""
+    min_lng, min_lat, max_lng, max_lat = game.canton.geom.extent
+    return f"{min_lat:.6f},{min_lng:.6f},{max_lat:.6f},{max_lng:.6f}"
+
+
+def boundary_version_for_dataset(dataset_version, *, boundary_source: str) -> str:
+    """Return a stable client-cache version for a dataset boundary source."""
+    if boundary_source == "villages":
+        updated_at = dataset_version.villages_updated_at
+    else:
+        updated_at = dataset_version.boundaries_updated_at
+    updated_at = updated_at or dataset_version.imported_at
+    return f"{dataset_version.id}:{updated_at.isoformat()}"

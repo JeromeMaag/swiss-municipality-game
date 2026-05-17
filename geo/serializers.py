@@ -9,6 +9,10 @@ from django.contrib.gis.geos import GEOSGeometry
 from .models import Canton, Municipality, Village
 
 
+BOUNDARY_DETAIL_FULL = "full"
+BOUNDARY_DETAIL_SIMPLE = "simple"
+BOUNDARY_DETAILS = {BOUNDARY_DETAIL_FULL, BOUNDARY_DETAIL_SIMPLE}
+
 FeatureProperties = dict[str, Any]
 GeometryGetter = Callable[[Any], GEOSGeometry | None]
 PropertiesGetter = Callable[[Any], FeatureProperties]
@@ -60,30 +64,46 @@ def feature_collection(
     return '{"type":"FeatureCollection","features":[' + ",".join(features) + "]}"
 
 
-def get_display_geometry(obj: Canton | Municipality | Village) -> GEOSGeometry:
-    """Return the simplified geometry when available, otherwise the full geometry.
+def get_boundary_geometry(
+    obj: Canton | Municipality | Village,
+    detail: str = BOUNDARY_DETAIL_SIMPLE,
+) -> GEOSGeometry:
+    """Return a boundary geometry for the requested map detail.
 
     Args:
         obj: Canton, municipality, or village instance.
+        detail: Boundary detail level. ``simple`` prefers simplified geometry;
+            ``full`` returns the original geometry.
 
     Returns:
-        The geometry intended for map display.
+        The geometry intended for map display at this detail level.
     """
+    if detail == BOUNDARY_DETAIL_FULL:
+        return obj.geom
     return obj.geom_simplified or obj.geom
 
 
-def serialize_canton_boundaries(cantons: Iterable[Canton]) -> str:
+def get_display_geometry(obj: Canton | Municipality | Village) -> GEOSGeometry:
+    """Return the default display geometry for a boundary object."""
+    return get_boundary_geometry(obj, BOUNDARY_DETAIL_SIMPLE)
+
+
+def serialize_canton_boundaries(
+    cantons: Iterable[Canton],
+    detail: str = BOUNDARY_DETAIL_SIMPLE,
+) -> str:
     """Serialize canton boundary features.
 
     Args:
         cantons: Canton objects to serialize.
+        detail: Boundary detail level.
 
     Returns:
         A GeoJSON FeatureCollection string with canton properties.
     """
     return feature_collection(
         cantons,
-        get_display_geometry,
+        lambda canton: get_boundary_geometry(canton, detail),
         lambda canton: {
             "id": canton.id,
             "bfs_number": canton.bfs_number,
@@ -95,36 +115,42 @@ def serialize_canton_boundaries(cantons: Iterable[Canton]) -> str:
 
 def serialize_municipality_boundaries(
     municipalities: Iterable[Municipality],
+    detail: str = BOUNDARY_DETAIL_SIMPLE,
 ) -> str:
     """Serialize municipality boundaries without gameplay-spoiling names.
 
     Args:
         municipalities: Municipality objects to serialize.
+        detail: Boundary detail level.
 
     Returns:
         A GeoJSON FeatureCollection string with neutral municipality identifiers.
     """
     return feature_collection(
         municipalities,
-        get_display_geometry,
+        lambda municipality: get_boundary_geometry(municipality, detail),
         lambda municipality: {
             "id": municipality.id,
         },
     )
 
 
-def serialize_village_boundaries(villages: Iterable[Village]) -> str:
+def serialize_village_boundaries(
+    villages: Iterable[Village],
+    detail: str = BOUNDARY_DETAIL_SIMPLE,
+) -> str:
     """Serialize village boundaries without gameplay-spoiling names.
 
     Args:
         villages: Village objects to serialize.
+        detail: Boundary detail level.
 
     Returns:
         A GeoJSON FeatureCollection string with neutral village identifiers.
     """
     return feature_collection(
         villages,
-        get_display_geometry,
+        lambda village: get_boundary_geometry(village, detail),
         lambda village: {
             "id": village.id,
         },

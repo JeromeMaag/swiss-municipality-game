@@ -12,7 +12,11 @@ import zipfile
 
 import geopandas as gpd
 from django.contrib.auth import get_user_model
-from django.contrib.gis.geos import Point
+from django.contrib.gis.geos import (
+    MultiPolygon as GEOSMultiPolygon,
+    Point,
+    Polygon as GEOSPolygon,
+)
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
@@ -89,8 +93,11 @@ from .management.commands.import_villages import (
 )
 from .models import Canton, GeoDatasetVersion, Municipality, Village
 from .serializers import (
+    BOUNDARY_DETAIL_FULL,
+    BOUNDARY_DETAIL_SIMPLE,
     feature_collection,
     get_display_geometry,
+    serialize_municipality_boundaries,
     serialize_village_boundaries,
 )
 from .selectors import (
@@ -114,6 +121,20 @@ def make_redirect_error(url: str, location: str) -> HTTPError:
         HTTPError representing a redirect response.
     """
     return HTTPError(url, 302, "Found", {"Location": location}, None)
+
+
+def make_geometry_with_min_x(min_x: float) -> GEOSMultiPolygon:
+    """Create a test multipolygon with a distinguishable minimum x value."""
+    polygon = GEOSPolygon(
+        (
+            (min_x, 47.0),
+            (min_x + 0.1, 47.0),
+            (min_x + 0.1, 47.1),
+            (min_x, 47.1),
+            (min_x, 47.0),
+        )
+    )
+    return GEOSMultiPolygon(polygon, srid=4326)
 
 
 class ClosingRedirectError(HTTPError):
@@ -540,6 +561,35 @@ class GeoSerializerTests(TestCase):
 
         self.assertEqual(get_display_geometry(self.canton), self.canton.geom)
 
+    def test_boundary_serializers_support_simple_and_full_detail(self) -> None:
+        """Boundary serializers can return simplified or original geometry."""
+        municipality = Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=261,
+            name="Zurich",
+            canton=self.canton,
+            geom=make_geometry_with_min_x(8.0),
+            geom_simplified=make_geometry_with_min_x(9.0),
+        )
+
+        simple_data = json.loads(
+            serialize_municipality_boundaries(
+                [municipality],
+                detail=BOUNDARY_DETAIL_SIMPLE,
+            )
+        )
+        full_data = json.loads(
+            serialize_municipality_boundaries(
+                [municipality],
+                detail=BOUNDARY_DETAIL_FULL,
+            )
+        )
+
+        simple_x = simple_data["features"][0]["geometry"]["coordinates"][0][0][0][0]
+        full_x = full_data["features"][0]["geometry"]["coordinates"][0][0][0][0]
+        self.assertEqual(simple_x, 9.0)
+        self.assertEqual(full_x, 8.0)
+
     def test_serialize_village_boundaries_omits_names(self) -> None:
         """Village boundaries expose neutral ids but no village names."""
         village = Village.objects.create(
@@ -728,6 +778,39 @@ class GeoJSONEndpointTests(TestCase):
         self.assertNotIn("name", properties)
         self.assertNotIn("canton", properties)
         self.assertNotIn("canton_abbreviation", properties)
+
+    def test_boundary_detail_parameter_selects_simple_or_full_geometry(self) -> None:
+        """Boundary endpoints expose simplified and full geometry variants."""
+        self.municipality.geom = make_geometry_with_min_x(8.0)
+        self.municipality.geom_simplified = make_geometry_with_min_x(9.0)
+        self.municipality.save()
+        cache.clear()
+
+        simple_response = self.client.get(
+            reverse("geo:municipality_boundaries_geojson"),
+            {"detail": "simple"},
+        )
+        full_response = self.client.get(
+            reverse("geo:municipality_boundaries_geojson"),
+            {"detail": "full"},
+        )
+        simple_data = self.assert_geojson_response(simple_response)
+        full_data = self.assert_geojson_response(full_response)
+
+        simple_x = simple_data["features"][0]["geometry"]["coordinates"][0][0][0][0]
+        full_x = full_data["features"][0]["geometry"]["coordinates"][0][0][0][0]
+        self.assertEqual(simple_x, 9.0)
+        self.assertEqual(full_x, 8.0)
+        self.assertNotEqual(simple_response["ETag"], full_response["ETag"])
+
+    def test_boundary_detail_parameter_rejects_unknown_values(self) -> None:
+        """Boundary endpoints reject unsupported geometry detail values."""
+        response = self.client.get(
+            reverse("geo:municipality_boundaries_geojson"),
+            {"detail": "debug"},
+        )
+
+        self.assertEqual(response.status_code, 404)
 
     def test_municipality_boundaries_support_canton_filter(self) -> None:
         """Municipality boundary endpoint can return one selected canton."""

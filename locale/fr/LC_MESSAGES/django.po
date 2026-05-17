@@ -609,3 +609,15 @@ msgstr "Le plus joué"
 
 msgid "Best average distance"
 msgstr "Meilleure distance moyenne"
+
+msgid "Map zoom"
+msgstr "Zoom de la carte"
+
+msgid "Map controls"
+msgstr "Contrôles de la carte"
+
+msgid "Zoom in"
+msgstr "Zoom avant"
+
+msgid "Zoom out"
+msgstr "Zoom arrière"
