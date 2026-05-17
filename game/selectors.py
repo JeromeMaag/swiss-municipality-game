@@ -29,7 +29,7 @@ def get_active_game_for_player(player: PlayerIdentity) -> Game | None:
     """
     return (
         Game.objects.filter(player.owner_query(), status=Game.Status.ACTIVE)
-        .select_related("canton")
+        .select_related("canton", "dataset_version")
         .order_by("-started_at", "-id")
         .first()
     )
@@ -82,12 +82,13 @@ def get_finished_games_for_player(player: PlayerIdentity) -> QuerySet[Game]:
             "mode",
             "canton",
             "canton__abbreviation",
+            "dataset_version",
             "status",
             "total_score",
             "started_at",
             "finished_at",
         )
-        .select_related("canton")
+        .select_related("canton", "dataset_version")
         .order_by("-finished_at", "-id")
     )
 
@@ -135,7 +136,7 @@ def get_finished_game_summary_for_player(
             status=Game.Status.FINISHED,
             pk=game_id,
         )
-        .select_related("canton")
+        .select_related("canton", "dataset_version")
         .prefetch_related(Prefetch("turns", queryset=turns))
         .first()
     )

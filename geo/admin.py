@@ -8,10 +8,27 @@ from .models import Canton, GeoDatasetVersion, Municipality, Village
 
 def bump_village_dataset_versions(dataset_version_ids) -> None:
     """Refresh village boundary cache versions for affected datasets."""
-    ids = {dataset_version_id for dataset_version_id in dataset_version_ids if dataset_version_id}
+    ids = {
+        dataset_version_id
+        for dataset_version_id in dataset_version_ids
+        if dataset_version_id
+    }
     if ids:
         GeoDatasetVersion.objects.filter(pk__in=ids).update(
             villages_updated_at=timezone.now(),
+        )
+
+
+def bump_boundary_dataset_versions(dataset_version_ids) -> None:
+    """Refresh canton/municipality boundary cache versions for affected datasets."""
+    ids = {
+        dataset_version_id
+        for dataset_version_id in dataset_version_ids
+        if dataset_version_id
+    }
+    if ids:
+        GeoDatasetVersion.objects.filter(pk__in=ids).update(
+            boundaries_updated_at=timezone.now(),
         )
 
 
@@ -20,9 +37,19 @@ class GeoDatasetVersionAdmin(admin.ModelAdmin):
     """Admin configuration for geodata dataset versions."""
 
     change_list_template = "admin/geo/geodatasetversion/change_list.html"
-    list_display = ("name", "version_label", "imported_at", "villages_updated_at")
+    list_display = (
+        "name",
+        "version_label",
+        "imported_at",
+        "boundaries_updated_at",
+        "villages_updated_at",
+    )
     search_fields = ("name", "version_label", "source_url")
-    readonly_fields = ("imported_at", "villages_updated_at")
+    readonly_fields = (
+        "imported_at",
+        "boundaries_updated_at",
+        "villages_updated_at",
+    )
 
 
 @admin.register(Canton)
@@ -34,6 +61,34 @@ class CantonAdmin(admin.ModelAdmin):
     search_fields = ("abbreviation", "name")
     autocomplete_fields = ("dataset_version",)
     readonly_fields = ("created_at", "updated_at")
+
+    def save_model(self, request, obj, form, change) -> None:
+        """Save a canton and refresh affected boundary cache versions."""
+        previous_dataset_version_id = None
+        if change and obj.pk:
+            previous_dataset_version_id = (
+                Canton.objects.filter(pk=obj.pk)
+                .values_list("dataset_version_id", flat=True)
+                .first()
+            )
+        super().save_model(request, obj, form, change)
+        bump_boundary_dataset_versions(
+            {previous_dataset_version_id, obj.dataset_version_id}
+        )
+
+    def delete_model(self, request, obj) -> None:
+        """Delete a canton and refresh the affected boundary cache version."""
+        dataset_version_id = obj.dataset_version_id
+        super().delete_model(request, obj)
+        bump_boundary_dataset_versions({dataset_version_id})
+
+    def delete_queryset(self, request, queryset) -> None:
+        """Delete cantons and refresh affected boundary cache versions."""
+        dataset_version_ids = set(
+            queryset.values_list("dataset_version_id", flat=True).distinct()
+        )
+        super().delete_queryset(request, queryset)
+        bump_boundary_dataset_versions(dataset_version_ids)
 
 
 @admin.register(Municipality)
@@ -52,6 +107,34 @@ class MunicipalityAdmin(admin.ModelAdmin):
     search_fields = ("name", "canton__name", "canton__abbreviation")
     autocomplete_fields = ("dataset_version", "canton")
     readonly_fields = ("created_at", "updated_at")
+
+    def save_model(self, request, obj, form, change) -> None:
+        """Save a municipality and refresh affected boundary cache versions."""
+        previous_dataset_version_id = None
+        if change and obj.pk:
+            previous_dataset_version_id = (
+                Municipality.objects.filter(pk=obj.pk)
+                .values_list("dataset_version_id", flat=True)
+                .first()
+            )
+        super().save_model(request, obj, form, change)
+        bump_boundary_dataset_versions(
+            {previous_dataset_version_id, obj.dataset_version_id}
+        )
+
+    def delete_model(self, request, obj) -> None:
+        """Delete a municipality and refresh affected boundary cache version."""
+        dataset_version_id = obj.dataset_version_id
+        super().delete_model(request, obj)
+        bump_boundary_dataset_versions({dataset_version_id})
+
+    def delete_queryset(self, request, queryset) -> None:
+        """Delete municipalities and refresh affected boundary cache versions."""
+        dataset_version_ids = set(
+            queryset.values_list("dataset_version_id", flat=True).distinct()
+        )
+        super().delete_queryset(request, queryset)
+        bump_boundary_dataset_versions(dataset_version_ids)
 
 
 @admin.register(Village)

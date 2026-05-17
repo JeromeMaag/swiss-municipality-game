@@ -449,13 +449,15 @@ def import_dataset(
     }
 
     with transaction.atomic():
+        import_time = timezone.now()
         dataset_version, _ = GeoDatasetVersion.objects.update_or_create(
             name=DATASET_NAME,
             version_label=version_label,
             defaults={
                 "source_url": source_url,
                 "notes": "Official swissBOUNDARIES3D dataset from data.geo.admin.ch.",
-                "imported_at": timezone.now(),
+                "imported_at": import_time,
+                "boundaries_updated_at": import_time,
             },
         )
         if not keep_existing:

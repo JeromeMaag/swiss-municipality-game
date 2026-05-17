@@ -1,7 +1,10 @@
 """Tests for the tracking app."""
 
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.test import TestCase
 from django.utils import timezone
 
@@ -10,7 +13,7 @@ from geo.models import Canton, GeoDatasetVersion, Municipality
 from tests.utils import make_test_geometry
 
 from .models import GameEvent
-from .services import track_event
+from .services import safe_track_event, track_event
 
 
 class GameEventModelTests(TestCase):
@@ -279,5 +282,38 @@ class TrackingServiceTests(TestCase):
                 turn=self.turn,
                 event_type=GameEvent.Type.TURN_STARTED,
             )
+
+        self.assertEqual(GameEvent.objects.count(), 0)
+
+    def test_safe_track_event_does_not_raise_tracking_errors(self) -> None:
+        """Safe tracking preserves gameplay when event validation fails."""
+        with self.assertLogs("tracking.services", level="ERROR"):
+            event = safe_track_event(
+                user=self.other_user,
+                game=self.game,
+                turn=self.turn,
+                event_type=GameEvent.Type.TURN_STARTED,
+            )
+
+        self.assertIsNone(event)
+        self.assertEqual(GameEvent.objects.count(), 0)
+
+    def test_safe_track_event_keeps_outer_transaction_usable_after_db_error(
+        self,
+    ) -> None:
+        """Safe tracking rolls back DB errors to its savepoint only."""
+        with transaction.atomic():
+            with (
+                patch.object(GameEvent, "full_clean", return_value=None),
+                self.assertLogs("tracking.services", level="ERROR"),
+            ):
+                event = safe_track_event(
+                    user=self.user,
+                    game=self.game,
+                    event_type="X" * 80,
+                )
+
+            self.assertIsNone(event)
+            self.assertTrue(Game.objects.filter(pk=self.game.pk).exists())
 
         self.assertEqual(GameEvent.objects.count(), 0)

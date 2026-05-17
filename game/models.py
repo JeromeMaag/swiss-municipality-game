@@ -65,6 +65,12 @@ class Game(models.Model):
         choices=TargetType.choices,
         default=TargetType.MUNICIPALITY,
     )
+    dataset_version = models.ForeignKey(
+        "geo.GeoDatasetVersion",
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="games",
+    )
     canton = models.ForeignKey(
         "geo.Canton",
         blank=True,
@@ -99,6 +105,10 @@ class Game(models.Model):
             models.Index(
                 fields=["target_type", "mode", "canton"],
                 name="game_target_scope_idx",
+            ),
+            models.Index(
+                fields=["dataset_version", "status"],
+                name="game_dataset_status_idx",
             ),
             models.Index(fields=["status", "started_at"]),
         ]
@@ -196,6 +206,7 @@ class Game(models.Model):
             raise ValidationError(
                 {"canton": "Single-canton games require a canton."}
             )
+        self.validate_dataset_scope()
         if (
             self.scoring_max_distance_m is not None
             and not math.isfinite(self.scoring_max_distance_m)
@@ -206,6 +217,15 @@ class Game(models.Model):
         if self.status == self.Status.FINISHED and self.finished_at is None:
             raise ValidationError(
                 {"finished_at": "Finished games require a finish timestamp."}
+            )
+        if self.dataset_version_changed_after_turns_exist():
+            raise ValidationError(
+                {
+                    "dataset_version": (
+                        "Game dataset version cannot change after turns have "
+                        "been created."
+                    )
+                }
             )
         if self.target_type_changed_after_turns_exist():
             raise ValidationError(
@@ -219,6 +239,21 @@ class Game(models.Model):
 
     def save(self, *args, **kwargs) -> None:
         """Persist the game while preserving existing turn target consistency."""
+        if self.dataset_version_id is None:
+            from geo.selectors import get_current_dataset_version
+
+            current_dataset_version = get_current_dataset_version()
+            if current_dataset_version is None:
+                raise ValidationError(
+                    {
+                        "dataset_version": (
+                            "A geodata dataset version is required to create "
+                            "a game."
+                        )
+                    }
+                )
+            self.dataset_version = current_dataset_version
+        self.validate_dataset_scope()
         if self.target_type_changed_after_turns_exist(
             update_fields=kwargs.get("update_fields"),
         ):
@@ -230,7 +265,33 @@ class Game(models.Model):
                     )
                 }
             )
+        if self.dataset_version_changed_after_turns_exist(
+            update_fields=kwargs.get("update_fields"),
+        ):
+            raise ValidationError(
+                {
+                    "dataset_version": (
+                        "Game dataset version cannot change after turns have "
+                        "been created."
+                    )
+                }
+            )
         super().save(*args, **kwargs)
+
+    def validate_dataset_scope(self) -> None:
+        """Validate that stored game scope belongs to the game dataset."""
+        if (
+            self.canton_id
+            and self.dataset_version_id
+            and self.canton.dataset_version_id != self.dataset_version_id
+        ):
+            raise ValidationError(
+                {
+                    "canton": (
+                        "Game canton must belong to the game's dataset version."
+                    )
+                }
+            )
 
     def target_type_changed_after_turns_exist(self, *, update_fields=None) -> bool:
         """Return whether target type was changed after turns were created."""
@@ -246,6 +307,26 @@ class Game(models.Model):
         return (
             persisted_target_type is not None
             and persisted_target_type != self.target_type
+            and self.turns.exists()
+        )
+
+    def dataset_version_changed_after_turns_exist(self, *, update_fields=None) -> bool:
+        """Return whether dataset version changed after turns were created."""
+        if self.pk is None:
+            return False
+        if update_fields is not None and not {
+            "dataset_version",
+            "dataset_version_id",
+        }.intersection(update_fields):
+            return False
+        persisted_dataset_version_id = (
+            type(self).objects.filter(pk=self.pk)
+            .values_list("dataset_version_id", flat=True)
+            .first()
+        )
+        return (
+            persisted_dataset_version_id is not None
+            and persisted_dataset_version_id != self.dataset_version_id
             and self.turns.exists()
         )
 
@@ -406,6 +487,23 @@ class Turn(models.Model):
             ):
                 errors.setdefault("village_target", []).append(
                     "Turn target must belong to the game's canton."
+                )
+        if self.game_id and self.game.dataset_version_id is not None:
+            if (
+                self.municipality_target_id
+                and self.municipality_target.dataset_version_id
+                != self.game.dataset_version_id
+            ):
+                errors.setdefault("municipality_target", []).append(
+                    "Turn target must belong to the game's dataset version."
+                )
+            if (
+                self.village_target_id
+                and self.village_target.dataset_version_id
+                != self.game.dataset_version_id
+            ):
+                errors.setdefault("village_target", []).append(
+                    "Turn target must belong to the game's dataset version."
                 )
 
         if errors:

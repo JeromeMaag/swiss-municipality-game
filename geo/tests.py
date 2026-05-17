@@ -23,7 +23,7 @@ from django.urls import reverse
 from django.utils import timezone
 from shapely.geometry import Polygon
 
-from geo.admin import bump_village_dataset_versions
+from geo.admin import bump_boundary_dataset_versions, bump_village_dataset_versions
 from geo.admin_views import truncate_command_output
 from geo.constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
 from game.identity import GUEST_PLAYER_SESSION_KEY
@@ -380,6 +380,15 @@ class GeoModelTests(TestCase):
         self.dataset_version.refresh_from_db()
         self.assertIsNotNone(self.dataset_version.villages_updated_at)
 
+    def test_boundary_admin_cache_bump_updates_dataset_version(self) -> None:
+        """Canton and municipality admin writes can invalidate boundary caches."""
+        self.assertIsNone(self.dataset_version.boundaries_updated_at)
+
+        bump_boundary_dataset_versions({self.dataset_version.id})
+
+        self.dataset_version.refresh_from_db()
+        self.assertIsNotNone(self.dataset_version.boundaries_updated_at)
+
     def test_village_string_without_postal_code(self) -> None:
         """Villages can be displayed when the source has no postal code."""
         village = Village.objects.create(
@@ -632,7 +641,10 @@ class GeoJSONEndpointTests(TestCase):
             if guest_key
             else {"user": self.user, "guest_key": ""}
         )
-        game = Game.objects.create(**owner_fields)
+        game = Game.objects.create(
+            **owner_fields,
+            dataset_version=self.dataset_version,
+        )
         turn = Turn.objects.create(
             game=game,
             turn_number=1,
@@ -743,6 +755,62 @@ class GeoJSONEndpointTests(TestCase):
         self.assertEqual(len(data["features"]), 1)
         self.assertEqual(data["features"][0]["properties"]["id"], other_municipality.id)
 
+    def test_boundaries_support_dataset_filter(self) -> None:
+        """Boundary endpoints can serve an older stored dataset version."""
+        other_dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2027-01-01",
+        )
+        GeoDatasetVersion.objects.filter(pk=other_dataset_version.pk).update(
+            imported_at=timezone.now() + timedelta(days=1),
+        )
+        other_canton = Canton.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=2,
+            abbreviation="BE",
+            name="Bern",
+            geom=make_test_geometry(),
+        )
+        other_municipality = Municipality.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=351,
+            name="Bern",
+            canton=other_canton,
+            geom=make_test_geometry(),
+        )
+
+        current_response = self.client.get(
+            reverse("geo:municipality_boundaries_geojson"),
+        )
+        old_response = self.client.get(
+            reverse("geo:municipality_boundaries_geojson"),
+            {"dataset": self.dataset_version.id},
+        )
+
+        current_data = self.assert_geojson_response(current_response)
+        old_data = self.assert_geojson_response(old_response)
+        self.assertEqual(
+            current_data["features"][0]["properties"]["id"],
+            other_municipality.id,
+        )
+        self.assertEqual(
+            old_data["features"][0]["properties"]["id"],
+            self.municipality.id,
+        )
+
+    def test_boundaries_reject_invalid_dataset_filter(self) -> None:
+        """Boundary endpoints hide invalid dataset identifiers."""
+        invalid_values = ["missing", "0", "999999"]
+
+        for dataset in invalid_values:
+            with self.subTest(dataset=dataset):
+                response = self.client.get(
+                    reverse("geo:municipality_boundaries_geojson"),
+                    {"dataset": dataset},
+                )
+
+                self.assertEqual(response.status_code, 404)
+
     def test_village_boundaries_do_not_include_names(self) -> None:
         """Village boundary endpoint does not reveal village names."""
         response = self.client.get(reverse("geo:village_boundaries_geojson"))
@@ -817,6 +885,31 @@ class GeoJSONEndpointTests(TestCase):
         self.assertEqual(len(data["features"]), 2)
         self.assertNotEqual(response["ETag"], first_etag)
 
+    def test_boundary_etag_changes_when_municipality_boundaries_change(self) -> None:
+        """Boundary cache keys change after canton or municipality admin edits."""
+        url = reverse("geo:municipality_boundaries_geojson")
+        first_response = self.client.get(url)
+        first_data = self.assert_geojson_response(first_response)
+        first_etag = first_response["ETag"]
+
+        Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=262,
+            name="Winterthur",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+        GeoDatasetVersion.objects.filter(pk=self.dataset_version.pk).update(
+            boundaries_updated_at=timezone.now() + timedelta(seconds=1),
+        )
+
+        response = self.client.get(url, HTTP_IF_NONE_MATCH=first_etag)
+        data = self.assert_geojson_response(response)
+
+        self.assertEqual(len(first_data["features"]), 1)
+        self.assertEqual(len(data["features"]), 2)
+        self.assertNotEqual(response["ETag"], first_etag)
+
     def test_municipality_labels_include_reveal_properties(self) -> None:
         """Municipality label endpoint returns names for reveal mode."""
         turn = self.grant_label_access()
@@ -853,6 +946,38 @@ class GeoJSONEndpointTests(TestCase):
         turn.game.mode = Game.Mode.CANTON
         turn.game.canton = self.canton
         turn.game.save(update_fields=["mode", "canton"])
+
+        response = self.client.get(self.municipality_labels_url(turn))
+        data = self.assert_geojson_response(response)
+
+        self.assertEqual(len(data["features"]), 1)
+        self.assertEqual(data["features"][0]["properties"]["name"], "Zurich")
+
+    def test_municipality_labels_use_game_dataset_version(self) -> None:
+        """Reveal labels use the game dataset instead of the current dataset."""
+        other_dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2027-01-01",
+        )
+        GeoDatasetVersion.objects.filter(pk=other_dataset_version.pk).update(
+            imported_at=timezone.now() + timedelta(days=1),
+        )
+        other_canton = Canton.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+        Municipality.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=261,
+            name="Future Zurich",
+            canton=other_canton,
+            geom=make_test_geometry(),
+            label_point=Point(8.6, 47.6, srid=4326),
+        )
+        turn = self.grant_label_access()
 
         response = self.client.get(self.municipality_labels_url(turn))
         data = self.assert_geojson_response(response)
