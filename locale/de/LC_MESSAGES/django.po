@@ -499,7 +499,7 @@ msgid "Hit rate"
 msgstr "Trefferquote"
 
 msgid "Average round"
-msgstr "Durchschnittsrunde"
+msgstr "Ø pro Runde"
 
 msgid "Targets played"
 msgstr "Gespielte Ziele"
@@ -508,19 +508,19 @@ msgid "Coverage"
 msgstr "Abdeckung"
 
 msgid "Round detail"
-msgstr "Rundendetails"
+msgstr "Rundenanalyse"
 
 msgid "Recognition"
-msgstr "Erkennung"
+msgstr "Treffer"
 
 msgid "Exact hits"
 msgstr "Exakte Treffer"
 
 msgid "Near hits"
-msgstr "Nahe Treffer"
+msgstr "Knapp daneben"
 
 msgid "Games represented"
-msgstr "Berücksichtigte Spiele"
+msgstr "Spiele in Auswahl"
 
 msgid "Best round score"
 msgstr "Beste Rundenpunktzahl"
@@ -532,16 +532,16 @@ msgid "Highlights"
 msgstr "Highlights"
 
 msgid "Strongest targets"
-msgstr "Stärkste Ziele"
+msgstr "Sichere Ziele"
 
 msgid "Finish games to unlock target strengths."
-msgstr "Schliesse Spiele ab, um Zielstärken freizuschalten."
+msgstr "Schliesse Spiele ab, um deine sicheren Ziele zu sehen."
 
 msgid "Needs practice"
-msgstr "Braucht Übung"
+msgstr "Üben"
 
 msgid "No weak spots yet."
-msgstr "Noch keine Schwachstellen."
+msgstr "Noch keine Schwächen."
 
 msgid "Recent form"
 msgstr "Aktuelle Form"
@@ -550,10 +550,10 @@ msgid "Average score by week"
 msgstr "Durchschnittspunkte pro Woche"
 
 msgid "No finished rounds in this filter yet."
-msgstr "Noch keine abgeschlossenen Runden in diesem Filter."
+msgstr "Noch keine abgeschlossenen Runden mit diesem Filter."
 
 msgid "Canton ranking"
-msgstr "Kantonsrangliste"
+msgstr "Kantone"
 
 msgid "Avg score"
 msgstr "Ø Punkte"
@@ -565,7 +565,7 @@ msgid "Avg distance"
 msgstr "Ø Distanz"
 
 msgid "No canton statistics for this filter yet."
-msgstr "Noch keine Kantonsstatistiken für diesen Filter."
+msgstr "Noch keine Kantonswerte mit diesem Filter."
 
 msgid ""
 "Showing the first %(visible)s of %(total)s targets. Select a canton to inspect "
@@ -587,7 +587,7 @@ msgid "Last played"
 msgstr "Zuletzt gespielt"
 
 msgid "No target statistics for this filter yet."
-msgstr "Noch keine Zielstatistiken für diesen Filter."
+msgstr "Noch keine Zielwerte mit diesem Filter."
 
 msgid "Last 30 days"
 msgstr "Letzte 30 Tage"
@@ -602,10 +602,10 @@ msgid "Best hit rate"
 msgstr "Beste Trefferquote"
 
 msgid "Best average score"
-msgstr "Beste Durchschnittspunktzahl"
+msgstr "Bester Ø Punktestand"
 
 msgid "Most attempts"
-msgstr "Meiste Versuche"
+msgstr "Am meisten gespielt"
 
 msgid "Best average distance"
-msgstr "Beste Durchschnittsdistanz"
+msgstr "Beste Ø Distanz"

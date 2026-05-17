@@ -499,7 +499,7 @@ msgid "Hit rate"
 msgstr "Taux de réussite"
 
 msgid "Average round"
-msgstr "Manche moyenne"
+msgstr "Score moyen"
 
 msgid "Targets played"
 msgstr "Cibles jouées"
@@ -508,19 +508,19 @@ msgid "Coverage"
 msgstr "Couverture"
 
 msgid "Round detail"
-msgstr "Détail des manches"
+msgstr "Analyse des manches"
 
 msgid "Recognition"
-msgstr "Reconnaissance"
+msgstr "Réussite"
 
 msgid "Exact hits"
 msgstr "Coups exacts"
 
 msgid "Near hits"
-msgstr "Presque réussites"
+msgstr "Coups proches"
 
 msgid "Games represented"
-msgstr "Parties représentées"
+msgstr "Parties incluses"
 
 msgid "Best round score"
 msgstr "Meilleur score de manche"
@@ -532,16 +532,16 @@ msgid "Highlights"
 msgstr "Points forts"
 
 msgid "Strongest targets"
-msgstr "Cibles les plus fortes"
+msgstr "Cibles maîtrisées"
 
 msgid "Finish games to unlock target strengths."
-msgstr "Termine des parties pour débloquer les points forts des cibles."
+msgstr "Termine des parties pour afficher tes cibles maîtrisées."
 
 msgid "Needs practice"
-msgstr "À travailler"
+msgstr "À revoir"
 
 msgid "No weak spots yet."
-msgstr "Pas encore de points faibles."
+msgstr "Aucun point faible pour l'instant."
 
 msgid "Recent form"
 msgstr "Forme récente"
@@ -550,10 +550,10 @@ msgid "Average score by week"
 msgstr "Score moyen par semaine"
 
 msgid "No finished rounds in this filter yet."
-msgstr "Aucune manche terminée pour ce filtre."
+msgstr "Aucune manche terminée avec ce filtre."
 
 msgid "Canton ranking"
-msgstr "Classement des cantons"
+msgstr "Cantons"
 
 msgid "Avg score"
 msgstr "Score moy."
@@ -565,7 +565,7 @@ msgid "Avg distance"
 msgstr "Distance moy."
 
 msgid "No canton statistics for this filter yet."
-msgstr "Aucune statistique de canton pour ce filtre."
+msgstr "Aucune valeur par canton avec ce filtre."
 
 msgid ""
 "Showing the first %(visible)s of %(total)s targets. Select a canton to inspect "
@@ -584,10 +584,10 @@ msgid "Type"
 msgstr "Type"
 
 msgid "Last played"
-msgstr "Dernière partie"
+msgstr "Dernière fois"
 
 msgid "No target statistics for this filter yet."
-msgstr "Aucune statistique de cible pour ce filtre."
+msgstr "Aucune valeur par cible avec ce filtre."
 
 msgid "Last 30 days"
 msgstr "30 derniers jours"
@@ -605,7 +605,7 @@ msgid "Best average score"
 msgstr "Meilleur score moyen"
 
 msgid "Most attempts"
-msgstr "Plus grand nombre d'essais"
+msgstr "Le plus joué"
 
 msgid "Best average distance"
 msgstr "Meilleure distance moyenne"
