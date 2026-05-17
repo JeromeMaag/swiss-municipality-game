@@ -26,9 +26,12 @@
     surfaceRelief: "black",
     swissimage: "white",
   };
-  const DEFAULT_MIN_ZOOM = 8;
+  const FALLBACK_MAP_MIN_ZOOM = 8;
+  const MIN_ZOOM_MODE_FIXED = "fixed";
+  const MIN_ZOOM_MODE_COVER_SWITZERLAND = "coverSwitzerland";
   const DESKTOP_SIDEBAR_WIDTH = 360;
   const MOBILE_BREAKPOINT_WIDTH = 920;
+  const BOUNDS_COVER_PADDING = 24;
   const COMPACT_MIN_FIT_PADDING = 12;
   const COMPACT_MIN_BOTTOM_PADDING = 180;
   const COMPACT_MIN_AVAILABLE_MAP_HEIGHT = 96;
@@ -53,6 +56,8 @@
   const BACKGROUND_MAPS = {
     swissimage: {
       attribution: "Map data &copy; swisstopo",
+      minZoomFloor: 7,
+      minZoomMode: MIN_ZOOM_MODE_COVER_SWITZERLAND,
       maxNativeZoom: 18,
       maxZoom: 18,
       minZoom: 6,
@@ -60,6 +65,8 @@
     },
     surfaceRelief: {
       attribution: "Map data &copy; swisstopo",
+      minZoomFloor: 7,
+      minZoomMode: MIN_ZOOM_MODE_COVER_SWITZERLAND,
       maxNativeZoom: 18,
       maxZoom: 18,
       minZoom: 6,
@@ -70,6 +77,8 @@
     },
     lightRelief: {
       attribution: "Map data &copy; swisstopo",
+      minZoomFloor: 7,
+      minZoomMode: MIN_ZOOM_MODE_COVER_SWITZERLAND,
       maxNativeZoom: 18,
       maxZoom: 18,
       minZoom: 6,
@@ -82,6 +91,8 @@
       attribution:
         '&copy; <a href="https://carto.com/attributions">CARTO</a> ' +
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      mapMinZoom: 7,
+      minZoomMode: MIN_ZOOM_MODE_FIXED,
       maxNativeZoom: 20,
       maxZoom: 20,
       minZoom: 0,
@@ -90,6 +101,8 @@
     },
     none: {
       attribution: "",
+      mapMinZoom: 7,
+      minZoomMode: MIN_ZOOM_MODE_FIXED,
       maxNativeZoom: 18,
       maxZoom: 18,
       minZoom: 6,
@@ -172,11 +185,88 @@
     }
   }
 
-  function constrainMapToBounds(map, bounds) {
-    map.setMinZoom(DEFAULT_MIN_ZOOM);
-    if (map.getZoom() < DEFAULT_MIN_ZOOM) {
-      map.setZoom(DEFAULT_MIN_ZOOM, { animate: false });
+  function backgroundMapConfig(mapId) {
+    return BACKGROUND_MAPS[normalizeBackgroundMapId(mapId)];
+  }
+
+  function initialBackgroundMinZoom(mapId) {
+    const backgroundMap = backgroundMapConfig(mapId);
+    if (backgroundMap.minZoomMode === MIN_ZOOM_MODE_FIXED) {
+      return backgroundMap.mapMinZoom || FALLBACK_MAP_MIN_ZOOM;
     }
+    if (backgroundMap.minZoomMode === MIN_ZOOM_MODE_COVER_SWITZERLAND) {
+      return backgroundMap.minZoomFloor || FALLBACK_MAP_MIN_ZOOM;
+    }
+    return FALLBACK_MAP_MIN_ZOOM;
+  }
+
+  function effectiveBoundsCoverSize(map) {
+    const size = map.getSize();
+    if (isCompactMap(map)) {
+      const compactPadding = compactMapEdgePadding(map, BOUNDS_COVER_PADDING);
+      return {
+        x: Math.max(1, size.x - compactPadding * 2),
+        y: Math.max(
+          1,
+          size.y -
+            compactPadding -
+            compactMapBottomPadding(map, compactPadding)
+        ),
+      };
+    }
+
+    return {
+      x: Math.max(
+        1,
+        size.x - DESKTOP_SIDEBAR_WIDTH - BOUNDS_COVER_PADDING * 2
+      ),
+      y: Math.max(1, size.y - BOUNDS_COVER_PADDING * 2),
+    };
+  }
+
+  function projectedBoundsSize(map, bounds, zoom) {
+    const northWest = map.project(bounds.getNorthWest(), zoom);
+    const southEast = map.project(bounds.getSouthEast(), zoom);
+    return {
+      x: Math.abs(southEast.x - northWest.x),
+      y: Math.abs(southEast.y - northWest.y),
+    };
+  }
+
+  function resolveBackgroundMinZoom(map, mapId, bounds) {
+    const backgroundMap = backgroundMapConfig(mapId);
+    if (backgroundMap.minZoomMode === MIN_ZOOM_MODE_FIXED) {
+      return backgroundMap.mapMinZoom || FALLBACK_MAP_MIN_ZOOM;
+    }
+    if (backgroundMap.minZoomMode !== MIN_ZOOM_MODE_COVER_SWITZERLAND) {
+      return FALLBACK_MAP_MIN_ZOOM;
+    }
+
+    const minZoomFloor = backgroundMap.minZoomFloor || FALLBACK_MAP_MIN_ZOOM;
+    const maxZoom = Number.isFinite(backgroundMap.maxZoom)
+      ? backgroundMap.maxZoom
+      : FALLBACK_MAP_MIN_ZOOM;
+    const visibleSize = effectiveBoundsCoverSize(map);
+    for (let zoom = minZoomFloor; zoom <= maxZoom; zoom += 1) {
+      const boundsSize = projectedBoundsSize(map, bounds, zoom);
+      if (boundsSize.x >= visibleSize.x && boundsSize.y >= visibleSize.y) {
+        return zoom;
+      }
+    }
+    return maxZoom;
+  }
+
+  function applyBackgroundMinZoom(map, mapId, bounds) {
+    const minZoom = resolveBackgroundMinZoom(map, mapId, bounds);
+    map.setMinZoom(minZoom);
+    if (map.getZoom() < minZoom) {
+      map.setZoom(minZoom, { animate: false });
+    }
+    return minZoom;
+  }
+
+  function constrainMapToBounds(map, bounds, mapId) {
+    applyBackgroundMinZoom(map, mapId, bounds);
     map.panInsideBounds(bounds, { animate: false });
   }
 
@@ -618,6 +708,7 @@
     boundaryState,
     revealState,
     summaryState,
+    bounds,
     fallbackUrl
   ) {
     const pickers = document.querySelectorAll("[data-background-map-picker]");
@@ -637,6 +728,13 @@
         baseLayerState.mapId = mapId;
         boundaryState.mapId = mapId;
         baseLayerState.layer = addBaseMapLayer(map, mapId, fallbackUrl);
+        constrainMapToBounds(map, bounds, mapId);
+        refitMapView(
+          map,
+          boundaryState.municipalityLayer,
+          revealState,
+          summaryState
+        );
         applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
       });
     });
@@ -1565,6 +1663,8 @@
     const labelMinZoom = readNumber(mapElement, "labelMinZoom", 11);
     const revealState = readRevealState(mapElement);
     const summaryState = readSummaryState();
+    const backgroundMapId = readStoredBackgroundMapId();
+    const boundaryLineMode = readStoredBoundaryLineMode();
     const vectorRenderer = window.L.canvas({
       padding: VECTOR_RENDERER_PADDING,
     });
@@ -1573,7 +1673,7 @@
       clickTolerance: GUESS_CLICK_TOLERANCE,
       maxBounds: switzerlandBounds,
       maxBoundsViscosity: 1,
-      minZoom: DEFAULT_MIN_ZOOM,
+      minZoom: initialBackgroundMinZoom(backgroundMapId),
       preferCanvas: true,
       renderer: vectorRenderer,
       tapTolerance: GUESS_TAP_TOLERANCE,
@@ -1582,20 +1682,23 @@
     });
 
     map.setView([latitude, longitude], zoom);
-    constrainMapToBounds(map, switzerlandBounds);
+    constrainMapToBounds(map, switzerlandBounds, backgroundMapId);
     let municipalityLayerForFit = null;
     let resizeFitTimeout = null;
+    let baseLayerState = null;
     function refreshMapFit() {
       map.invalidateSize();
-      constrainMapToBounds(map, switzerlandBounds);
+      constrainMapToBounds(
+        map,
+        switzerlandBounds,
+        baseLayerState ? baseLayerState.mapId : backgroundMapId
+      );
       refitMapView(map, municipalityLayerForFit, revealState, summaryState);
     }
     map.on("resize", function () {
       window.clearTimeout(resizeFitTimeout);
       resizeFitTimeout = window.setTimeout(refreshMapFit, 0);
     });
-    const backgroundMapId = readStoredBackgroundMapId();
-    const boundaryLineMode = readStoredBoundaryLineMode();
     const hasVillageLayer =
       mapElement.dataset.targetBoundaryLayer === "villages";
     const hasMunicipalityLayer =
@@ -1605,7 +1708,7 @@
       hasMunicipalityLayer,
       hasVillageLayer
     );
-    const baseLayerState = {
+    baseLayerState = {
       layer: addBaseMapLayer(
         map,
         backgroundMapId,
@@ -1633,6 +1736,7 @@
       boundaryState,
       revealState,
       summaryState,
+      switzerlandBounds,
       mapElement.dataset.baseMapUrl
     );
     initializeBoundaryLinePicker(map, boundaryState, revealState, summaryState);
