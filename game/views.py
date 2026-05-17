@@ -490,6 +490,7 @@ def get_last_guess_result(request, player=None) -> Guess | None:
     return (
         Guess.objects.select_related(
             "turn__game__canton",
+            "turn__game__dataset_version",
             "turn__municipality_target__canton",
             "turn__village_target__canton",
         )
@@ -509,6 +510,7 @@ def get_last_guess_result(request, player=None) -> Guess | None:
             "turn__game__target_type",
             "turn__game__canton",
             "turn__game__canton__abbreviation",
+            "turn__game__dataset_version",
             "turn__game__status",
             "turn__game__total_score",
             "turn__game__user",
@@ -571,6 +573,7 @@ def render_game_index(
     reveal_boundary_lng = ""
     reveal_guess_lat = ""
     reveal_guess_lng = ""
+    reveal_distance = ""
     last_guess_target = None
     last_guess_target_canton = None
     last_guess_target_population = None
@@ -619,6 +622,7 @@ def render_game_index(
         reveal_boundary_lng = str(boundary_point.x)
         reveal_guess_lat = f"{last_guess.point.y:.6f}"
         reveal_guess_lng = f"{last_guess.point.x:.6f}"
+        reveal_distance = f"{last_guess.distance_to_municipality_m:.6f}"
         request.session[MUNICIPALITY_LABEL_ACCESS_SESSION_KEY] = last_guess.turn_id
     else:
         request.session.pop(MUNICIPALITY_LABEL_ACCESS_SESSION_KEY, None)
@@ -641,6 +645,7 @@ def render_game_index(
             "reveal_boundary_lng": reveal_boundary_lng,
             "reveal_guess_lat": reveal_guess_lat,
             "reveal_guess_lng": reveal_guess_lng,
+            "reveal_distance": reveal_distance,
             "selected_canton": selected_canton,
             "selected_game_mode": selected_game_mode,
             "selected_target_type": selected_target_type,
@@ -729,6 +734,11 @@ def map_context_for_game(game: Game | None) -> dict[str, str]:
 
 def map_scope_query_for_game(game: Game | None) -> str:
     """Return a query string restricting map GeoJSON to a game's scope."""
-    if game is None or game.mode != Game.Mode.CANTON or game.canton_id is None:
+    if game is None:
         return ""
-    return "?" + urlencode({"canton": game.canton.abbreviation})
+    query = {}
+    if game.dataset_version_id:
+        query["dataset"] = game.dataset_version_id
+    if game.mode == Game.Mode.CANTON and game.canton_id is not None:
+        query["canton"] = game.canton.abbreviation
+    return "?" + urlencode(query) if query else ""

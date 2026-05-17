@@ -20,7 +20,7 @@ from geo.selectors import (
     get_villages_for_dataset,
 )
 from tracking.models import GameEvent
-from tracking.services import track_event
+from tracking.services import safe_track_event
 
 from .identity import PlayerIdentity
 from .models import Game, Guess, Turn
@@ -41,9 +41,6 @@ NEAREST_BOUNDARY_POINT_SQL = """
 
 class NotEnoughTargetsError(ValueError):
     """Raised when there are not enough active targets to start a game."""
-
-
-NotEnoughMunicipalitiesError = NotEnoughTargetsError
 
 
 class InvalidGameModeError(ValueError):
@@ -323,6 +320,7 @@ def start_game_for_player(
                 target_count=target_count,
             )
             game = Game.objects.create(
+                dataset_version=dataset_version,
                 mode=game_scope.mode,
                 target_type=game_scope.target_type,
                 canton=game_scope.canton,
@@ -343,12 +341,12 @@ def start_game_for_player(
             Turn.objects.bulk_create(turns)
             persisted_turns = list(game.turns.order_by("turn_number"))
             first_turn = persisted_turns[0]
-            track_event(
+            safe_track_event(
                 game=game,
                 event_type=GameEvent.Type.GAME_STARTED,
                 **player.model_fields(),
             )
-            track_event(
+            safe_track_event(
                 game=game,
                 turn=first_turn,
                 event_type=GameEvent.Type.TURN_STARTED,
@@ -613,7 +611,7 @@ def submit_guess_for_player(
             update_fields.extend(["status", "finished_at"])
         game.save(update_fields=update_fields)
 
-        track_event(
+        safe_track_event(
             game=game,
             turn=turn,
             event_type=GameEvent.Type.GUESS_CONFIRMED,
@@ -628,7 +626,7 @@ def submit_guess_for_player(
             **player.model_fields(),
         )
         if next_turn is not None:
-            track_event(
+            safe_track_event(
                 game=game,
                 turn=next_turn,
                 event_type=GameEvent.Type.TURN_STARTED,
@@ -636,7 +634,7 @@ def submit_guess_for_player(
                 **player.model_fields(),
             )
         else:
-            track_event(
+            safe_track_event(
                 game=game,
                 event_type=GameEvent.Type.GAME_FINISHED,
                 payload={"total_score": game.total_score},

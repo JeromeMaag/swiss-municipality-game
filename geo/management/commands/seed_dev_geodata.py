@@ -144,9 +144,11 @@ class Command(BaseCommand):
             )
             imported_at = timezone.now()
             GeoDatasetVersion.objects.filter(pk=dataset_version.pk).update(
-                imported_at=imported_at
+                imported_at=imported_at,
+                boundaries_updated_at=imported_at,
             )
             dataset_version.imported_at = imported_at
+            dataset_version.boundaries_updated_at = imported_at
             canton_geom = make_multipolygon(
                 (
                     (7.35, 46.85),

@@ -126,13 +126,15 @@ class Command(BaseCommand):
         canton_gdf = read_layer(source, options["canton_layer"])
 
         with transaction.atomic():
+            import_time = timezone.now()
             dataset_version, _ = GeoDatasetVersion.objects.update_or_create(
                 name=options["dataset_name"],
                 version_label=options["dataset_version"],
                 defaults={
                     "source_url": options["source_url"],
                     "notes": options["notes"],
-                    "imported_at": timezone.now(),
+                    "imported_at": import_time,
+                    "boundaries_updated_at": import_time,
                 },
             )
 

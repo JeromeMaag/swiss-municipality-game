@@ -1,11 +1,16 @@
 """Service helpers for persisted tracking events."""
 
+import logging
 from typing import Any
 
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.utils.translation import gettext as _
 
 from .models import GameEvent
+
+
+logger = logging.getLogger(__name__)
 
 
 def track_event(
@@ -46,3 +51,13 @@ def track_event(
     event.full_clean()
     event.save()
     return event
+
+
+def safe_track_event(*args, **kwargs) -> GameEvent | None:
+    """Create a tracking event without letting failures block gameplay."""
+    try:
+        with transaction.atomic():
+            return track_event(*args, **kwargs)
+    except Exception:
+        logger.exception("Failed to persist tracking event.")
+        return None

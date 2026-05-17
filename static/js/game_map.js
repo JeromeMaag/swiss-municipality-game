@@ -1019,12 +1019,21 @@
   function initializeReveal(map, revealState, mapElement) {
     createRevealedGuessMarker(map, revealState.latlng);
     map.getContainer().classList.add("game-map--reveal");
-    sendTrackingEvent(mapElement, "REVEAL_SHOWN", {
+    const targetType =
+      mapElement.dataset.targetBoundaryLayer === "villages"
+        ? "village"
+        : "municipality";
+    const payload = {
       latitude: revealState.latlng.lat,
       longitude: revealState.latlng.lng,
-      target_municipality_id: Number(revealState.targetId),
+      target_id: Number(revealState.targetId),
+      target_type: targetType,
       zoom: map.getZoom(),
-    });
+    };
+    if (targetType === "municipality") {
+      payload.target_municipality_id = Number(revealState.targetId);
+    }
+    sendTrackingEvent(mapElement, "REVEAL_SHOWN", payload);
   }
 
   function initializeSummary(map, summaryState) {

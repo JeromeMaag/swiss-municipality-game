@@ -94,9 +94,13 @@ def cache_key_for_boundaries(name: str, dataset_version: GeoDatasetVersion | Non
     """
     if dataset_version is None:
         return f"geojson:{name}:empty"
+    boundaries_updated_at = (
+        dataset_version.boundaries_updated_at or dataset_version.imported_at
+    )
     return (
         f"geojson:{name}:{dataset_version.id}:"
-        f"{dataset_version.imported_at.isoformat()}"
+        f"{dataset_version.imported_at.isoformat()}:"
+        f"{boundaries_updated_at.isoformat()}"
     )
 
 
@@ -135,14 +139,14 @@ def cached_geojson_response(
     scope_builder=None,
     scope_key_builder=None,
 ) -> HttpResponse:
-    """Return cached GeoJSON for the current dataset.
+    """Return cached GeoJSON for the requested or current dataset.
 
     Args:
         request: The incoming HTTP request.
         name: Boundary response name.
-        data_builder: Callable receiving the current dataset version and optional
+        data_builder: Callable receiving the resolved dataset version and optional
             resolved scope and returning serialized GeoJSON.
-        scope_builder: Optional callable receiving the current dataset version
+        scope_builder: Optional callable receiving the resolved dataset version
             and returning a resolved response scope.
         scope_key_builder: Optional callable receiving the resolved scope and
             returning a cache-key suffix for filtered responses.
@@ -150,7 +154,7 @@ def cached_geojson_response(
     Returns:
         A GeoJSON response, or 304 when the client's cached copy is current.
     """
-    dataset_version = get_current_dataset_version()
+    dataset_version = requested_dataset_version(request)
     scope = None
     if dataset_version is not None and scope_builder is not None:
         scope = scope_builder(dataset_version)
@@ -180,18 +184,24 @@ def cached_geojson_response(
     return geojson_response(data, etag=etag)
 
 
-def server_cached_geojson_response(name: str, data_builder) -> HttpResponse:
+def server_cached_geojson_response(
+    name: str,
+    data_builder,
+    *,
+    dataset_version: GeoDatasetVersion | None = None,
+) -> HttpResponse:
     """Return server-cached GeoJSON without browser caching.
 
     Args:
         name: Response name for the server cache key.
-        data_builder: Callable receiving the current dataset version and returning
+        data_builder: Callable receiving the resolved dataset version and returning
             serialized GeoJSON.
+        dataset_version: Optional explicit dataset version. Defaults to current.
 
     Returns:
         A no-store GeoJSON response.
     """
-    dataset_version = get_current_dataset_version()
+    dataset_version = dataset_version or get_current_dataset_version()
     cache_key = cache_key_for_boundaries(name, dataset_version)
     data = cache.get(cache_key)
     if data is None:
@@ -213,6 +223,23 @@ def requested_canton_filter(request, dataset_version: GeoDatasetVersion):
     if canton is None:
         raise Http404(_("Canton not found."))
     return canton
+
+
+def requested_dataset_version(request) -> GeoDatasetVersion | None:
+    """Return requested dataset version, defaulting to the current dataset."""
+    raw_dataset_id = request.GET.get("dataset", "").strip()
+    if not raw_dataset_id:
+        return get_current_dataset_version()
+    try:
+        dataset_id = int(raw_dataset_id)
+    except (TypeError, ValueError) as error:
+        raise Http404(_("Geodata dataset not found.")) from error
+    if dataset_id < 1:
+        raise Http404(_("Geodata dataset not found."))
+    dataset_version = GeoDatasetVersion.objects.filter(pk=dataset_id).first()
+    if dataset_version is None:
+        raise Http404(_("Geodata dataset not found."))
+    return dataset_version
 
 
 def canton_scope_key(canton) -> str:
@@ -329,6 +356,7 @@ def municipality_labels(request):
             if game.mode == game.Mode.CANTON and game.canton_id
             else get_municipality_labels_for_dataset(dataset_version)
         ),
+        dataset_version=game.dataset_version,
     )
 
 
@@ -339,7 +367,7 @@ def municipality_label_cache_name(game) -> str:
             "municipality-labels:canton:"
             f"{game.canton.dataset_version_id}:{game.canton_id}"
         )
-    return "municipality-labels:switzerland"
+    return f"municipality-labels:switzerland:{game.dataset_version_id}"
 
 
 def require_municipality_label_access(request):
@@ -374,7 +402,7 @@ def require_municipality_label_access(request):
         raise Http404(_("Municipality labels not found."))
 
     turn = (
-        Turn.objects.select_related("game__canton")
+        Turn.objects.select_related("game__canton", "game__dataset_version")
         .filter(
             player.owner_query("game"),
             pk=turn_id,
