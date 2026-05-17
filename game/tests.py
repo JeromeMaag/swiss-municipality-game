@@ -48,7 +48,11 @@ from .selectors import (
     get_finished_games_for_player,
     get_finished_game_summary,
 )
-from .statistics import build_player_statistics
+from .statistics import (
+    AdvancedStatisticsFilters,
+    build_player_advanced_statistics,
+    build_player_statistics,
+)
 from .views import build_summary_reveals, get_last_guess_result, parse_tracking_request
 
 
@@ -3150,6 +3154,91 @@ class GameSummaryTests(TestCase):
         game.save(update_fields=["total_score"])
         return game
 
+    def create_stats_game(
+        self,
+        targets: list[tuple[Municipality | Village, int, float]],
+        *,
+        canton: Canton | None = None,
+        game_mode: str = Game.Mode.SWITZERLAND,
+        guessed_at=None,
+        target_type: str = Game.TargetType.MUNICIPALITY,
+        user=None,
+    ) -> Game:
+        """Create a finished game with explicit target, score, and distance rows."""
+        game_user = user or self.user
+        canton = canton or self.canton
+        game = Game.objects.create(
+            user=game_user,
+            dataset_version=self.dataset_version,
+            mode=game_mode,
+            canton=canton if game_mode == Game.Mode.CANTON else None,
+            target_type=target_type,
+            status=Game.Status.FINISHED,
+            finished_at=guessed_at or timezone.now(),
+        )
+        total_score = 0
+        for index, (target, score, distance) in enumerate(targets, start=1):
+            total_score += score
+            target_fields = (
+                {"village_target": target}
+                if target_type == Game.TargetType.VILLAGE
+                else {"municipality_target": target}
+            )
+            turn = Turn.objects.create(
+                game=game,
+                turn_number=index,
+                revealed_at=guessed_at or timezone.now(),
+                **target_fields,
+            )
+            guess = Guess.objects.create(
+                turn=turn,
+                user=game_user,
+                point=Point(8.05, 47.05, srid=4326),
+                distance_to_municipality_m=distance,
+                distance_to_boundary_m=distance,
+                nearest_boundary_point=Point(8.0, 47.05, srid=4326),
+                score=score,
+            )
+            if guessed_at is not None:
+                Guess.objects.filter(pk=guess.pk).update(guessed_at=guessed_at)
+        game.total_score = total_score
+        game.save(update_fields=["total_score"])
+        return game
+
+    def create_canton_municipality(
+        self,
+        canton: Canton,
+        *,
+        bfs_number: int,
+        name: str,
+    ) -> Municipality:
+        """Create a municipality in a selected canton for statistics tests."""
+        return Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=bfs_number,
+            name=name,
+            canton=canton,
+            geom=make_test_geometry(),
+        )
+
+    def create_village(
+        self,
+        municipality: Municipality,
+        *,
+        name: str,
+        source_identifier: str,
+    ) -> Village:
+        """Create a village fixture for target-type statistics tests."""
+        return Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier=source_identifier,
+            name=name,
+            postal_code="8500",
+            canton=municipality.canton,
+            municipality=municipality,
+            geom=make_test_geometry(),
+        )
+
     def test_summary_rejects_anonymous_without_guest_game(self) -> None:
         """Anonymous users need the owning guest key to view guest summaries."""
         game = self.create_finished_game()
@@ -3656,6 +3745,163 @@ class GameSummaryTests(TestCase):
         )
         self.assertContains(response, "Municipalities")
         self.assertContains(response, "Villages")
+
+    def test_profile_links_to_detailed_statistics(self) -> None:
+        """Profile page links to the detailed statistics dashboard."""
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("profile"))
+
+        self.assertContains(response, reverse("profile_stats"))
+        self.assertContains(response, "Detailed stats")
+
+    def test_profile_stats_requires_authenticated_user(self) -> None:
+        """Detailed statistics are account-only."""
+        response = self.client.get(reverse("profile_stats"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("accounts:login"), response["Location"])
+
+    def test_profile_stats_shows_canton_and_target_analysis(self) -> None:
+        """Detailed statistics rank targets inside the selected canton."""
+        thurgau = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=20,
+            abbreviation="TG",
+            name="Thurgau",
+            geom=make_test_geometry(),
+        )
+        frauenfeld = self.create_canton_municipality(
+            thurgau,
+            bfs_number=4566,
+            name="Frauenfeld",
+        )
+        weinfelden = self.create_canton_municipality(
+            thurgau,
+            bfs_number=4946,
+            name="Weinfelden",
+        )
+        zurich_city = self.create_canton_municipality(
+            self.canton,
+            bfs_number=261,
+            name="Zurich City",
+        )
+        self.create_stats_game(
+            [
+                (frauenfeld, 1000, 0),
+                (weinfelden, 200, 8000),
+                (zurich_city, 900, 500),
+            ]
+        )
+        self.create_stats_game(
+            [(frauenfeld, 1000, 0), (weinfelden, 600, 2500)]
+        )
+        self.create_stats_game([(frauenfeld, 1000, 0)], user=self.other_user)
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse("profile_stats"),
+            {"canton": " tg ", "sort": "hit_rate_desc"},
+        )
+        statistics = response.context["statistics"]
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "accounts/stats.html")
+        self.assertEqual(statistics["filters"].canton, "TG")
+        self.assertEqual(statistics["overview"]["rounds_played"], 4)
+        self.assertEqual(statistics["overview"]["hits"], 2)
+        self.assertEqual(statistics["overview"]["hit_rate"], 50)
+        self.assertEqual(statistics["overview"]["targets_played"], 2)
+        self.assertEqual(
+            [target["name"] for target in statistics["target_stats"]],
+            ["Frauenfeld", "Weinfelden"],
+        )
+        self.assertEqual(statistics["target_stats"][0]["hit_rate"], 100)
+        self.assertEqual(statistics["target_stats"][1]["average_score"], 400)
+        self.assertContains(response, "Detailed statistics")
+        self.assertContains(response, "TG - Thurgau")
+        self.assertContains(response, "Frauenfeld")
+        self.assertContains(response, "Weinfelden")
+        self.assertNotContains(response, "Zurich City")
+
+    def test_profile_stats_can_filter_village_targets(self) -> None:
+        """Detailed statistics can focus on village targets."""
+        municipality = self.create_canton_municipality(
+            self.canton,
+            bfs_number=3101,
+            name="Parent Municipality",
+        )
+        village = self.create_village(
+            municipality,
+            name="Target Village",
+            source_identifier="target-village",
+        )
+        self.create_stats_game(
+            [(municipality, 1000, 0)],
+            target_type=Game.TargetType.MUNICIPALITY,
+        )
+        self.create_stats_game(
+            [(village, 300, 7000)],
+            target_type=Game.TargetType.VILLAGE,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse("profile_stats"),
+            {"target_type": Game.TargetType.VILLAGE},
+        )
+        statistics = response.context["statistics"]
+
+        self.assertEqual(statistics["filters"].target_type, Game.TargetType.VILLAGE)
+        self.assertEqual(statistics["overview"]["rounds_played"], 1)
+        self.assertEqual(statistics["target_stats"][0]["name"], "Target Village")
+        self.assertEqual(
+            statistics["target_stats"][0]["target_type"],
+            Game.TargetType.VILLAGE,
+        )
+        self.assertContains(response, "Target Village")
+        self.assertNotContains(response, "Parent Municipality")
+
+    def test_profile_stats_period_filter_uses_guess_date(self) -> None:
+        """Detailed statistics period filters use the submitted guess timestamp."""
+        recent_municipality = self.create_canton_municipality(
+            self.canton,
+            bfs_number=3201,
+            name="Recent Target",
+        )
+        old_municipality = self.create_canton_municipality(
+            self.canton,
+            bfs_number=3202,
+            name="Old Target",
+        )
+        self.create_stats_game([(recent_municipality, 1000, 0)])
+        self.create_stats_game(
+            [(old_municipality, 200, 5000)],
+            guessed_at=timezone.now() - timedelta(days=60),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("profile_stats"), {"period": "30d"})
+        statistics = response.context["statistics"]
+
+        self.assertEqual(statistics["filters"].period, "30d")
+        self.assertEqual(statistics["overview"]["rounds_played"], 1)
+        self.assertEqual(statistics["target_stats"][0]["name"], "Recent Target")
+        self.assertContains(response, "Recent Target")
+        self.assertNotContains(response, "Old Target")
+
+    def test_build_player_advanced_statistics_handles_empty_state(self) -> None:
+        """Detailed statistics produce stable empty-state aggregates."""
+        statistics = build_player_advanced_statistics(
+            self.user,
+            filters=AdvancedStatisticsFilters(),
+        )
+
+        self.assertEqual(statistics["overview"]["rounds_played"], 0)
+        self.assertEqual(statistics["overview"]["hit_rate"], 0)
+        self.assertEqual(statistics["canton_stats"], [])
+        self.assertEqual(statistics["target_stats"], [])
+        self.assertEqual(statistics["trend"], [])
 
     def test_build_player_statistics_limits_recent_games(self) -> None:
         """Recent profile games are capped to the latest five finished games."""

@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Detailed statistics" %} | {% trans "Find the municipality!" %}{% endblock %}
+{% block body_class %}profile-page stats-page{% endblock %}
+
+{% block content %}
+  <section class="profile-shell stats-shell" aria-labelledby="stats-heading">
+    <header class="profile-header stats-header">
+      <div>
+        <h1 id="stats-heading">{% trans "Detailed statistics" %}</h1>
+        <p>{{ user.username }}</p>
+      </div>
+      <div class="profile-actions">
+        <a class="button-link button-link-secondary" href="{% url 'profile' %}">{% trans "Profile" %}</a>
+        <a class="button-link" href="{% url 'game:index' %}">{% trans "Play" %}</a>
+      </div>
+    </header>
+
+    <form class="stats-filters" method="get" aria-label="{% trans 'Statistics filters' %}">
+      <label>
+        <span>{% trans "Target" %}</span>
+        <select name="target_type">
+          {% for target_type in statistics.filter_options.target_types %}
+            <option value="{{ target_type.value }}"{% if statistics.filters.target_type == target_type.value %} selected{% endif %}>
+              {{ target_type.label }}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>{% trans "Canton" %}</span>
+        <select name="canton">
+          <option value="all"{% if statistics.filters.canton == "all" %} selected{% endif %}>{% trans "All Switzerland" %}</option>
+          {% for canton in statistics.available_cantons %}
+            <option value="{{ canton.abbreviation }}"{% if statistics.filters.canton == canton.abbreviation %} selected{% endif %}>
+              {{ canton.abbreviation }} - {{ canton.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>{% trans "Mode" %}</span>
+        <select name="game_mode">
+          {% for game_mode in statistics.filter_options.game_modes %}
+            <option value="{{ game_mode.value }}"{% if statistics.filters.game_mode == game_mode.value %} selected{% endif %}>
+              {{ game_mode.label }}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>{% trans "Period" %}</span>
+        <select name="period">
+          {% for period in statistics.filter_options.periods %}
+            <option value="{{ period.value }}"{% if statistics.filters.period == period.value %} selected{% endif %}>
+              {{ period.label }}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>{% trans "Sort" %}</span>
+        <select name="sort">
+          {% for sort in statistics.filter_options.sorts %}
+            <option value="{{ sort.value }}"{% if statistics.filters.sort == sort.value %} selected{% endif %}>
+              {{ sort.label }}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      <button class="button-link" type="submit">{% trans "Update" %}</button>
+    </form>
+
+    <section class="profile-metrics stats-metrics" aria-label="{% trans 'Statistics overview' %}">
+      <article class="profile-metric">
+        <span>{% trans "Hit rate" %}</span>
+        <strong>{{ statistics.overview.hit_rate }}%</strong>
+      </article>
+      <article class="profile-metric">
+        <span>{% trans "Average round" %}</span>
+        <strong>{{ statistics.overview.average_score }}</strong>
+      </article>
+      <article class="profile-metric">
+        <span>{% trans "Targets played" %}</span>
+        <strong>{{ statistics.overview.targets_played }}</strong>
+      </article>
+      <article class="profile-metric">
+        <span>{% trans "Coverage" %}</span>
+        <strong>{{ statistics.overview.coverage_percent }}%</strong>
+      </article>
+    </section>
+
+    <section class="stats-overview-grid" aria-label="{% trans 'Round detail' %}">
+      <article class="profile-section">
+        <h2>{% trans "Recognition" %}</h2>
+        <dl class="profile-stat-list">
+          <div>
+            <dt>{% trans "Exact hits" %}</dt>
+            <dd>{{ statistics.overview.hits }}</dd>
+          </div>
+          <div>
+            <dt>{% trans "Near hits" %}</dt>
+            <dd>{{ statistics.overview.near_hits }}</dd>
+          </div>
+          <div>
+            <dt>{% trans "Rounds played" %}</dt>
+            <dd>{{ statistics.overview.rounds_played }}</dd>
+          </div>
+          <div>
+            <dt>{% trans "Games represented" %}</dt>
+            <dd>{{ statistics.overview.games_played }}</dd>
+          </div>
+        </dl>
+      </article>
+      <article class="profile-section">
+        <h2>{% trans "Distance" %}</h2>
+        <dl class="profile-stat-list">
+          <div>
+            <dt>{% trans "Average distance" %}</dt>
+            <dd>{{ statistics.overview.average_distance_m|floatformat:0 }} m</dd>
+          </div>
+          <div>
+            <dt>{% trans "Best distance" %}</dt>
+            <dd>{{ statistics.overview.best_distance_m|floatformat:0 }} m</dd>
+          </div>
+          <div>
+            <dt>{% trans "Best round score" %}</dt>
+            <dd>{{ statistics.overview.best_score }}</dd>
+          </div>
+          <div>
+            <dt>{% trans "Total active targets" %}</dt>
+            <dd>{{ statistics.overview.total_targets }}</dd>
+          </div>
+        </dl>
+      </article>
+    </section>
+
+    <section class="stats-overview-grid" aria-label="{% trans 'Highlights' %}">
+      <article class="profile-section">
+        <h2>{% trans "Strongest targets" %}</h2>
+        {% if statistics.strengths %}
+          <ol class="stats-compact-list">
+            {% for target in statistics.strengths %}
+              <li>
+                <span>{{ target.name }} <small>{{ target.target_type_label }} · {{ target.canton }}</small></span>
+                <strong>{{ target.hit_rate }}%</strong>
+              </li>
+            {% endfor %}
+          </ol>
+        {% else %}
+          <p class="profile-section-empty">{% trans "Finish games to unlock target strengths." %}</p>
+        {% endif %}
+      </article>
+      <article class="profile-section">
+        <h2>{% trans "Needs practice" %}</h2>
+        {% if statistics.weaknesses %}
+          <ol class="stats-compact-list">
+            {% for target in statistics.weaknesses %}
+              <li>
+                <span>{{ target.name }} <small>{{ target.target_type_label }} · {{ target.canton }}</small></span>
+                <strong>{{ target.average_score }}</strong>
+              </li>
+            {% endfor %}
+          </ol>
+        {% else %}
+          <p class="profile-section-empty">{% trans "No weak spots yet." %}</p>
+        {% endif %}
+      </article>
+    </section>
+
+    <section class="profile-section stats-trend" aria-labelledby="trend-heading">
+      <h2 id="trend-heading">{% trans "Recent form" %}</h2>
+      {% if statistics.trend %}
+        <div class="stats-chart" aria-label="{% trans 'Average score by week' %}">
+          {% for bucket in statistics.trend %}
+            <div class="stats-chart-column">
+              <span class="stats-chart-bar" style="height: {{ bucket.score_percent }}%"></span>
+              <strong>{{ bucket.average_score }}</strong>
+              <small>{{ bucket.label }}</small>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="profile-section-empty">{% trans "No finished rounds in this filter yet." %}</p>
+      {% endif %}
+    </section>
+
+    <section class="profile-section" aria-labelledby="canton-ranking-heading">
+      <h2 id="canton-ranking-heading">{% trans "Canton ranking" %}</h2>
+      {% if statistics.canton_stats %}
+        <div class="stats-table-wrap">
+          <table class="stats-table">
+            <thead>
+              <tr>
+                <th scope="col">{% trans "Canton" %}</th>
+                <th scope="col">{% trans "Hit rate" %}</th>
+                <th scope="col">{% trans "Avg score" %}</th>
+                <th scope="col">{% trans "Rounds" %}</th>
+                <th scope="col">{% trans "Targets" %}</th>
+                <th scope="col">{% trans "Avg distance" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for canton in statistics.canton_stats %}
+                <tr>
+                  <th scope="row">{{ canton.abbreviation }} <span>{{ canton.name }}</span></th>
+                  <td>
+                    <span class="stats-rate">
+                      <span style="width: {{ canton.hit_rate }}%"></span>
+                    </span>
+                    {{ canton.hit_rate }}%
+                  </td>
+                  <td>{{ canton.average_score }}</td>
+                  <td>{{ canton.attempts }}</td>
+                  <td>{{ canton.targets_played }}</td>
+                  <td>{{ canton.average_distance_m|floatformat:0 }} m</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="profile-section-empty">{% trans "No canton statistics for this filter yet." %}</p>
+      {% endif %}
+    </section>
+
+    <section class="profile-section" aria-labelledby="target-ranking-heading">
+      <h2 id="target-ranking-heading">{% trans "Target ranking" %}</h2>
+      {% if statistics.target_stats %}
+        {% if statistics.target_stats_limited %}
+          <p class="stats-limit-note">
+            {% blocktrans with visible=statistics.target_stats|length total=statistics.target_stats_total %}
+              Showing the first {{ visible }} of {{ total }} targets. Select a canton to inspect all targets in that canton.
+            {% endblocktrans %}
+          </p>
+        {% endif %}
+        <div class="stats-table-wrap">
+          <table class="stats-table stats-target-table">
+            <thead>
+              <tr>
+                <th scope="col">{% trans "Rank" %}</th>
+                <th scope="col">{% trans "Target" %}</th>
+                <th scope="col">{% trans "Type" %}</th>
+                <th scope="col">{% trans "Hit rate" %}</th>
+                <th scope="col">{% trans "Avg score" %}</th>
+                <th scope="col">{% trans "Best" %}</th>
+                <th scope="col">{% trans "Rounds" %}</th>
+                <th scope="col">{% trans "Avg distance" %}</th>
+                <th scope="col">{% trans "Last played" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for target in statistics.target_stats %}
+                <tr>
+                  <td>{{ target.rank }}</td>
+                  <th scope="row">{{ target.name }} <span>{{ target.canton }}</span></th>
+                  <td>{{ target.target_type_label }}</td>
+                  <td>
+                    <span class="stats-rate">
+                      <span style="width: {{ target.hit_rate }}%"></span>
+                    </span>
+                    {{ target.hit_rate }}%
+                  </td>
+                  <td>{{ target.average_score }}</td>
+                  <td>{{ target.best_score }}</td>
+                  <td>{{ target.attempts }}</td>
+                  <td>{{ target.average_distance_m|floatformat:0 }} m</td>
+                  <td>{{ target.last_played_at|date:"SHORT_DATE_FORMAT" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="profile-section-empty">{% trans "No target statistics for this filter yet." %}</p>
+      {% endif %}
+    </section>
+  </section>
+{% endblock %}
