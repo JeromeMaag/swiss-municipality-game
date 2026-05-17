@@ -206,18 +206,7 @@ class Game(models.Model):
             raise ValidationError(
                 {"canton": "Single-canton games require a canton."}
             )
-        if (
-            self.canton_id
-            and self.dataset_version_id
-            and self.canton.dataset_version_id != self.dataset_version_id
-        ):
-            raise ValidationError(
-                {
-                    "canton": (
-                        "Game canton must belong to the game's dataset version."
-                    )
-                }
-            )
+        self.validate_dataset_scope()
         if (
             self.scoring_max_distance_m is not None
             and not math.isfinite(self.scoring_max_distance_m)
@@ -254,8 +243,17 @@ class Game(models.Model):
             from geo.selectors import get_current_dataset_version
 
             current_dataset_version = get_current_dataset_version()
-            if current_dataset_version is not None:
-                self.dataset_version = current_dataset_version
+            if current_dataset_version is None:
+                raise ValidationError(
+                    {
+                        "dataset_version": (
+                            "A geodata dataset version is required to create "
+                            "a game."
+                        )
+                    }
+                )
+            self.dataset_version = current_dataset_version
+        self.validate_dataset_scope()
         if self.target_type_changed_after_turns_exist(
             update_fields=kwargs.get("update_fields"),
         ):
@@ -279,6 +277,21 @@ class Game(models.Model):
                 }
             )
         super().save(*args, **kwargs)
+
+    def validate_dataset_scope(self) -> None:
+        """Validate that stored game scope belongs to the game dataset."""
+        if (
+            self.canton_id
+            and self.dataset_version_id
+            and self.canton.dataset_version_id != self.dataset_version_id
+        ):
+            raise ValidationError(
+                {
+                    "canton": (
+                        "Game canton must belong to the game's dataset version."
+                    )
+                }
+            )
 
     def target_type_changed_after_turns_exist(self, *, update_fields=None) -> bool:
         """Return whether target type was changed after turns were created."""

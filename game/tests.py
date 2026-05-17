@@ -549,6 +549,19 @@ class GameModelTests(TestCase):
         self.assertEqual(game.guest_key, "guest-session")
         self.assertIn("guest guest-se", str(game))
 
+    def test_game_save_requires_available_dataset_version(self) -> None:
+        """Game saves fail clearly when no geodata dataset is available."""
+        Village.objects.all().delete()
+        Municipality.objects.all().delete()
+        Canton.objects.all().delete()
+        GeoDatasetVersion.objects.all().delete()
+
+        with self.assertRaisesMessage(
+            ValidationError,
+            "A geodata dataset version is required to create a game.",
+        ):
+            Game.objects.create(user=self.user)
+
     def test_game_requires_exactly_one_owner(self) -> None:
         """Games must belong to either a user or a guest, not both."""
         invalid_games = [
@@ -606,6 +619,16 @@ class GameModelTests(TestCase):
             "Game canton must belong to the game's dataset version.",
         ):
             game.full_clean()
+        with self.assertRaisesMessage(
+            ValidationError,
+            "Game canton must belong to the game's dataset version.",
+        ):
+            Game.objects.create(
+                user=self.user,
+                mode=Game.Mode.CANTON,
+                canton=other_canton,
+                dataset_version=self.dataset_version,
+            )
 
     def test_game_target_type_label_matches_target_type(self) -> None:
         """Games expose a player-facing target type label."""

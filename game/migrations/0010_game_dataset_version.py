@@ -61,6 +61,16 @@ def backfill_game_dataset_versions(apps, schema_editor):
                 dataset_version_id=dataset_version_id,
             )
 
+    unresolved_games = game_model.objects.filter(dataset_version_id__isnull=True)
+    if unresolved_games.exists():
+        if current_dataset_version_id is not None:
+            unresolved_games.update(dataset_version_id=current_dataset_version_id)
+        else:
+            raise RuntimeError(
+                "Cannot enforce non-null game.dataset_version: unresolved games "
+                "remain and no GeoDatasetVersion fallback exists."
+            )
+
 
 class Migration(migrations.Migration):
     dependencies = [
