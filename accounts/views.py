@@ -13,7 +13,11 @@ from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_GET
 from django.views.generic.edit import FormView
 
-from game.statistics import build_player_statistics
+from game.statistics import (
+    build_player_advanced_statistics,
+    build_player_statistics,
+    parse_advanced_statistics_filters,
+)
 
 from .forms import RegistrationForm
 
@@ -49,6 +53,25 @@ def profile(request):
             "available_languages": settings.LANGUAGES,
             "statistics": build_player_statistics(request.user),
         },
+    )
+
+
+@login_required
+@require_GET
+def profile_stats(request):
+    """Render detailed personal statistics for the signed-in user.
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        A rendered detailed statistics page.
+    """
+    filters = parse_advanced_statistics_filters(request.GET)
+    return render(
+        request,
+        "accounts/stats.html",
+        {"statistics": build_player_advanced_statistics(request.user, filters)},
     )
 
 
