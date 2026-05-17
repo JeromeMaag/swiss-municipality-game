@@ -1936,6 +1936,27 @@
     }
   }
 
+  function applyInitialMapView(
+    map,
+    bounds,
+    mapId,
+    scopeBounds,
+    latitude,
+    longitude,
+    zoom,
+    revealState,
+    summaryState
+  ) {
+    applyBackgroundMinZoom(map, mapId, bounds);
+    if (!revealState && !summaryState && scopeBounds) {
+      map.invalidateSize();
+      fitScopeBounds(map, scopeBounds);
+    } else {
+      map.setView([latitude, longitude], zoom);
+    }
+    map.panInsideBounds(bounds, { animate: false });
+  }
+
   function refitMapView(
     map,
     municipalityLayer,
@@ -1995,12 +2016,17 @@
       zoomControl: false,
     });
 
-    map.setView([latitude, longitude], zoom);
-    constrainMapToBounds(map, switzerlandBounds, backgroundMapId);
-    if (scopeBounds) {
-      map.invalidateSize();
-      fitScopeBounds(map, scopeBounds);
-    }
+    applyInitialMapView(
+      map,
+      switzerlandBounds,
+      backgroundMapId,
+      scopeBounds,
+      latitude,
+      longitude,
+      zoom,
+      revealState,
+      summaryState
+    );
     let resizeFitTimeout = null;
     let baseLayerState = null;
     let boundaryState = null;
@@ -2148,27 +2174,6 @@
 
     map.on("zoomend", syncBoundaryDetailForZoom);
     const syncZoomControls = initializeMapZoomControls(map);
-    function runStableMapFit() {
-      refreshMapFit();
-      syncZoomControls();
-    }
-    function scheduleStableMapFit() {
-      const runOnFrame = function () {
-        if (window.requestAnimationFrame) {
-          window.requestAnimationFrame(runStableMapFit);
-        } else {
-          window.setTimeout(runStableMapFit, 0);
-        }
-      };
-      map.whenReady(runOnFrame);
-      if (baseLayerState && baseLayerState.layer) {
-        baseLayerState.layer.once("load", runStableMapFit);
-      }
-      window.addEventListener("load", runStableMapFit, { once: true });
-      [80, 220, 420, 900, 1500].forEach(function (delay) {
-        window.setTimeout(runStableMapFit, delay);
-      });
-    }
     applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
     initializeBackgroundMapPicker(
       map,
@@ -2225,7 +2230,6 @@
       return null;
     });
 
-    scheduleStableMapFit();
   }
 
   function initializeAuthChoiceModal() {
