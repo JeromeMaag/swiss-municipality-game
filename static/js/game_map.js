@@ -6,9 +6,19 @@
   const OUTLINE_STORAGE_KEY = "gemeindeguess.outlines";
   const DEFAULT_BACKGROUND_MAP_ID = "swissimage";
   const DEFAULT_BOUNDARY_LINE_MODE = "auto";
-  const DEFAULT_OUTLINE_MODE = "all";
   const BOUNDARY_LINE_MODES = new Set(["auto", "white", "black"]);
-  const OUTLINE_MODES = new Set(["all", "cantons", "municipalities", "off"]);
+  const OUTLINE_LAYER_ORDER = [
+    "cantons",
+    "municipalities",
+    "villages",
+  ];
+  const OUTLINE_LAYERS = new Set([
+    "all",
+    "cantons",
+    "municipalities",
+    "villages",
+    "off",
+  ]);
   const AUTO_BOUNDARY_LINE_THEME = {
     cartoVoyager: "black",
     lightRelief: "black",
@@ -235,8 +245,10 @@
         return layer;
       })
       .catch(function () {
-        map.getContainer().classList.add("game-map--boundary-error");
-        showMapStatus(map, options.errorMessage);
+        if (!options.suppressGlobalError) {
+          map.getContainer().classList.add("game-map--boundary-error");
+          showMapStatus(map, options.errorMessage);
+        }
         return null;
       });
   }
@@ -361,8 +373,60 @@
     return BOUNDARY_LINE_MODES.has(mode) ? mode : DEFAULT_BOUNDARY_LINE_MODE;
   }
 
-  function normalizeOutlineMode(mode) {
-    return OUTLINE_MODES.has(mode) ? mode : DEFAULT_OUTLINE_MODE;
+  function defaultOutlineLayers(hasMunicipalityLayer, hasVillageLayer) {
+    const layers = new Set(["cantons"]);
+    if (hasMunicipalityLayer) {
+      layers.add("municipalities");
+    }
+    if (hasVillageLayer) {
+      layers.add("villages");
+    }
+    return layers;
+  }
+
+  function serializeOutlineLayers(layers) {
+    if (layers.size === 0) {
+      return "off";
+    }
+    return OUTLINE_LAYER_ORDER.filter(function (layer) {
+      return layers.has(layer);
+    }).join(",");
+  }
+
+  function normalizeOutlineLayers(value, hasMunicipalityLayer, hasVillageLayer) {
+    if (!value) {
+      return defaultOutlineLayers(hasMunicipalityLayer, hasVillageLayer);
+    }
+    if (value === "all") {
+      return defaultOutlineLayers(hasMunicipalityLayer, hasVillageLayer);
+    }
+    if (value === "off") {
+      return new Set();
+    }
+
+    const layers = new Set();
+    String(value)
+      .split(",")
+      .map(function (layer) {
+        return layer.trim();
+      })
+      .forEach(function (layer) {
+        if (!OUTLINE_LAYERS.has(layer) || layer === "all" || layer === "off") {
+          return;
+        }
+        if (layer === "municipalities" && !hasMunicipalityLayer) {
+          return;
+        }
+        if (layer === "villages" && !hasVillageLayer) {
+          return;
+        }
+        layers.add(layer);
+      });
+
+    if (layers.size === 0) {
+      return defaultOutlineLayers(hasMunicipalityLayer, hasVillageLayer);
+    }
+    return layers;
   }
 
   function resolveBoundaryLineTheme(mapId, mode) {
@@ -393,11 +457,15 @@
     }
   }
 
-  function readStoredOutlineMode() {
+  function readStoredOutlineLayers(hasMunicipalityLayer, hasVillageLayer) {
     try {
-      return normalizeOutlineMode(window.localStorage.getItem(OUTLINE_STORAGE_KEY));
+      return normalizeOutlineLayers(
+        window.localStorage.getItem(OUTLINE_STORAGE_KEY),
+        hasMunicipalityLayer,
+        hasVillageLayer
+      );
     } catch (error) {
-      return DEFAULT_OUTLINE_MODE;
+      return defaultOutlineLayers(hasMunicipalityLayer, hasVillageLayer);
     }
   }
 
@@ -417,9 +485,12 @@
     }
   }
 
-  function storeOutlineMode(mode) {
+  function storeOutlineLayers(layers) {
     try {
-      window.localStorage.setItem(OUTLINE_STORAGE_KEY, mode);
+      window.localStorage.setItem(
+        OUTLINE_STORAGE_KEY,
+        serializeOutlineLayers(layers)
+      );
     } catch (error) {
       return;
     }
@@ -441,12 +512,30 @@
     );
   }
 
-  function syncOutlinePickers(mode) {
-    document.querySelectorAll("[data-outline-picker]").forEach(
+  function syncOutlineLayerPickers(
+    layers,
+    hasMunicipalityLayer,
+    hasVillageLayer
+  ) {
+    document.querySelectorAll("[data-outline-layer-picker]").forEach(
       function (picker) {
-        picker.value = mode;
+        const isMunicipalityPicker = picker.value === "municipalities";
+        const isVillagePicker = picker.value === "villages";
+        const isAvailable =
+          (!isMunicipalityPicker || hasMunicipalityLayer) &&
+          (!isVillagePicker || hasVillageLayer);
+        const setting = picker.closest("[data-outline-layer-setting]");
+        if (setting) {
+          setting.hidden = !isAvailable;
+        }
+        picker.disabled = !isAvailable;
+        picker.checked = isAvailable && layers.has(picker.value);
       }
     );
+  }
+
+  function hasOutlineLayer(layers, layer) {
+    return layers instanceof Set && layers.has(layer);
   }
 
   function boundaryLineColors(theme) {
@@ -454,11 +543,13 @@
       return {
         canton: "#e5322d",
         municipality: "#05080a",
+        village: "#f6d64a",
       };
     }
     return {
       canton: "#e5322d",
       municipality: "#ffffff",
+      village: "#f6d64a",
     };
   }
 
@@ -474,13 +565,22 @@
           revealState,
           summaryState,
           colors,
-          boundaryState.outlineMode
+          boundaryState.outlineLayers,
+          boundaryState.hasVillageLayer
+        )
+      );
+    }
+    if (boundaryState.municipalityOverlayLayer !== null) {
+      boundaryState.municipalityOverlayLayer.setStyle(
+        municipalityOverlayStyle(
+          colors,
+          boundaryState.outlineLayers
         )
       );
     }
     if (boundaryState.cantonLayer !== null) {
       boundaryState.cantonLayer.setStyle(
-        cantonStyle(colors, boundaryState.outlineMode)
+        cantonStyle(colors, boundaryState.outlineLayers)
       );
     }
   }
@@ -562,24 +662,43 @@
     });
   }
 
-  function initializeOutlinePicker(
+  function initializeOutlineLayerPickers(
     map,
     boundaryState,
     revealState,
     summaryState
   ) {
-    const pickers = document.querySelectorAll("[data-outline-picker]");
+    const pickers = document.querySelectorAll("[data-outline-layer-picker]");
     if (!pickers.length) {
       return;
     }
 
-    syncOutlinePickers(boundaryState.outlineMode);
+    syncOutlineLayerPickers(
+      boundaryState.outlineLayers,
+      boundaryState.hasMunicipalityLayer,
+      boundaryState.hasVillageLayer
+    );
     pickers.forEach(function (picker) {
       picker.addEventListener("change", function () {
-        const outlineMode = normalizeOutlineMode(picker.value);
-        storeOutlineMode(outlineMode);
-        syncOutlinePickers(outlineMode);
-        boundaryState.outlineMode = outlineMode;
+        const layer = picker.value;
+        const outlineLayers = new Set(boundaryState.outlineLayers);
+        if (picker.checked) {
+          outlineLayers.add(layer);
+        } else {
+          outlineLayers.delete(layer);
+        }
+        const normalizedLayers = normalizeOutlineLayers(
+          serializeOutlineLayers(outlineLayers),
+          boundaryState.hasMunicipalityLayer,
+          boundaryState.hasVillageLayer
+        );
+        storeOutlineLayers(normalizedLayers);
+        syncOutlineLayerPickers(
+          normalizedLayers,
+          boundaryState.hasMunicipalityLayer,
+          boundaryState.hasVillageLayer
+        );
+        boundaryState.outlineLayers = normalizedLayers;
         applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
       });
     });
@@ -953,7 +1072,13 @@
     };
   }
 
-  function municipalityStyle(revealState, summaryState, colors, outlineMode) {
+  function municipalityStyle(
+    revealState,
+    summaryState,
+    colors,
+    outlineLayers,
+    isVillageLayer
+  ) {
     return function (feature) {
       if (
         (revealState && isTargetFeature(feature, revealState.targetId)) ||
@@ -967,8 +1092,17 @@
           weight: 2,
         };
       }
-      if (outlineMode !== "all" && outlineMode !== "municipalities") {
+      const visibleMode = isVillageLayer ? "villages" : "municipalities";
+      if (!hasOutlineLayer(outlineLayers, visibleMode)) {
         return hiddenBoundaryStyle();
+      }
+      if (isVillageLayer) {
+        return {
+          color: colors.village,
+          fillOpacity: 0,
+          opacity: 0.86,
+          weight: 1.15,
+        };
       }
       return {
         color: colors.municipality,
@@ -979,15 +1113,28 @@
     };
   }
 
-  function cantonStyle(colors, outlineMode) {
-    if (outlineMode !== "all" && outlineMode !== "cantons") {
+  function municipalityOverlayStyle(colors, outlineLayers) {
+    if (!hasOutlineLayer(outlineLayers, "municipalities")) {
+      return hiddenBoundaryStyle();
+    }
+    return {
+      color: colors.municipality,
+      dashArray: "4 5",
+      fillOpacity: 0,
+      opacity: colors.municipality === "#ffffff" ? 0.62 : 0.7,
+      weight: colors.municipality === "#ffffff" ? 1 : 1.15,
+    };
+  }
+
+  function cantonStyle(colors, outlineLayers) {
+    if (!hasOutlineLayer(outlineLayers, "cantons")) {
       return hiddenBoundaryStyle();
     }
     return {
       color: colors.canton,
       fillOpacity: 0,
-      opacity: 0.9,
-      weight: 1.8,
+      opacity: 0.92,
+      weight: 2.6,
     };
   }
 
@@ -1215,7 +1362,15 @@
     });
     const backgroundMapId = readStoredBackgroundMapId();
     const boundaryLineMode = readStoredBoundaryLineMode();
-    const outlineMode = readStoredOutlineMode();
+    const hasVillageLayer =
+      mapElement.dataset.targetBoundaryLayer === "villages";
+    const hasMunicipalityLayer =
+      mapElement.dataset.targetBoundaryLayer === "municipalities" ||
+      Boolean(mapElement.dataset.municipalityOverlayUrl);
+    const outlineLayers = readStoredOutlineLayers(
+      hasMunicipalityLayer,
+      hasVillageLayer
+    );
     const baseLayerState = {
       layer: addBaseMapLayer(
         map,
@@ -1226,10 +1381,13 @@
     };
     const boundaryState = {
       cantonLayer: null,
+      hasMunicipalityLayer: hasMunicipalityLayer,
+      hasVillageLayer: hasVillageLayer,
       lineMode: boundaryLineMode,
       mapId: backgroundMapId,
       municipalityLayer: null,
-      outlineMode: outlineMode,
+      municipalityOverlayLayer: null,
+      outlineLayers: outlineLayers,
     };
     const initialBoundaryColors = boundaryLineColors(
       resolveBoundaryLineTheme(boundaryState.mapId, boundaryState.lineMode)
@@ -1244,7 +1402,7 @@
       mapElement.dataset.baseMapUrl
     );
     initializeBoundaryLinePicker(map, boundaryState, revealState, summaryState);
-    initializeOutlinePicker(map, boundaryState, revealState, summaryState);
+    initializeOutlineLayerPickers(map, boundaryState, revealState, summaryState);
     initializeMapSettingsMenu();
     window.L.control.scale({ imperial: false, metric: true }).addTo(map);
     if (revealState) {
@@ -1256,15 +1414,16 @@
       initializeGuessInteraction(map, mapElement);
     }
     mapElement.dataset.initialized = "true";
-    addBoundaryLayer(map, mapElement.dataset.municipalityBoundariesUrl, {
-      errorMessage: "Municipality boundaries could not be loaded.",
+    addBoundaryLayer(map, mapElement.dataset.targetBoundariesUrl, {
+      errorMessage: "Target boundaries could not be loaded.",
       fitBounds: !revealState && !summaryState,
       renderer: vectorRenderer,
       style: municipalityStyle(
         revealState,
         summaryState,
         initialBoundaryColors,
-        boundaryState.outlineMode
+        boundaryState.outlineLayers,
+        boundaryState.hasVillageLayer
       ),
     }).then(function (municipalityLayer) {
       boundaryState.municipalityLayer = municipalityLayer;
@@ -1280,11 +1439,24 @@
           drawRevealDistanceLine(map, municipalityLayer, reveal);
         });
       }
+      return addBoundaryLayer(map, mapElement.dataset.municipalityOverlayUrl, {
+        errorMessage: "Municipality overlay could not be loaded.",
+        fitBounds: false,
+        renderer: vectorRenderer,
+        suppressGlobalError: true,
+        style: municipalityOverlayStyle(
+          initialBoundaryColors,
+          boundaryState.outlineLayers
+        ),
+      });
+    }).then(function (municipalityOverlayLayer) {
+      boundaryState.municipalityOverlayLayer = municipalityOverlayLayer;
+      applyBoundaryLineTheme(map, boundaryState, revealState, summaryState);
       return addBoundaryLayer(map, mapElement.dataset.cantonBoundariesUrl, {
         errorMessage: "Canton boundaries could not be loaded.",
         fitBounds: false,
         renderer: vectorRenderer,
-        style: cantonStyle(initialBoundaryColors, boundaryState.outlineMode),
+        style: cantonStyle(initialBoundaryColors, boundaryState.outlineLayers),
       });
     }).then(function (cantonLayer) {
       boundaryState.cantonLayer = cantonLayer;

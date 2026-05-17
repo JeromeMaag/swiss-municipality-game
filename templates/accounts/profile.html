@@ -63,6 +63,7 @@
             {% for mode in statistics.map_modes %}
               <li>
                 <strong>{{ mode.label }}</strong>
+                <span>{{ mode.target_label }}</span>
                 <span>
                   {% blocktrans count games=mode.games_played %}{{ games }} game{% plural %}{{ games }} games{% endblocktrans %}
                 </span>
@@ -105,6 +106,7 @@
               <li>
                 <a href="{% url 'game:history_detail' game.id %}">
                   <span>{{ game.finished_at|date:"SHORT_DATE_FORMAT" }}</span>
+                  <span>{{ game.target_type_label }} · {{ game.map_label }}</span>
                   <strong>{{ game.total_score }}</strong>
                 </a>
               </li>

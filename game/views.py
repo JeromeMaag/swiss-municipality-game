@@ -13,7 +13,6 @@ from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
 from geo.constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
-from geo.models import Municipality
 from geo.selectors import get_current_cantons
 from tracking.models import GameEvent
 from tracking.services import track_event
@@ -29,10 +28,12 @@ from .services import (
     TURN_COUNT,
     GuessSubmissionError,
     InvalidGameModeError,
-    NotEnoughMunicipalitiesError,
+    InvalidGameTargetTypeError,
+    NotEnoughTargetsError,
     calculate_nearest_boundary_point,
     start_game_for_player,
     submit_guess_for_player,
+    target_id_for_turn,
 )
 
 
@@ -46,6 +47,7 @@ CLIENT_TRACKING_EVENT_TYPES = frozenset(
 MAX_TRACKING_REQUEST_BYTES = 4096
 GAME_MODE_FORM_FIELD = "game_mode"
 CANTON_FORM_FIELD = "canton"
+GAME_TARGET_TYPE_FORM_FIELD = "target_type"
 
 
 @require_GET
@@ -95,17 +97,28 @@ def start(request):
             player,
             mode=request.POST.get(GAME_MODE_FORM_FIELD, ""),
             canton_abbreviation=request.POST.get(CANTON_FORM_FIELD, ""),
+            target_type=request.POST.get(GAME_TARGET_TYPE_FORM_FIELD, ""),
         )
-    except (InvalidGameModeError, NotEnoughMunicipalitiesError) as error:
-        selected_game_mode, selected_canton = normalize_start_form_selection(
+    except (
+        InvalidGameModeError,
+        InvalidGameTargetTypeError,
+        NotEnoughTargetsError,
+    ) as error:
+        (
+            selected_game_mode,
+            selected_canton,
+            selected_target_type,
+        ) = normalize_start_form_selection(
             mode=request.POST.get(GAME_MODE_FORM_FIELD, ""),
             canton=request.POST.get(CANTON_FORM_FIELD, ""),
+            target_type=request.POST.get(GAME_TARGET_TYPE_FORM_FIELD, ""),
         )
         return render_game_index(
             request,
             error=str(error),
             selected_game_mode=selected_game_mode,
             selected_canton=selected_canton,
+            selected_target_type=selected_target_type,
             status=400,
         )
     return redirect("game:index")
@@ -369,7 +382,7 @@ def build_summary_reveals(game: Game) -> list[dict]:
                 "lat": guess.point.y,
                 "lng": guess.point.x,
                 "score": guess.score,
-                "targetId": turn.target_id,
+                "targetId": target_id_for_turn(turn),
                 "turnNumber": turn.turn_number,
             }
         )
@@ -382,7 +395,8 @@ def nearest_boundary_point_for_guess(guess: Guess) -> Point:
         return guess.nearest_boundary_point
     return calculate_nearest_boundary_point(
         point=guess.point,
-        target_id=guess.turn.target_id,
+        target_id=target_id_for_turn(guess.turn),
+        target_type=guess.turn.game.target_type,
     )
 
 
@@ -474,7 +488,11 @@ def get_last_guess_result(request, player=None) -> Guess | None:
         return None
 
     return (
-        Guess.objects.select_related("turn__game__canton", "turn__target__canton")
+        Guess.objects.select_related(
+            "turn__game__canton",
+            "turn__municipality_target__canton",
+            "turn__village_target__canton",
+        )
         .only(
             "id",
             "user",
@@ -488,24 +506,36 @@ def get_last_guess_result(request, player=None) -> Guess | None:
             "turn__turn_number",
             "turn__game__id",
             "turn__game__mode",
+            "turn__game__target_type",
             "turn__game__canton",
             "turn__game__canton__abbreviation",
             "turn__game__status",
             "turn__game__total_score",
             "turn__game__user",
             "turn__game__guest_key",
-            "turn__target__name",
-            "turn__target__population",
-            "turn__target__canton__abbreviation",
-            "turn__target__canton__name",
+            "turn__municipality_target",
+            "turn__municipality_target__name",
+            "turn__municipality_target__population",
+            "turn__municipality_target__canton__abbreviation",
+            "turn__municipality_target__canton__name",
+            "turn__village_target",
+            "turn__village_target__name",
+            "turn__village_target__canton__abbreviation",
+            "turn__village_target__canton__name",
         )
         .defer(
-            "turn__target__geom",
-            "turn__target__geom_simplified",
-            "turn__target__label_point",
-            "turn__target__canton__geom",
-            "turn__target__canton__geom_simplified",
-            "turn__target__canton__label_point",
+            "turn__municipality_target__geom",
+            "turn__municipality_target__geom_simplified",
+            "turn__municipality_target__label_point",
+            "turn__municipality_target__canton__geom",
+            "turn__municipality_target__canton__geom_simplified",
+            "turn__municipality_target__canton__label_point",
+            "turn__village_target__geom",
+            "turn__village_target__geom_simplified",
+            "turn__village_target__label_point",
+            "turn__village_target__canton__geom",
+            "turn__village_target__canton__geom_simplified",
+            "turn__village_target__canton__label_point",
         )
         .filter(player.owner_query(), pk=guess_pk)
         .first()
@@ -519,6 +549,7 @@ def render_game_index(
     error: str = "",
     selected_game_mode: str = Game.Mode.SWITZERLAND,
     selected_canton: str = "",
+    selected_target_type: str = Game.TargetType.MUNICIPALITY,
     status: int = 200,
 ):
     """Render the game index template.
@@ -540,28 +571,49 @@ def render_game_index(
     reveal_boundary_lng = ""
     reveal_guess_lat = ""
     reveal_guess_lng = ""
+    last_guess_target = None
+    last_guess_target_canton = None
+    last_guess_target_population = None
     selected_game_mode = selected_game_mode or Game.Mode.SWITZERLAND
+    selected_target_type = selected_target_type or Game.TargetType.MUNICIPALITY
     if active_game is not None:
         selected_game_mode = active_game.mode
-        selected_canton = active_game.canton.abbreviation if active_game.canton_id else ""
+        selected_canton = (
+            active_game.canton.abbreviation if active_game.canton_id else ""
+        )
+        selected_target_type = active_game.target_type
         turns = list(
-            active_game.turns.only(
+            active_game.turns.select_related(
+                "municipality_target__canton",
+                "village_target__canton",
+            ).only(
                 "id",
-                "target",
+                "municipality_target",
+                "village_target",
                 "turn_number",
                 "revealed_at",
+                "municipality_target__name",
+                "municipality_target__population",
+                "municipality_target__canton__name",
+                "municipality_target__canton__abbreviation",
+                "village_target__name",
+                "village_target__canton__name",
+                "village_target__canton__abbreviation",
             ).order_by("turn_number")
         )
+        for turn in turns:
+            turn.game = active_game
         if active_game.status == Game.Status.ACTIVE:
             current_turn = next(
                 (turn for turn in turns if turn.revealed_at is None),
                 None,
             )
         if current_turn is not None:
-            current_target_name = Municipality.objects.only("name").get(
-                pk=current_turn.target_id
-            ).name
+            current_target_name = current_turn.selected_target_name
     if last_guess is not None:
+        last_guess_target = last_guess.turn.selected_target
+        last_guess_target_canton = last_guess.turn.selected_target_canton
+        last_guess_target_population = last_guess.turn.selected_target_population
         boundary_point = nearest_boundary_point_for_guess(last_guess)
         reveal_boundary_lat = str(boundary_point.y)
         reveal_boundary_lng = str(boundary_point.x)
@@ -581,6 +633,9 @@ def render_game_index(
             "current_turn": current_turn,
             "current_target_name": current_target_name,
             "last_guess": last_guess,
+            "last_guess_target": last_guess_target,
+            "last_guess_target_canton": last_guess_target_canton,
+            "last_guess_target_population": last_guess_target_population,
             **map_context_for_game(active_game),
             "reveal_boundary_lat": reveal_boundary_lat,
             "reveal_boundary_lng": reveal_boundary_lng,
@@ -588,6 +643,7 @@ def render_game_index(
             "reveal_guess_lng": reveal_guess_lng,
             "selected_canton": selected_canton,
             "selected_game_mode": selected_game_mode,
+            "selected_target_type": selected_target_type,
             "show_game_map": active_game is None
             or (current_turn is not None or last_guess is not None),
             "open_auth_choice_modal": (
@@ -609,28 +665,65 @@ def render_game_index(
     )
 
 
-def normalize_start_form_selection(*, mode: str, canton: str) -> tuple[str, str]:
-    """Return safe mode/canton values for re-rendering the start form."""
+def normalize_start_form_selection(
+    *,
+    mode: str,
+    canton: str,
+    target_type: str,
+) -> tuple[str, str, str]:
+    """Return safe start-form values for re-rendering after validation errors."""
     selected_mode = mode if mode in Game.Mode.values else Game.Mode.SWITZERLAND
+    selected_target_type = (
+        target_type
+        if target_type in Game.TargetType.values
+        else Game.TargetType.MUNICIPALITY
+    )
     if selected_mode != Game.Mode.CANTON:
-        return selected_mode, ""
+        return (
+            selected_mode,
+            "",
+            selected_target_type,
+        )
 
     selected_canton = canton.strip().upper()
     valid_cantons = set(get_current_cantons().values_list("abbreviation", flat=True))
     if selected_canton not in valid_cantons:
-        return selected_mode, ""
-    return selected_mode, selected_canton
+        return (
+            selected_mode,
+            "",
+            selected_target_type,
+        )
+    return (
+        selected_mode,
+        selected_canton,
+        selected_target_type,
+    )
 
 
 def map_context_for_game(game: Game | None) -> dict[str, str]:
     """Return map labels and GeoJSON URLs for a game scope."""
     scope_query = map_scope_query_for_game(game)
+    target_boundaries_route = (
+        "geo:village_boundaries_geojson"
+        if game is not None and game.target_type == Game.TargetType.VILLAGE
+        else "geo:municipality_boundaries_geojson"
+    )
+    target_boundary_layer = (
+        "villages"
+        if game is not None and game.target_type == Game.TargetType.VILLAGE
+        else "municipalities"
+    )
+    municipality_overlay_url = ""
+    if game is not None and game.target_type == Game.TargetType.VILLAGE:
+        municipality_overlay_url = (
+            reverse("geo:municipality_boundaries_geojson") + scope_query
+        )
     return {
         "canton_boundaries_url": reverse("geo:cantons_geojson") + scope_query,
         "map_label": game.map_label if game is not None else "CH",
-        "municipality_boundaries_url": (
-            reverse("geo:municipality_boundaries_geojson") + scope_query
-        ),
+        "target_boundaries_url": reverse(target_boundaries_route) + scope_query,
+        "target_boundary_layer": target_boundary_layer,
+        "municipality_overlay_url": municipality_overlay_url,
     }
 
 

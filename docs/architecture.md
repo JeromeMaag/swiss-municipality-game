@@ -9,8 +9,8 @@ thin Leaflet frontend.
 : Registration, login, logout, profile settings, and personal statistics.
 
 `geo`
-: Imported canton and municipality data, GeoJSON endpoints, and data import
-commands.
+: Imported canton, municipality, and village data, GeoJSON endpoints, and data
+  import commands.
 
 `game`
 : Game sessions, turns, guesses, player identity, scoring, page views,
@@ -22,18 +22,19 @@ finish.
 
 ## Data Flow
 
-1. A player chooses Switzerland mode or a single-canton mode.
+1. A player chooses Switzerland mode or a single-canton mode, then chooses
+   whether targets are municipalities or villages.
 2. The backend resolves the player identity as either an authenticated user or a
    guest browser key.
-3. The backend creates five turns with unique active municipalities inside the
-   chosen map scope.
-4. The game page loads neutral municipality boundaries and canton boundaries for
-   that scope.
+3. The backend creates five turns with unique active targets inside the chosen
+   map scope and target type.
+4. The game page loads neutral target boundaries and canton boundaries for that
+   scope. Village games can also load municipality boundaries as an optional
+   visual overlay.
 5. The user places a pin and submits a guess.
 6. Django validates ownership and the turn, calculates distance and score in
    PostGIS, stores the guess, and reveals the turn.
-7. The reveal view highlights the target municipality and can load municipality
-   labels.
+7. The reveal view highlights the target area and can load municipality labels.
 8. After five turns, the game is marked as finished and the summary page shows
    the result.
 9. Signed-in users can replay finished games from history and see aggregate
@@ -43,7 +44,7 @@ finish.
 
 The database is the source of truth for gameplay:
 
-- target municipalities
+- target municipalities and villages
 - boundaries
 - guesses
 - distances
@@ -59,10 +60,11 @@ The game uses three GeoJSON endpoint types:
 
 - canton boundaries with canton names
 - municipality boundaries without names
+- village boundaries without names
 - municipality labels after reveal
 
-Municipality names are deliberately withheld during the guessing phase. Label
-access is tied to a revealed turn owned by the current player identity. Boundary
+Target names are deliberately withheld during the guessing phase. Label access
+is tied to a revealed turn owned by the current player identity. Boundary
 endpoints can be scoped with a canton query parameter for single-canton games.
 
 ## Frontend

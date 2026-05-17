@@ -362,12 +362,17 @@ a {
   gap: 0.45rem;
 }
 
-.map-settings-field span {
+.map-settings-field > legend,
+.map-settings-field > span {
   color: rgba(255, 255, 255, 0.72);
   font-size: 0.7rem;
   font-weight: 820;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   text-transform: uppercase;
+}
+
+.map-settings-field > legend {
+  padding: 0;
 }
 
 .map-settings-field select {
@@ -394,6 +399,41 @@ a {
 
 .map-settings-field option {
   color: #101a20;
+}
+
+.map-settings-boundaries {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.map-settings-boundary-list {
+  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+}
+
+.map-settings-boundary-option {
+  align-items: center;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  gap: 0.62rem;
+  min-height: 1.65rem;
+  width: 100%;
+}
+
+.map-settings-boundary-option input {
+  accent-color: var(--accent);
+  height: 1rem;
+  margin: 0;
+  width: 1rem;
+}
+
+.map-settings-boundary-option span {
+  font-size: 0.82rem;
+  font-weight: 740;
 }
 
 .game-sidebar {
@@ -1181,6 +1221,7 @@ a {
   align-items: center;
   border-top: 1px solid var(--border);
   display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
   justify-content: space-between;
   padding-top: 0.7rem;

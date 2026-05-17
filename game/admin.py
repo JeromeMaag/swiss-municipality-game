@@ -10,7 +10,7 @@ class TurnInline(admin.TabularInline):
 
     model = Turn
     extra = 0
-    autocomplete_fields = ("target",)
+    autocomplete_fields = ("municipality_target", "village_target")
     readonly_fields = ("started_at", "revealed_at")
 
 
@@ -21,13 +21,21 @@ class GameAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "owner_label",
+        "target_type",
         "map_label",
         "status",
         "total_score",
         "started_at",
         "finished_at",
     )
-    list_filter = ("mode", "canton", "status", "started_at", "finished_at")
+    list_filter = (
+        "target_type",
+        "mode",
+        "canton",
+        "status",
+        "started_at",
+        "finished_at",
+    )
     search_fields = ("user__username", "guest_key")
     autocomplete_fields = ("user", "canton")
     readonly_fields = ("started_at",)
@@ -37,15 +45,30 @@ class GameAdmin(admin.ModelAdmin):
         """Return games with canton data for changelist map labels."""
         return super().get_queryset(request).select_related("canton")
 
+    def get_readonly_fields(self, request, obj=None):
+        """Keep target type read-only once turns have been created."""
+        readonly_fields = list(super().get_readonly_fields(request, obj))
+        if obj is not None and obj.turns.exists():
+            readonly_fields.append("target_type")
+        return tuple(readonly_fields)
+
 
 @admin.register(Turn)
 class TurnAdmin(admin.ModelAdmin):
     """Admin configuration for turns."""
 
-    list_display = ("id", "game", "turn_number", "target", "started_at", "revealed_at")
+    list_display = (
+        "id",
+        "game",
+        "turn_number",
+        "municipality_target",
+        "village_target",
+        "started_at",
+        "revealed_at",
+    )
     list_filter = ("turn_number", "started_at", "revealed_at")
-    search_fields = ("target__name",)
-    autocomplete_fields = ("game", "target")
+    search_fields = ("municipality_target__name", "village_target__name")
+    autocomplete_fields = ("game", "municipality_target", "village_target")
     readonly_fields = ("started_at",)
 
 
@@ -62,6 +85,11 @@ class GuessAdmin(admin.ModelAdmin):
         "guessed_at",
     )
     list_filter = ("guessed_at",)
-    search_fields = ("user__username", "guest_key", "turn__target__name")
+    search_fields = (
+        "user__username",
+        "guest_key",
+        "turn__municipality_target__name",
+        "turn__village_target__name",
+    )
     autocomplete_fields = ("turn",)
     readonly_fields = ("user", "guest_key", "guessed_at")

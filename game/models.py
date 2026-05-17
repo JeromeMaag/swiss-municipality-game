@@ -6,11 +6,14 @@ from django.conf import settings
 from django.contrib.gis.db import models
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
+from django.utils.translation import gettext_lazy as _
 
 
 GAME_STATUS_ACTIVE = "active"
 GAME_MODE_SWITZERLAND = "switzerland"
 GAME_MODE_CANTON = "canton"
+GAME_TARGET_TYPE_MUNICIPALITY = "municipality"
+GAME_TARGET_TYPE_VILLAGE = "village"
 
 
 class Game(models.Model):
@@ -28,6 +31,12 @@ class Game(models.Model):
 
         SWITZERLAND = GAME_MODE_SWITZERLAND, "Switzerland"
         CANTON = GAME_MODE_CANTON, "Single canton"
+
+    class TargetType(models.TextChoices):
+        """Allowed geographic target types for a game."""
+
+        MUNICIPALITY = GAME_TARGET_TYPE_MUNICIPALITY, "Municipality"
+        VILLAGE = GAME_TARGET_TYPE_VILLAGE, "Village"
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -50,6 +59,11 @@ class Game(models.Model):
         max_length=20,
         choices=Mode.choices,
         default=Mode.SWITZERLAND,
+    )
+    target_type = models.CharField(
+        max_length=20,
+        choices=TargetType.choices,
+        default=TargetType.MUNICIPALITY,
     )
     canton = models.ForeignKey(
         "geo.Canton",
@@ -82,6 +96,10 @@ class Game(models.Model):
                 name="game_guest_status_idx",
             ),
             models.Index(fields=["mode", "canton"], name="game_mode_canton_idx"),
+            models.Index(
+                fields=["target_type", "mode", "canton"],
+                name="game_target_scope_idx",
+            ),
             models.Index(fields=["status", "started_at"]),
         ]
         constraints = [
@@ -151,12 +169,19 @@ class Game(models.Model):
             return self.canton.abbreviation
         return "CH"
 
+    @property
+    def target_type_label(self) -> str:
+        """Return the plural target type label for game UI surfaces."""
+        if self.target_type == self.TargetType.VILLAGE:
+            return _("Villages")
+        return _("Municipalities")
+
     def clean(self) -> None:
-        """Validate game ownership, scoring extent, and lifecycle consistency.
+        """Validate game ownership, scope, target type, and lifecycle consistency.
 
         Raises:
-            ValidationError: If ownership is invalid, the scoring extent is
-                non-finite, or a finished game has no finish timestamp.
+            ValidationError: If ownership, scope, scoring extent, or
+                finished-game lifecycle data is invalid.
         """
         super().clean()
         if (self.user_id is None) == (not self.guest_key):
@@ -182,10 +207,51 @@ class Game(models.Model):
             raise ValidationError(
                 {"finished_at": "Finished games require a finish timestamp."}
             )
+        if self.target_type_changed_after_turns_exist():
+            raise ValidationError(
+                {
+                    "target_type": (
+                        "Game target type cannot change after turns have been "
+                        "created."
+                    )
+                }
+            )
+
+    def save(self, *args, **kwargs) -> None:
+        """Persist the game while preserving existing turn target consistency."""
+        if self.target_type_changed_after_turns_exist(
+            update_fields=kwargs.get("update_fields"),
+        ):
+            raise ValidationError(
+                {
+                    "target_type": (
+                        "Game target type cannot change after turns have been "
+                        "created."
+                    )
+                }
+            )
+        super().save(*args, **kwargs)
+
+    def target_type_changed_after_turns_exist(self, *, update_fields=None) -> bool:
+        """Return whether target type was changed after turns were created."""
+        if self.pk is None:
+            return False
+        if update_fields is not None and "target_type" not in update_fields:
+            return False
+        persisted_target_type = (
+            type(self).objects.filter(pk=self.pk)
+            .values_list("target_type", flat=True)
+            .first()
+        )
+        return (
+            persisted_target_type is not None
+            and persisted_target_type != self.target_type
+            and self.turns.exists()
+        )
 
 
 class Turn(models.Model):
-    """One target municipality within a game."""
+    """One target within a game."""
 
     game = models.ForeignKey(
         Game,
@@ -195,8 +261,17 @@ class Turn(models.Model):
     turn_number = models.PositiveSmallIntegerField(
         validators=[MinValueValidator(1), MaxValueValidator(5)]
     )
-    target = models.ForeignKey(
+    municipality_target = models.ForeignKey(
         "geo.Municipality",
+        blank=True,
+        null=True,
+        on_delete=models.PROTECT,
+        related_name="target_turns",
+    )
+    village_target = models.ForeignKey(
+        "geo.Village",
+        blank=True,
+        null=True,
         on_delete=models.PROTECT,
         related_name="target_turns",
     )
@@ -213,12 +288,31 @@ class Turn(models.Model):
                 name="unique_turn_number_per_game",
             ),
             models.UniqueConstraint(
-                fields=["game", "target"],
-                name="unique_turn_target_per_game",
+                fields=["game", "municipality_target"],
+                condition=models.Q(municipality_target__isnull=False),
+                name="unique_turn_municipality_target_per_game",
+            ),
+            models.UniqueConstraint(
+                fields=["game", "village_target"],
+                condition=models.Q(village_target__isnull=False),
+                name="unique_turn_village_target_per_game",
             ),
             models.CheckConstraint(
                 condition=models.Q(turn_number__gte=1, turn_number__lte=5),
                 name="turn_number_between_1_and_5",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        municipality_target__isnull=False,
+                        village_target__isnull=True,
+                    )
+                    | models.Q(
+                        municipality_target__isnull=True,
+                        village_target__isnull=False,
+                    )
+                ),
+                name="turn_has_exactly_one_target",
             ),
         ]
 
@@ -230,15 +324,111 @@ class Turn(models.Model):
         """
         return f"Turn {self.turn_number} of game {self.game_id or 'unsaved'}"
 
+    @property
+    def selected_target(self):
+        """Return the municipality or village target matching the game type."""
+        if self.game.target_type == Game.TargetType.VILLAGE:
+            return self.village_target
+        return self.municipality_target
+
+    @property
+    def selected_target_name(self) -> str:
+        """Return the display name for the selected turn target."""
+        target = self.selected_target
+        return target.name if target is not None else ""
+
+    @property
+    def selected_target_canton(self):
+        """Return the canton for the selected turn target."""
+        target = self.selected_target
+        return target.canton if target is not None else None
+
+    @property
+    def selected_target_population(self) -> int | None:
+        """Return target population when the selected target stores it."""
+        target = self.selected_target
+        return getattr(target, "population", None)
+
     def clean(self) -> None:
         """Validate turn consistency.
 
         Raises:
-            ValidationError: If the target municipality is inactive.
+            ValidationError: If target ownership or activity is invalid.
         """
         super().clean()
-        if self.target_id and not self.target.is_active:
-            raise ValidationError({"target": "Target municipality must be active."})
+        errors: dict[str, list[str]] = {}
+        has_municipality = self.municipality_target_id is not None
+        has_village = self.village_target_id is not None
+
+        if has_municipality == has_village:
+            errors.setdefault("municipality_target", []).append(
+                "Turns must have exactly one municipality or village target."
+            )
+        if (
+            self.game_id
+            and self.game.target_type == Game.TargetType.MUNICIPALITY
+            and not has_municipality
+        ):
+            errors.setdefault("municipality_target", []).append(
+                "Municipality games require a municipality target."
+            )
+        if (
+            self.game_id
+            and self.game.target_type == Game.TargetType.VILLAGE
+            and not has_village
+        ):
+            errors.setdefault("village_target", []).append(
+                "Village games require a village target."
+            )
+        if self.municipality_target_id and not self.municipality_target.is_active:
+            errors.setdefault("municipality_target", []).append(
+                "Target municipality must be active."
+            )
+        if self.village_target_id and not self.village_target.is_active:
+            errors.setdefault("village_target", []).append(
+                "Target village must be active."
+            )
+        if (
+            self.game_id
+            and self.game.mode == Game.Mode.CANTON
+            and self.game.canton_id is not None
+        ):
+            if (
+                self.municipality_target_id
+                and self.municipality_target.canton_id != self.game.canton_id
+            ):
+                errors.setdefault("municipality_target", []).append(
+                    "Turn target must belong to the game's canton."
+                )
+            if (
+                self.village_target_id
+                and self.village_target.canton_id != self.game.canton_id
+            ):
+                errors.setdefault("village_target", []).append(
+                    "Turn target must belong to the game's canton."
+                )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs) -> None:
+        """Persist the turn after enforcing target consistency rules."""
+        update_fields = kwargs.get("update_fields")
+        target_fields = {
+            "game",
+            "game_id",
+            "municipality_target",
+            "municipality_target_id",
+            "village_target",
+            "village_target_id",
+        }
+        if (
+            self._state.adding
+            or update_fields is None
+            or target_fields.intersection(update_fields)
+        ):
+            self.clean()
+        super().save(*args, **kwargs)
 
 
 class Guess(models.Model):
@@ -346,7 +536,7 @@ class Guess(models.Model):
         """Validate guess consistency.
 
         Raises:
-            ValidationError: If the guess user does not match the game user.
+            ValidationError: If the guess owner does not match the game owner.
         """
         super().clean()
         errors = {}

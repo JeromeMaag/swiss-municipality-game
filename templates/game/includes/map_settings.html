@@ -41,14 +41,22 @@
         <option value="black">{% trans "Black" %}</option>
       </select>
     </label>
-    <label class="map-settings-field">
-      <span>{% trans "Outlines" %}</span>
-      <select data-outline-picker>
-        <option value="all" selected>{% trans "All outlines" %}</option>
-        <option value="cantons">{% trans "Cantons only" %}</option>
-        <option value="municipalities">{% trans "Municipalities only" %}</option>
-        <option value="off">{% trans "Off" %}</option>
-      </select>
-    </label>
+    <fieldset class="map-settings-field map-settings-boundaries">
+      <legend>{% trans "Boundaries" %}</legend>
+      <div class="map-settings-boundary-list">
+        <label class="map-settings-boundary-option" data-outline-layer-setting="cantons">
+          <input type="checkbox" value="cantons" data-outline-layer-picker checked>
+          <span>{% trans "Cantons" %}</span>
+        </label>
+        <label class="map-settings-boundary-option" data-outline-layer-setting="municipalities">
+          <input type="checkbox" value="municipalities" data-outline-layer-picker checked>
+          <span>{% trans "Municipalities" %}</span>
+        </label>
+        <label class="map-settings-boundary-option" data-outline-layer-setting="villages" hidden>
+          <input type="checkbox" value="villages" data-outline-layer-picker checked disabled>
+          <span>{% trans "Villages" %}</span>
+        </label>
+      </div>
+    </fieldset>
   </div>
 </section>

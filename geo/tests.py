@@ -23,6 +23,7 @@ from django.urls import reverse
 from django.utils import timezone
 from shapely.geometry import Polygon
 
+from geo.admin import bump_village_dataset_versions
 from geo.admin_views import truncate_command_output
 from geo.constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
 from game.identity import GUEST_PLAYER_SESSION_KEY
@@ -79,8 +80,19 @@ from .management.commands.import_swissboundaries3d import (
     select_geopackage_asset,
     select_stac_item,
 )
-from .models import Canton, GeoDatasetVersion, Municipality
-from .serializers import feature_collection, get_display_geometry
+from .management.commands.import_villages import (
+    download_asset as download_village_asset,
+    import_villages,
+    resolve_dataset_version as resolve_village_dataset_version,
+    resolve_layer_source as resolve_village_layer_source,
+    safe_extract_zip as safe_extract_village_zip,
+)
+from .models import Canton, GeoDatasetVersion, Municipality, Village
+from .serializers import (
+    feature_collection,
+    get_display_geometry,
+    serialize_village_boundaries,
+)
 from .selectors import (
     get_cantons_for_dataset,
     get_current_cantons,
@@ -346,6 +358,132 @@ class GeoModelTests(TestCase):
         with self.assertRaises(ValidationError):
             municipality.full_clean()
 
+    def test_village_string(self) -> None:
+        """Villages expose name, postal code, and canton abbreviation."""
+        village = Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier="village-1",
+            name="Aadorf",
+            postal_code="8355",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+        self.assertEqual(str(village), "Aadorf 8355 (ZH)")
+
+    def test_village_admin_cache_bump_updates_dataset_version(self) -> None:
+        """Village admin writes can invalidate cached village boundaries."""
+        self.assertIsNone(self.dataset_version.villages_updated_at)
+
+        bump_village_dataset_versions({self.dataset_version.id})
+
+        self.dataset_version.refresh_from_db()
+        self.assertIsNotNone(self.dataset_version.villages_updated_at)
+
+    def test_village_string_without_postal_code(self) -> None:
+        """Villages can be displayed when the source has no postal code."""
+        village = Village.objects.create(
+            dataset_version=self.dataset_version,
+            name="Aadorf",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+        self.assertEqual(str(village), "Aadorf (ZH)")
+
+    def test_village_source_identifier_is_unique_per_dataset(self) -> None:
+        """Non-empty village source identifiers are unique per dataset."""
+        Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier="village-1",
+            name="Aadorf",
+            postal_code="8355",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Village.objects.create(
+                dataset_version=self.dataset_version,
+                source_identifier="village-1",
+                name="Duplicate Aadorf",
+                postal_code="8355",
+                canton=self.canton,
+                geom=make_test_geometry(),
+            )
+
+    def test_blank_village_source_identifier_can_repeat(self) -> None:
+        """Blank village source identifiers are allowed for manual records."""
+        Village.objects.create(
+            dataset_version=self.dataset_version,
+            name="Aadorf",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+        village = Village.objects.create(
+            dataset_version=self.dataset_version,
+            name="Ettenhausen",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+        self.assertEqual(village.name, "Ettenhausen")
+
+    def test_village_requires_canton_from_same_dataset(self) -> None:
+        """Village validation rejects cantons from another dataset version."""
+        other_dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2027-01-01",
+        )
+        other_canton = Canton.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+        village = Village(
+            dataset_version=self.dataset_version,
+            name="Invalid Village",
+            canton=other_canton,
+            geom=make_test_geometry(),
+        )
+
+        with self.assertRaises(ValidationError):
+            village.full_clean()
+
+    def test_village_requires_municipality_from_same_dataset_and_canton(self) -> None:
+        """Village validation rejects incompatible municipality assignments."""
+        other_dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2027-01-01",
+        )
+        other_canton = Canton.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+        other_municipality = Municipality.objects.create(
+            dataset_version=other_dataset_version,
+            bfs_number=261,
+            name="Zurich",
+            canton=other_canton,
+            geom=make_test_geometry(),
+        )
+        village = Village(
+            dataset_version=self.dataset_version,
+            name="Invalid Village",
+            canton=self.canton,
+            municipality=other_municipality,
+            geom=make_test_geometry(),
+        )
+
+        with self.assertRaises(ValidationError):
+            village.full_clean()
+
 
 class GeoSerializerTests(TestCase):
     """Tests for GeoJSON serializer helpers."""
@@ -393,6 +531,25 @@ class GeoSerializerTests(TestCase):
 
         self.assertEqual(get_display_geometry(self.canton), self.canton.geom)
 
+    def test_serialize_village_boundaries_omits_names(self) -> None:
+        """Village boundaries expose neutral ids but no village names."""
+        village = Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier="village-1",
+            name="Aadorf",
+            postal_code="8355",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+        data = json.loads(serialize_village_boundaries([village]))
+
+        properties = data["features"][0]["properties"]
+        self.assertEqual(properties["id"], village.id)
+        self.assertNotIn("name", properties)
+        self.assertNotIn("postal_code", properties)
+        self.assertNotIn("canton", properties)
+
 
 class GeoJSONEndpointTests(TestCase):
     """Tests for geodata GeoJSON endpoints."""
@@ -426,6 +583,17 @@ class GeoJSONEndpointTests(TestCase):
             name="Zurich",
             canton=self.canton,
             population=443000,
+            geom=make_test_geometry(),
+            geom_simplified=make_test_geometry(),
+            label_point=Point(8.05, 47.05, srid=4326),
+        )
+        self.village = Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier="village-1",
+            name="Aadorf",
+            postal_code="8355",
+            canton=self.canton,
+            municipality=self.municipality,
             geom=make_test_geometry(),
             geom_simplified=make_test_geometry(),
             label_point=Point(8.05, 47.05, srid=4326),
@@ -468,7 +636,7 @@ class GeoJSONEndpointTests(TestCase):
         turn = Turn.objects.create(
             game=game,
             turn_number=1,
-            target=self.municipality,
+            municipality_target=self.municipality,
             revealed_at=timezone.now() if revealed else None,
         )
         session = self.client.session
@@ -495,6 +663,7 @@ class GeoJSONEndpointTests(TestCase):
         urls = [
             reverse("geo:cantons_geojson"),
             reverse("geo:municipality_boundaries_geojson"),
+            reverse("geo:village_boundaries_geojson"),
         ]
 
         for url in urls:
@@ -573,6 +742,80 @@ class GeoJSONEndpointTests(TestCase):
 
         self.assertEqual(len(data["features"]), 1)
         self.assertEqual(data["features"][0]["properties"]["id"], other_municipality.id)
+
+    def test_village_boundaries_do_not_include_names(self) -> None:
+        """Village boundary endpoint does not reveal village names."""
+        response = self.client.get(reverse("geo:village_boundaries_geojson"))
+        data = self.assert_geojson_response(response)
+
+        properties = data["features"][0]["properties"]
+        self.assertEqual(properties["id"], self.village.id)
+        self.assertNotIn("source_identifier", properties)
+        self.assertNotIn("name", properties)
+        self.assertNotIn("postal_code", properties)
+        self.assertNotIn("canton", properties)
+
+    def test_village_boundaries_support_canton_filter(self) -> None:
+        """Village boundary endpoint can return one selected canton."""
+        other_canton = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=2,
+            abbreviation="BE",
+            name="Bern",
+            geom=make_test_geometry(),
+        )
+        other_municipality = Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=351,
+            name="Bern",
+            canton=other_canton,
+            geom=make_test_geometry(),
+        )
+        other_village = Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier="village-bern",
+            name="Bern Village",
+            postal_code="3000",
+            canton=other_canton,
+            municipality=other_municipality,
+            geom=make_test_geometry(),
+        )
+
+        response = self.client.get(
+            reverse("geo:village_boundaries_geojson"),
+            {"canton": "BE"},
+        )
+        data = self.assert_geojson_response(response)
+
+        self.assertEqual(len(data["features"]), 1)
+        self.assertEqual(data["features"][0]["properties"]["id"], other_village.id)
+
+    def test_village_boundaries_etag_changes_when_villages_change(self) -> None:
+        """Village boundary cache keys change after village data imports."""
+        url = reverse("geo:village_boundaries_geojson")
+        first_response = self.client.get(url)
+        first_data = self.assert_geojson_response(first_response)
+        first_etag = first_response["ETag"]
+
+        Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier="village-2",
+            name="Second Village",
+            postal_code="8356",
+            canton=self.canton,
+            municipality=self.municipality,
+            geom=make_test_geometry(),
+        )
+        GeoDatasetVersion.objects.filter(pk=self.dataset_version.pk).update(
+            villages_updated_at=timezone.now(),
+        )
+
+        response = self.client.get(url, HTTP_IF_NONE_MATCH=first_etag)
+        data = self.assert_geojson_response(response)
+
+        self.assertEqual(len(first_data["features"]), 1)
+        self.assertEqual(len(data["features"]), 2)
+        self.assertNotEqual(response["ETag"], first_etag)
 
     def test_municipality_labels_include_reveal_properties(self) -> None:
         """Municipality label endpoint returns names for reveal mode."""
@@ -669,7 +912,7 @@ class GeoJSONEndpointTests(TestCase):
         turn = Turn.objects.create(
             game=game,
             turn_number=1,
-            target=self.municipality,
+            municipality_target=self.municipality,
             revealed_at=timezone.now(),
         )
         session = self.client.session
@@ -780,12 +1023,14 @@ class GeoJSONEndpointTests(TestCase):
 
     def test_feature_collection_endpoints_are_empty_without_dataset(self) -> None:
         """Feature collection endpoints return empty data before import."""
+        Village.objects.all().delete()
         Municipality.objects.all().delete()
         Canton.objects.all().delete()
         GeoDatasetVersion.objects.all().delete()
         urls = [
             reverse("geo:cantons_geojson"),
             reverse("geo:municipality_boundaries_geojson"),
+            reverse("geo:village_boundaries_geojson"),
         ]
 
         for url in urls:
@@ -1009,6 +1254,266 @@ class ImportBoundariesCommandTests(TestCase):
         self.assertIsNotNone(municipality.label_point)
         self.assertEqual(Canton.objects.count(), 1)
         self.assertEqual(Municipality.objects.count(), 1)
+
+
+class ImportVillagesCommandTests(TestCase):
+    """Tests for village/locality import command behavior."""
+
+    def setUp(self) -> None:
+        """Create shared boundary fixtures for village imports."""
+        self.dataset_version = GeoDatasetVersion.objects.create(
+            name="swissBOUNDARIES3D",
+            version_label="2026-01-01",
+        )
+        self.canton = Canton.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=1,
+            abbreviation="ZH",
+            name="Zurich",
+            geom=make_test_geometry(),
+        )
+        self.municipality = Municipality.objects.create(
+            dataset_version=self.dataset_version,
+            bfs_number=261,
+            name="Zurich",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+    def village_gdf(self):
+        """Return fake village rows for command tests."""
+        return gpd.GeoDataFrame(
+            [
+                {
+                    "LOCALITYID": "village-1",
+                    "NAME": "Aadorf",
+                    "STATUS": "REAL",
+                    "VALIDITY": "2026-01-01",
+                    "geometry": Polygon(
+                        (
+                            (8.02, 47.02),
+                            (8.08, 47.02),
+                            (8.08, 47.08),
+                            (8.02, 47.08),
+                            (8.02, 47.02),
+                        )
+                    ),
+                },
+                {
+                    "LOCALITYID": "liechtenstein-1",
+                    "NAME": "Vaduz",
+                    "STATUS": "REAL",
+                    "VALIDITY": "2026-01-01",
+                    "geometry": Polygon(
+                        (
+                            (9.50, 47.10),
+                            (9.55, 47.10),
+                            (9.55, 47.15),
+                            (9.50, 47.15),
+                            (9.50, 47.10),
+                        )
+                    ),
+                },
+            ],
+            crs="EPSG:4326",
+        )
+
+    def test_resolve_dataset_version_uses_imported_boundary_dataset(self) -> None:
+        """Explicit village imports ignore unrelated versions with same label."""
+        unrelated_dataset = GeoDatasetVersion.objects.create(
+            name="unrelatedBOUNDARIES",
+            version_label=self.dataset_version.version_label,
+        )
+        unrelated_canton = Canton.objects.create(
+            dataset_version=unrelated_dataset,
+            bfs_number=2,
+            abbreviation="BE",
+            name="Bern",
+            geom=make_test_geometry(),
+        )
+        Municipality.objects.create(
+            dataset_version=unrelated_dataset,
+            bfs_number=351,
+            name="Bern",
+            canton=unrelated_canton,
+            geom=make_test_geometry(),
+        )
+        GeoDatasetVersion.objects.filter(pk=self.dataset_version.pk).update(
+            imported_at=timezone.now() + timedelta(seconds=1),
+        )
+
+        dataset_version = resolve_village_dataset_version(
+            self.dataset_version.version_label,
+        )
+
+        self.assertEqual(dataset_version, self.dataset_version)
+
+    def test_resolve_dataset_version_falls_back_within_dataset_family(self) -> None:
+        """Implicit village imports do not hop to another boundary dataset."""
+        current_empty_dataset = GeoDatasetVersion.objects.create(
+            name=self.dataset_version.name,
+            version_label="2027-01-01",
+        )
+        unrelated_dataset = GeoDatasetVersion.objects.create(
+            name="unrelatedBOUNDARIES",
+            version_label="2027-01-01",
+        )
+        unrelated_canton = Canton.objects.create(
+            dataset_version=unrelated_dataset,
+            bfs_number=2,
+            abbreviation="BE",
+            name="Bern",
+            geom=make_test_geometry(),
+        )
+        Municipality.objects.create(
+            dataset_version=unrelated_dataset,
+            bfs_number=351,
+            name="Bern",
+            canton=unrelated_canton,
+            geom=make_test_geometry(),
+        )
+        GeoDatasetVersion.objects.filter(pk=current_empty_dataset.pk).update(
+            imported_at=timezone.now() + timedelta(seconds=1),
+        )
+
+        dataset_version = resolve_village_dataset_version("")
+
+        self.assertEqual(dataset_version, self.dataset_version)
+
+    def test_command_imports_villages_for_current_dataset(self) -> None:
+        """Command imports villages and skips rows outside Swiss cantons."""
+        output = StringIO()
+        with TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "villages.shp"
+            source.write_text("", encoding="utf-8")
+
+            with mock.patch(
+                "geo.management.commands.import_villages.read_village_layer",
+                return_value=self.village_gdf(),
+            ):
+                call_command("import_villages", str(source), stdout=output)
+
+        village = Village.objects.get()
+        self.dataset_version.refresh_from_db()
+        self.assertEqual(village.name, "Aadorf")
+        self.assertEqual(village.canton, self.canton)
+        self.assertEqual(village.municipality, self.municipality)
+        self.assertEqual(village.valid_from.isoformat(), "2026-01-01")
+        self.assertTrue(village.is_active)
+        self.assertIsNotNone(village.label_point)
+        self.assertIsNotNone(self.dataset_version.villages_updated_at)
+        self.assertIn("Imported 1 villages", output.getvalue())
+        self.assertIn("Skipped 1 rows without Swiss canton", output.getvalue())
+
+    def test_import_villages_updates_existing_source_identifier(self) -> None:
+        """Village imports update existing rows with the same source identifier."""
+        options = {
+            "active_status": "REAL",
+            "canton_abbreviation_field": "",
+            "canton_bfs_field": "",
+            "name_field": "NAME",
+            "postal_code_field": "",
+            "simplify_tolerance": 0.0,
+            "skip_municipality_assignment": False,
+            "source_identifier_field": "LOCALITYID",
+            "status_field": "STATUS",
+            "valid_from_field": "VALIDITY",
+            "valid_to_field": "",
+        }
+        Village.objects.create(
+            dataset_version=self.dataset_version,
+            source_identifier="village-1",
+            name="Old Name",
+            canton=self.canton,
+            geom=make_test_geometry(),
+        )
+
+        result = import_villages(self.village_gdf().iloc[:1], self.dataset_version, options)
+
+        village = Village.objects.get(source_identifier="village-1")
+        self.dataset_version.refresh_from_db()
+        self.assertEqual(len(result.villages), 1)
+        self.assertEqual(village.name, "Aadorf")
+        self.assertIsNotNone(self.dataset_version.villages_updated_at)
+        self.assertEqual(Village.objects.count(), 1)
+
+    def test_command_rejects_without_boundary_dataset(self) -> None:
+        """Village imports require an existing geodata version."""
+        Municipality.objects.all().delete()
+        Canton.objects.all().delete()
+        GeoDatasetVersion.objects.all().delete()
+
+        with self.assertRaisesMessage(
+            CommandError,
+            "Import canton and municipality boundaries first.",
+        ):
+            call_command("import_villages", stdout=StringIO())
+
+    def test_download_asset_rejects_untrusted_hosts(self) -> None:
+        """Official village downloads reject hosts outside the allowlist."""
+        with self.assertRaisesMessage(CommandError, "URL host 'example.test'"):
+            download_village_asset(
+                "https://example.test/villages.shp.zip",
+                Path("asset.zip"),
+            )
+
+    def test_safe_extract_zip_rejects_path_traversal(self) -> None:
+        """Village ZIP extraction rejects archive members outside the target."""
+        archive = mock.Mock()
+        member = mock.Mock()
+        member.filename = "../outside.shp"
+        member.external_attr = 0
+        member.is_dir.return_value = False
+        archive.infolist.return_value = [member]
+
+        with self.assertRaisesMessage(CommandError, "Unsafe path found"):
+            safe_extract_village_zip(archive, Path("data/raw/import-test"))
+
+        archive.open.assert_not_called()
+
+    def test_resolve_layer_source_prefers_matching_layer_name(self) -> None:
+        """Layer source resolution picks the requested vector from a folder."""
+        with TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir)
+            (source / "AMTOVZ_LOCALITY.geojson").write_text("{}", encoding="utf-8")
+            (source / "AMTOVZ_ZIP.geojson").write_text("{}", encoding="utf-8")
+
+            resolved = resolve_village_layer_source(
+                source,
+                "AMTOVZ_LOCALITY",
+                source,
+            )
+
+        self.assertEqual(resolved.name, "AMTOVZ_LOCALITY.geojson")
+
+    def test_resolve_layer_source_accepts_matching_directory_datasource(self) -> None:
+        """Layer source resolution can return a directory-backed datasource."""
+        with TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir)
+            (source / "AMTOVZ_LOCALITY.gdb").mkdir()
+            (source / "AMTOVZ_ZIP.geojson").write_text("{}", encoding="utf-8")
+
+            resolved = resolve_village_layer_source(
+                source,
+                "AMTOVZ_LOCALITY",
+                source,
+            )
+
+        self.assertEqual(resolved.name, "AMTOVZ_LOCALITY.gdb")
+
+    def test_resolve_layer_source_accepts_single_directory_datasource(self) -> None:
+        """Layer source resolution accepts a single supported datasource folder."""
+        with TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir)
+            (source / "villages.gdb").mkdir()
+
+            resolved = resolve_village_layer_source(
+                source,
+                "AMTOVZ_LOCALITY",
+                source,
+            )
+
+        self.assertEqual(resolved.name, "villages.gdb")
 
 
 class ImportSwissBoundaries3DCommandTests(TestCase):

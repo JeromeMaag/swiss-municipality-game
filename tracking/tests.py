@@ -46,7 +46,7 @@ class GameEventModelTests(TestCase):
         self.turn = Turn.objects.create(
             game=self.game,
             turn_number=1,
-            target=self.municipality,
+            municipality_target=self.municipality,
         )
 
     def test_game_event_stores_json_payload(self) -> None:
@@ -180,7 +180,7 @@ class GameEventModelTests(TestCase):
         guest_turn = Turn.objects.create(
             game=guest_game,
             turn_number=1,
-            target=self.municipality,
+            municipality_target=self.municipality,
         )
 
         event = GameEvent.objects.create(
@@ -228,7 +228,7 @@ class TrackingServiceTests(TestCase):
         self.turn = Turn.objects.create(
             game=self.game,
             turn_number=1,
-            target=self.municipality,
+            municipality_target=self.municipality,
         )
 
     def test_track_event_persists_default_payload(self) -> None:

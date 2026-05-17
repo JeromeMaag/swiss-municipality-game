@@ -27,7 +27,9 @@
           data-zoom="8"
           data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
           data-canton-boundaries-url="{{ canton_boundaries_url }}"
-          data-municipality-boundaries-url="{{ municipality_boundaries_url }}"
+          data-target-boundaries-url="{{ target_boundaries_url }}"
+          data-target-boundary-layer="{{ target_boundary_layer }}"
+          data-municipality-overlay-url="{{ municipality_overlay_url }}"
           {% if selected_game %}
             data-summary-map="true"
           {% endif %}
@@ -44,6 +46,10 @@
             <div>
               <span>{% trans "Map" %}</span>
               <strong>{{ selected_game.map_label }}</strong>
+            </div>
+            <div>
+              <span>{% trans "Target" %}</span>
+              <strong>{{ selected_game.target_type_label }}</strong>
             </div>
           </div>
 
@@ -91,6 +97,10 @@
                           <dt>{% trans "Map" %}</dt>
                           <dd>{{ game.map_label }}</dd>
                         </div>
+                        <div>
+                          <dt>{% trans "Target" %}</dt>
+                          <dd>{{ game.target_type_label }}</dd>
+                        </div>
                       </dl>
                     </a>
                   </li>
@@ -119,5 +129,5 @@
     crossorigin="anonymous"
     defer
   ></script>
-  <script src="{% static 'js/game_map.js' %}?v=keyboard-1" defer></script>
+  <script src="{% static 'js/game_map.js' %}?v=village-map-3" defer></script>
 {% endblock %}

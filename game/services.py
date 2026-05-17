@@ -8,14 +8,16 @@ from django.contrib.gis.geos import GEOSGeometry, Point
 from django.db import IntegrityError, connection, transaction
 from django.db.models import QuerySet
 from django.utils import timezone
-from django.utils.translation import gettext as _
+from django.utils.translation import gettext as _, gettext_lazy
 
-from geo.models import Canton, Municipality
+from geo.models import Canton, Municipality, Village
 from geo.selectors import (
     get_canton_for_dataset_by_abbreviation,
     get_current_dataset_version,
     get_municipalities_for_canton,
     get_municipalities_for_dataset,
+    get_villages_for_canton,
+    get_villages_for_dataset,
 )
 from tracking.models import GameEvent
 from tracking.services import track_event
@@ -37,12 +39,19 @@ NEAREST_BOUNDARY_POINT_SQL = """
 """
 
 
-class NotEnoughMunicipalitiesError(ValueError):
-    """Raised when there are not enough active municipalities to start a game."""
+class NotEnoughTargetsError(ValueError):
+    """Raised when there are not enough active targets to start a game."""
+
+
+NotEnoughMunicipalitiesError = NotEnoughTargetsError
 
 
 class InvalidGameModeError(ValueError):
     """Raised when a requested game mode cannot be used."""
+
+
+class InvalidGameTargetTypeError(ValueError):
+    """Raised when a requested game target type cannot be used."""
 
 
 class GuessSubmissionError(ValueError):
@@ -59,39 +68,75 @@ class GameScope:
 
     Attributes:
         mode: Game mode value stored on Game.
+        target_type: Game target type value stored on Game.
         canton: Optional canton when the game is scoped to one canton.
-        municipalities: QuerySet-like active municipality pool for target sampling.
+        targets: QuerySet-like active target pool for sampling.
     """
 
     mode: str
+    target_type: str
     canton: Canton | None
-    municipalities: QuerySet[Municipality]
+    targets: QuerySet[Municipality] | QuerySet[Village]
+
+
+@dataclass(frozen=True)
+class TargetTypeConfig:
+    """Database mapping for one game target type.
+
+    Attributes:
+        target_type: Game target type value.
+        model: Geo model used by this target type.
+        turn_field_id: Turn foreign-key id field storing this target.
+        display_name: Translatable human-readable plural target name.
+    """
+
+    target_type: str
+    model: type[Municipality] | type[Village]
+    turn_field_id: str
+    display_name: str
+
+
+MUNICIPALITY_TARGET_CONFIG = TargetTypeConfig(
+    target_type=Game.TargetType.MUNICIPALITY,
+    model=Municipality,
+    turn_field_id="municipality_target_id",
+    display_name=gettext_lazy("municipalities"),
+)
+VILLAGE_TARGET_CONFIG = TargetTypeConfig(
+    target_type=Game.TargetType.VILLAGE,
+    model=Village,
+    turn_field_id="village_target_id",
+    display_name=gettext_lazy("villages"),
+)
 
 
 def calculate_scoring_max_distance_m_for_dataset(
     dataset_version_id: int,
     *,
     canton_id: int | None = None,
+    target_type: str = Game.TargetType.MUNICIPALITY,
 ) -> float:
-    """Return the scoring distance scale for an active municipality dataset.
+    """Return the scoring distance scale for an active target dataset.
 
     Args:
-        dataset_version_id: Dataset version whose active municipalities define
-            the playable map scope.
+        dataset_version_id: Dataset version whose active targets define the
+            playable map scope.
         canton_id: Optional canton restricting the playable map scope.
+        target_type: Game target type whose geometry defines the scope.
 
     Returns:
         The maximum geodesic distance between bounding-box corners in meters.
 
     Raises:
-        NotEnoughMunicipalitiesError: If the dataset has no usable map extent.
+        NotEnoughTargetsError: If the dataset has no usable map extent.
     """
-    municipality_table = connection.ops.quote_name(Municipality._meta.db_table)
+    target_config = target_type_config(target_type)
+    target_table = connection.ops.quote_name(target_config.model._meta.db_table)
     canton_filter = "AND canton_id = %s" if canton_id is not None else ""
     query = f"""
         WITH bounds AS (
             SELECT ST_Extent(geom) AS box
-            FROM {municipality_table}
+            FROM {target_table}
             WHERE dataset_version_id = %s AND is_active = true {canton_filter}
         ),
         corners AS (
@@ -141,7 +186,7 @@ def calculate_scoring_max_distance_m_for_dataset(
         row = cursor.fetchone()
 
     if row is None or row[0] is None or row[0] <= 0:
-        raise NotEnoughMunicipalitiesError(
+        raise NotEnoughTargetsError(
             _("Could not calculate a usable scoring map extent.")
         )
     return float(row[0])
@@ -149,11 +194,12 @@ def calculate_scoring_max_distance_m_for_dataset(
 
 @dataclass(frozen=True)
 class GuessDistances:
-    """Measured distances between a guess point and the target municipality.
+    """Measured distances between a guess point and the target polygon.
 
     Attributes:
-        distance_to_municipality_m: Distance to the municipality polygon in meters.
-        distance_to_boundary_m: Distance to the municipality boundary in meters.
+        distance_to_municipality_m: Distance to the target polygon in meters.
+            The field name is kept for the existing Guess schema.
+        distance_to_boundary_m: Distance to the target boundary in meters.
         nearest_boundary_point: Boundary point nearest to the guess point.
     """
 
@@ -187,8 +233,8 @@ def start_game(user) -> Game:
         An active game with five turns.
 
     Raises:
-        NotEnoughMunicipalitiesError: If fewer than five active municipalities exist
-            in the current dataset version.
+        NotEnoughTargetsError: If fewer than five active targets exist in
+            the current dataset version.
     """
     return start_game_for_player(PlayerIdentity.for_user(user))
 
@@ -198,6 +244,7 @@ def start_game_for_player(
     *,
     mode: str = Game.Mode.SWITZERLAND,
     canton_abbreviation: str = "",
+    target_type: str = Game.TargetType.MUNICIPALITY,
 ) -> Game:
     """Return an active game for a player, creating one when needed.
 
@@ -205,13 +252,14 @@ def start_game_for_player(
         player: User or guest identity that starts or resumes a game.
         mode: Requested game mode.
         canton_abbreviation: Requested canton abbreviation for single-canton mode.
+        target_type: Requested target type.
 
     Returns:
         An active game with five turns.
 
     Raises:
-        NotEnoughMunicipalitiesError: If fewer than five active municipalities exist
-            in the current dataset version.
+        NotEnoughTargetsError: If fewer than five active targets exist in
+            the current dataset version.
     """
     if not player.can_own_games:
         raise ValueError(_("Player identity cannot own games."))
@@ -233,50 +281,64 @@ def start_game_for_player(
 
             dataset_version = get_current_dataset_version()
             if dataset_version is None:
+                target_config = target_type_config(target_type)
                 existing_game = get_active_game_for_player(player)
                 if existing_game is not None:
                     return existing_game
-                raise NotEnoughMunicipalitiesError(
+                raise NotEnoughTargetsError(
                     _(
-                        "At least %(count)s active municipalities are required "
+                        "At least %(count)s active %(targets)s are required "
                         "to start a game."
                     )
-                    % {"count": TURN_COUNT}
+                    % {"count": TURN_COUNT, "targets": target_config.display_name}
                 )
 
             game_scope = resolve_game_scope(
                 dataset_version=dataset_version,
                 mode=mode,
                 canton_abbreviation=canton_abbreviation,
+                target_type=target_type,
             )
-            current_municipalities = game_scope.municipalities
-            municipality_ids = list(current_municipalities.values_list("id", flat=True))
-            if len(municipality_ids) < TURN_COUNT:
+            target_config = target_type_config(game_scope.target_type)
+            target_count = game_scope.targets.count()
+            if target_count < TURN_COUNT:
                 existing_game = get_active_game_for_player(player)
                 if existing_game is not None:
                     return existing_game
-                raise NotEnoughMunicipalitiesError(
+                raise NotEnoughTargetsError(
                     _(
-                        "At least %(count)s active municipalities are required "
+                        "At least %(count)s active %(targets)s are required "
                         "to start a game."
                     )
-                    % {"count": TURN_COUNT}
+                    % {"count": TURN_COUNT, "targets": target_config.display_name}
                 )
 
             scoring_max_distance_m = calculate_scoring_max_distance_m_for_dataset(
                 dataset_version.id,
                 canton_id=game_scope.canton.id if game_scope.canton else None,
+                target_type=game_scope.target_type,
             )
-            target_ids = random.SystemRandom().sample(municipality_ids, TURN_COUNT)
+            selected_target_ids = sample_target_ids(
+                game_scope.targets,
+                target_count=target_count,
+            )
             game = Game.objects.create(
                 mode=game_scope.mode,
+                target_type=game_scope.target_type,
                 canton=game_scope.canton,
                 scoring_max_distance_m=scoring_max_distance_m,
                 **player.model_fields(),
             )
             turns = [
-                Turn(game=game, turn_number=turn_number, target_id=target_id)
-                for turn_number, target_id in enumerate(target_ids, start=1)
+                Turn(
+                    game=game,
+                    turn_number=turn_number,
+                    **{target_config.turn_field_id: target_id},
+                )
+                for turn_number, target_id in enumerate(
+                    selected_target_ids,
+                    start=1,
+                )
             ]
             Turn.objects.bulk_create(turns)
             persisted_turns = list(game.turns.order_by("turn_number"))
@@ -301,11 +363,37 @@ def start_game_for_player(
         raise
 
 
+def sample_target_ids(
+    targets: QuerySet[Municipality] | QuerySet[Village],
+    *,
+    target_count: int,
+) -> list[int]:
+    """Return a random fixed-size sample with bounded query count."""
+    randomizer = random.SystemRandom()
+    offsets = sorted(randomizer.sample(range(target_count), TURN_COUNT))
+    ordered_targets = targets.order_by("id")
+    window_start = offsets[0]
+    window_size = offsets[-1] - window_start + 1
+    window_ids = list(
+        ordered_targets.values_list("id", flat=True)[
+            window_start : window_start + window_size
+        ]
+    )
+    if len(window_ids) < window_size:
+        raise NotEnoughTargetsError(
+            _("At least %(count)s active targets are required to start a game.")
+            % {"count": TURN_COUNT}
+        )
+    target_ids = [window_ids[offset - window_start] for offset in offsets]
+    return target_ids
+
+
 def resolve_game_scope(
     *,
     dataset_version,
     mode: str,
     canton_abbreviation: str = "",
+    target_type: str = Game.TargetType.MUNICIPALITY,
 ) -> GameScope:
     """Resolve a requested game mode against the current geodata dataset.
 
@@ -313,19 +401,26 @@ def resolve_game_scope(
         dataset_version: Current geodata dataset version.
         mode: Requested mode value.
         canton_abbreviation: Requested canton abbreviation for canton mode.
+        target_type: Requested target type value.
 
     Returns:
-        A game scope containing mode, canton, and municipality pool.
+        A game scope containing mode, target type, canton, and target pool.
 
     Raises:
         InvalidGameModeError: If the requested mode or canton is invalid.
+        InvalidGameTargetTypeError: If the requested target type is invalid.
     """
     normalized_mode = normalize_game_mode(mode)
+    normalized_target_type = normalize_game_target_type(target_type)
     if normalized_mode == Game.Mode.SWITZERLAND:
         return GameScope(
             mode=Game.Mode.SWITZERLAND,
+            target_type=normalized_target_type,
             canton=None,
-            municipalities=get_municipalities_for_dataset(dataset_version),
+            targets=targets_for_dataset(
+                normalized_target_type,
+                dataset_version,
+            ),
         )
 
     canton = get_canton_for_dataset_by_abbreviation(
@@ -336,8 +431,9 @@ def resolve_game_scope(
         raise InvalidGameModeError(_("Choose a valid canton."))
     return GameScope(
         mode=Game.Mode.CANTON,
+        target_type=normalized_target_type,
         canton=canton,
-        municipalities=get_municipalities_for_canton(canton),
+        targets=targets_for_canton(normalized_target_type, canton),
     )
 
 
@@ -348,6 +444,54 @@ def normalize_game_mode(mode: str) -> str:
     if mode in Game.Mode.values:
         return mode
     raise InvalidGameModeError(_("Choose a valid game mode."))
+
+
+def normalize_game_target_type(target_type: str) -> str:
+    """Normalize and validate a requested target type."""
+    if not target_type:
+        return Game.TargetType.MUNICIPALITY
+    if target_type in Game.TargetType.values:
+        return target_type
+    raise InvalidGameTargetTypeError(_("Choose a valid target type."))
+
+
+def target_type_config(target_type: str) -> TargetTypeConfig:
+    """Return database mapping for a target type."""
+    normalized_target_type = normalize_game_target_type(target_type)
+    if normalized_target_type == Game.TargetType.VILLAGE:
+        return VILLAGE_TARGET_CONFIG
+    return MUNICIPALITY_TARGET_CONFIG
+
+
+def targets_for_dataset(
+    target_type: str,
+    dataset_version,
+) -> QuerySet[Municipality] | QuerySet[Village]:
+    """Return active game targets for one dataset version."""
+    normalized_target_type = normalize_game_target_type(target_type)
+    if normalized_target_type == Game.TargetType.VILLAGE:
+        return get_villages_for_dataset(dataset_version)
+    return get_municipalities_for_dataset(dataset_version)
+
+
+def targets_for_canton(
+    target_type: str,
+    canton: Canton,
+) -> QuerySet[Municipality] | QuerySet[Village]:
+    """Return active game targets for one canton."""
+    normalized_target_type = normalize_game_target_type(target_type)
+    if normalized_target_type == Game.TargetType.VILLAGE:
+        return get_villages_for_canton(canton)
+    return get_municipalities_for_canton(canton)
+
+
+def target_id_for_turn(turn: Turn) -> int:
+    """Return the concrete target id for a turn's game target type."""
+    target_config = target_type_config(turn.game.target_type)
+    target_id = getattr(turn, target_config.turn_field_id)
+    if target_id is None:
+        raise GuessSubmissionError(_("Turn target does not exist."))
+    return target_id
 
 
 def submit_guess(user, turn_id, latitude, longitude) -> GuessSubmissionResult:
@@ -426,12 +570,17 @@ def submit_guess_for_player(
         game = Game.objects.select_for_update().get(pk=turn.game_id)
         turn.game = game
         _validate_guessable_turn(player=player, game=game, turn=turn)
+        target_id = target_id_for_turn(turn)
 
         scoring_max_distance_m = _ensure_game_scoring_max_distance_m(
             game=game,
-            target_id=turn.target_id,
+            target_id=target_id,
         )
-        distances = _calculate_guess_distances(point=point, target_id=turn.target_id)
+        distances = _calculate_guess_distances(
+            point=point,
+            target_id=target_id,
+            target_type=game.target_type,
+        )
         score = calculate_score(
             distances.distance_to_municipality_m,
             scoring_max_distance_m,
@@ -591,39 +740,48 @@ def _ensure_game_scoring_max_distance_m(*, game: Game, target_id: int) -> float:
     ):
         return game.scoring_max_distance_m
 
+    target_config = target_type_config(game.target_type)
     dataset_version_id = (
-        Municipality.objects.only("dataset_version_id")
+        target_config.model.objects.only("dataset_version_id")
         .get(pk=target_id)
         .dataset_version_id
     )
     scoring_max_distance_m = calculate_scoring_max_distance_m_for_dataset(
         dataset_version_id,
         canton_id=game.canton_id if game.mode == Game.Mode.CANTON else None,
+        target_type=game.target_type,
     )
     game.scoring_max_distance_m = scoring_max_distance_m
     game.save(update_fields=["scoring_max_distance_m"])
     return scoring_max_distance_m
 
 
-def calculate_nearest_boundary_point(*, point: Point, target_id: int) -> Point:
+def calculate_nearest_boundary_point(
+    *,
+    point: Point,
+    target_id: int,
+    target_type: str = Game.TargetType.MUNICIPALITY,
+) -> Point:
     """Return the target boundary point nearest to a guess point.
 
     Args:
         point: Guess point in WGS84 coordinates.
-        target_id: Target municipality primary key.
+        target_id: Target primary key.
+        target_type: Game target type.
 
     Returns:
         Nearest boundary point in WGS84 coordinates.
 
     Raises:
-        GuessSubmissionError: If the target municipality cannot be found.
+        GuessSubmissionError: If the target cannot be found.
     """
-    municipality_table = connection.ops.quote_name(Municipality._meta.db_table)
+    target_config = target_type_config(target_type)
+    target_table = connection.ops.quote_name(target_config.model._meta.db_table)
     point_sql = "ST_SetSRID(ST_MakePoint(%s, %s), 4326)"
     query = f"""
         WITH target AS (
             SELECT geom
-            FROM {municipality_table}
+            FROM {target_table}
             WHERE id = %s
         ),
         guess AS (
@@ -638,30 +796,37 @@ def calculate_nearest_boundary_point(*, point: Point, target_id: int) -> Point:
         row = cursor.fetchone()
 
     if row is None:
-        raise GuessSubmissionError(_("Target municipality does not exist."))
+        raise GuessSubmissionError(_("Target does not exist."))
 
     return GEOSGeometry(memoryview(row[0]))
 
 
-def _calculate_guess_distances(*, point: Point, target_id: int) -> GuessDistances:
-    """Calculate geodesic guess distances against a municipality polygon.
+def _calculate_guess_distances(
+    *,
+    point: Point,
+    target_id: int,
+    target_type: str = Game.TargetType.MUNICIPALITY,
+) -> GuessDistances:
+    """Calculate geodesic guess distances against a target polygon.
 
     Args:
         point: Guess point in WGS84 coordinates.
-        target_id: Target municipality primary key.
+        target_id: Target primary key.
+        target_type: Game target type.
 
     Returns:
-        Distances to the municipality polygon and boundary in meters.
+        Distances to the target polygon and boundary in meters.
 
     Raises:
-        GuessSubmissionError: If the target municipality cannot be found.
+        GuessSubmissionError: If the target cannot be found.
     """
-    municipality_table = connection.ops.quote_name(Municipality._meta.db_table)
+    target_config = target_type_config(target_type)
+    target_table = connection.ops.quote_name(target_config.model._meta.db_table)
     point_sql = "ST_SetSRID(ST_MakePoint(%s, %s), 4326)"
     query = f"""
         WITH target AS (
             SELECT geom
-            FROM {municipality_table}
+            FROM {target_table}
             WHERE id = %s
         ),
         guess AS (
@@ -679,7 +844,7 @@ def _calculate_guess_distances(*, point: Point, target_id: int) -> GuessDistance
         row = cursor.fetchone()
 
     if row is None:
-        raise GuessSubmissionError(_("Target municipality does not exist."))
+        raise GuessSubmissionError(_("Target does not exist."))
 
     return GuessDistances(
         distance_to_municipality_m=float(row[0]),

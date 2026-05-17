@@ -1,15 +1,17 @@
 """Views for geodata pages and endpoints."""
 
+from dataclasses import dataclass
 import hashlib
 
 from django.core.cache import cache
 from django.http import Http404, HttpResponse, HttpResponseNotModified
+from django.db.models import QuerySet
 from django.utils.cache import patch_cache_control
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET
 
 from .constants import MUNICIPALITY_LABEL_ACCESS_SESSION_KEY
-from .models import GeoDatasetVersion
+from .models import GeoDatasetVersion, Village
 from .selectors import (
     get_canton_for_dataset_by_abbreviation,
     get_cantons_for_dataset,
@@ -18,11 +20,14 @@ from .selectors import (
     get_municipalities_for_dataset,
     get_municipality_labels_for_canton,
     get_municipality_labels_for_dataset,
+    get_villages_for_canton,
+    get_villages_for_dataset,
 )
 from .serializers import (
     serialize_canton_boundaries,
     serialize_municipality_boundaries,
     serialize_municipality_labels,
+    serialize_village_boundaries,
 )
 
 
@@ -30,6 +35,15 @@ GEOJSON_CONTENT_TYPE = "application/geo+json"
 GEOJSON_CACHE_SECONDS = 60 * 60
 GEOJSON_PUBLIC_CACHE_SECONDS = 5 * 60
 EMPTY_FEATURE_COLLECTION = '{"type":"FeatureCollection","features":[]}'
+
+
+@dataclass(frozen=True)
+class VillageBoundaryScope:
+    """Resolved village boundary response scope and cache metadata."""
+
+    villages: QuerySet[Village]
+    canton_key: str
+    version_key: str
 
 
 def geojson_response(data: str, etag: str = "") -> HttpResponse:
@@ -206,6 +220,31 @@ def canton_scope_key(canton) -> str:
     return f"canton:{canton.abbreviation}" if canton is not None else ""
 
 
+def village_boundary_scope(request, dataset_version: GeoDatasetVersion) -> VillageBoundaryScope:
+    """Return village queryset and cache metadata for one request scope."""
+    canton = requested_canton_filter(request, dataset_version)
+    villages = (
+        get_villages_for_canton(canton)
+        if canton
+        else get_villages_for_dataset(dataset_version)
+    )
+    updated_at = dataset_version.villages_updated_at
+    version_key = updated_at.isoformat() if updated_at is not None else "empty"
+    return VillageBoundaryScope(
+        villages=villages,
+        canton_key=canton_scope_key(canton),
+        version_key=version_key,
+    )
+
+
+def village_boundary_scope_key(scope: VillageBoundaryScope) -> str:
+    """Return a cache-key suffix that changes when village data changes."""
+    parts = [f"updated:{scope.version_key}"]
+    if scope.canton_key:
+        parts.append(scope.canton_key)
+    return ":".join(parts)
+
+
 @require_GET
 def canton_boundaries(request):
     """Return current canton boundaries as GeoJSON.
@@ -247,6 +286,27 @@ def municipality_boundaries(request):
         ),
         lambda dataset_version: requested_canton_filter(request, dataset_version),
         canton_scope_key,
+    )
+
+
+@require_GET
+def village_boundaries(request):
+    """Return current village boundaries without village names.
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        A GeoJSON FeatureCollection response.
+    """
+    return cached_geojson_response(
+        request,
+        "villages",
+        lambda dataset_version, scope: serialize_village_boundaries(
+            scope.villages
+        ),
+        lambda dataset_version: village_boundary_scope(request, dataset_version),
+        village_boundary_scope_key,
     )
 
 

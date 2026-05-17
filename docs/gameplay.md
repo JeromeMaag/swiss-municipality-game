@@ -1,8 +1,8 @@
 # Gameplay
 
-Find the Municipality! is a map guessing game about Swiss municipalities. Each
-round shows one municipality name, and the player tries to place a pin inside
-that municipality on the map.
+Find the Municipality! is a map guessing game about Swiss municipalities and
+villages. Each round shows one target name, and the player tries to place a pin
+inside that target area on the map.
 
 ![Active game screen](assets/screenshots/game.png)
 
@@ -10,29 +10,36 @@ that municipality on the map.
 
 A normal game has five rounds.
 
-1. Choose a game mode.
+1. Choose a game mode and target type.
 2. Start the game as a guest or with an account.
-3. Read the target municipality name in the sidebar.
+3. Read the target name in the sidebar.
 4. Move around the map and place a pin.
 5. Submit the guess.
 6. Review the reveal: target area, pin, distance, score, canton, and population.
 7. Continue until all five rounds are finished.
 8. Open the summary to review all rounds on one map.
 
-The game does not show municipality names before a guess. It shows boundaries,
-canton outlines, and the selected background map so the player has geographic
-context without direct labels.
+The game does not show target names before a guess. It shows boundaries, canton
+outlines, and the selected background map so the player has geographic context
+without direct labels.
 
 ## Starting A Game
 
 The start screen shows the map first and keeps setup controls in the sidebar.
-Players can choose between:
+Players first choose the map scope:
 
-- `Switzerland`: targets can be any active municipality in Switzerland.
-- `Single canton`: targets are limited to the selected canton.
+- `Switzerland`: targets can be any active target of the selected target type.
+- `Single canton`: targets are limited to the selected target type in the
+  selected canton.
 
-The game mode is persisted on the game record. This matters for scoring,
-history, summary replays, and the "play again" action.
+Players then choose what to find:
+
+- `Municipalities`: the classic mode. The target polygons are municipalities.
+- `Villages`: target polygons are village/locality boundaries.
+
+The game mode, target type, and canton are persisted on the game record. This
+matters for scoring, history, summary replays, profile statistics, and the "play
+again" action.
 
 ## Guest And Account Play
 
@@ -54,16 +61,34 @@ wants long-term history and statistics, they should log in before playing.
 
 ### Switzerland
 
-Switzerland mode uses all active municipalities from the current geodata
-dataset. The map starts zoomed to Switzerland, and the score curve is based on
-the full playable Swiss extent.
+Switzerland mode uses all active targets of the selected target type from the
+current geodata dataset. The map starts zoomed to Switzerland, and the score
+curve is based on the full playable Swiss extent.
 
 ### Single Canton
 
-Single-canton mode limits the game to municipalities in one selected canton.
-The map loads canton-scoped boundary data, starts focused on that canton, and
-uses a canton-sized score curve. History, summary, profile statistics, and admin
-labels show the canton abbreviation, such as `ZH` or `VD`.
+Single-canton mode limits the game to targets in one selected canton. The map
+loads canton-scoped boundary data, starts focused on that canton, and uses a
+canton-sized score curve. History, summary, profile statistics, and admin labels
+show the canton abbreviation, such as `ZH` or `VD`.
+
+## Target Types
+
+### Municipalities
+
+Municipality games use official municipality polygons as targets. They can be
+played across Switzerland or inside one canton.
+
+### Villages
+
+Village games use official village/locality polygons as targets. They behave
+like municipality games: five rounds, the same scoring system, the same summary
+and history replay, and the same account statistics.
+
+Village games can show village, municipality, and canton boundaries
+independently from the map settings menu. Municipality and canton boundaries
+are visual context only. They do not change the target, distance calculation,
+scoring, or validation.
 
 ## Guessing
 
@@ -71,7 +96,7 @@ During an active round, the sidebar shows:
 
 - round number
 - current total score
-- target municipality name
+- target name
 - disabled guess button until a pin is placed
 
 The player places exactly one active pin. Moving the pin updates the hidden
@@ -80,18 +105,17 @@ validates the turn and ownership before accepting the guess.
 
 ## Reveal
 
-After submission, the map shows the guessed pin, highlights the target
-municipality, and draws a reveal line from the guess to the nearest point on the
-target boundary.
+After submission, the map shows the guessed pin, highlights the target area, and
+draws a reveal line from the guess to the nearest point on the target boundary.
 
 ![Reveal screen](assets/screenshots/reveal.png)
 
 The reveal sidebar shows:
 
 - round score
-- distance to the target municipality
+- distance to the target
 - canton name and abbreviation
-- population, if imported
+- population, if available for that target type
 
 Reveal lines use the nearest target boundary point calculated by PostGIS. The
 same geometry result is used for the visual line and the stored distance, so the
@@ -100,16 +124,16 @@ map display matches the scoring data.
 ## Scoring
 
 The score is based on the shortest distance from the submitted pin to the target
-municipality polygon.
+polygon.
 
-If the pin is inside the correct municipality:
+If the pin is inside the correct target:
 
 ```text
 distance = 0 m
 score = 1000
 ```
 
-If the pin is outside the municipality, the score follows an exponential decay
+If the pin is outside the target area, the score follows an exponential decay
 curve. The curve is scaled by the playable map extent:
 
 ```text
@@ -118,7 +142,7 @@ score = round(1000 * exp(-distance / decay distance))
 ```
 
 Outside guesses are capped at `999`, so `1000` always means the pin was inside
-the correct municipality.
+the correct target area.
 
 The playable map extent is stored on each game. This keeps scores stable even if
 future geodata or game mode logic changes.
@@ -128,6 +152,7 @@ future geodata or game mode logic changes.
 After five rounds, the summary page shows:
 
 - total score
+- map and target type
 - all round results
 - numbered guess pins
 - target highlights and reveal lines
@@ -135,7 +160,7 @@ After five rounds, the summary page shows:
 
 The summary has two follow-up actions:
 
-- `Play again`: starts a new game with the same mode and canton.
+- `Play again`: starts a new game with the same mode, target type, and canton.
 - `Change game mode`: returns to the game setup screen.
 
 ## History
@@ -143,7 +168,7 @@ The summary has two follow-up actions:
 Signed-in users can open their history page to review finished games. The
 history page uses the same map-first layout as the game screen:
 
-- the sidebar lists finished games with date, score, and map label
+- the sidebar lists finished games with date, score, map label, and target type
 - selecting a game opens a replay-style summary map
 - the back action returns to the game list
 
@@ -164,7 +189,7 @@ Current statistics include:
 - best distance
 - perfect rounds
 - recent games with links to history details
-- average score by map mode
+- average score by map mode and target type
 
 Active games, guest games, and games owned by other users are excluded.
 
@@ -188,12 +213,19 @@ Boundary line theme:
 - `White`
 - `Black`
 
-Outline visibility:
+Boundary visibility:
 
-- `All outlines`
-- `Cantons only`
-- `Municipalities only`
-- `Off`
+- `Cantons`
+- `Municipalities`
+- `Villages` for village maps
+
+The boundary checkboxes can be combined freely. For example, a village game can
+show only canton and village boundaries while hiding municipality boundaries.
+Unchecking every boundary layer hides all non-highlight boundaries.
+
+Village maps include village boundaries as their target layer. In that mode,
+all three boundary levels can be shown together or reduced to the layers that
+are useful for the current guess.
 
 Map settings affect display only. They do not affect validation, distance
 calculation, scoring, or history.

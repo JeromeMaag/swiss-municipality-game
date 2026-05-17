@@ -27,7 +27,9 @@
           data-zoom="8"
           data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
           data-canton-boundaries-url="{{ canton_boundaries_url }}"
-          data-municipality-boundaries-url="{{ municipality_boundaries_url }}"
+          data-target-boundaries-url="{{ target_boundaries_url }}"
+          data-target-boundary-layer="{{ target_boundary_layer }}"
+          data-municipality-overlay-url="{{ municipality_overlay_url }}"
           data-summary-map="true"
         ></div>
       </section>
@@ -42,6 +44,14 @@
             <span>{% trans "Score" %}</span>
             <strong>{{ game.total_score }}</strong>
           </div>
+          <div>
+            <span>{% trans "Map" %}</span>
+            <strong>{{ game.map_label }}</strong>
+          </div>
+          <div>
+            <span>{% trans "Target" %}</span>
+            <strong>{{ game.target_type_label }}</strong>
+          </div>
         </div>
 
         <section class="target-panel result-panel summary-results" aria-labelledby="summary-heading">
@@ -55,6 +65,7 @@
             {% csrf_token %}
             <input type="hidden" name="game_mode" value="{{ game.mode }}">
             <input type="hidden" name="canton" value="{{ game.canton.abbreviation|default:'' }}">
+            <input type="hidden" name="target_type" value="{{ game.target_type }}">
             <button type="submit" data-game-keyboard-action>
               {% trans "Play again" %}
             </button>
@@ -76,5 +87,5 @@
     crossorigin="anonymous"
     defer
   ></script>
-  <script src="{% static 'js/game_map.js' %}?v=keyboard-1" defer></script>
+  <script src="{% static 'js/game_map.js' %}?v=village-map-3" defer></script>
 {% endblock %}

@@ -1,4 +1,4 @@
-"""Scoring helpers for municipality guesses."""
+"""Scoring helpers for game guesses."""
 
 import math
 
@@ -8,10 +8,10 @@ SCORING_DISTANCE_DIVISOR = 20
 
 
 def calculate_score(distance_m: float, map_max_distance_m: float) -> int:
-    """Calculate a guess score from distance to the target municipality.
+    """Calculate a guess score from distance to the target polygon.
 
     Args:
-        distance_m: Distance to the target municipality polygon in meters.
+        distance_m: Distance to the target polygon in meters.
         map_max_distance_m: Maximum geodesic distance across the game map scope.
 
     Returns:

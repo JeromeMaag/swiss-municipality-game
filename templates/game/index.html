@@ -37,7 +37,9 @@
               data-zoom="8"
               data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
               data-canton-boundaries-url="{{ canton_boundaries_url }}"
-              data-municipality-boundaries-url="{{ municipality_boundaries_url }}"
+              data-target-boundaries-url="{{ target_boundaries_url }}"
+              data-target-boundary-layer="{{ target_boundary_layer }}"
+              data-municipality-overlay-url="{{ municipality_overlay_url }}"
               {% if last_guess %}
                 data-municipality-labels-url="{% url 'geo:municipality_labels_geojson' %}?turn={{ last_guess.turn.id }}"
                 data-label-min-zoom="11"
@@ -46,7 +48,7 @@
                 data-tracking-url="{% url 'game:track_turn_event' current_turn.id %}"
               {% endif %}
               {% if last_guess %}
-                data-reveal-target-id="{{ last_guess.turn.target.id }}"
+                data-reveal-target-id="{{ last_guess.turn.selected_target.id }}"
                 data-reveal-boundary-lat="{{ reveal_boundary_lat }}"
                 data-reveal-boundary-lng="{{ reveal_boundary_lng }}"
                 data-reveal-lat="{{ reveal_guess_lat }}"
@@ -84,7 +86,7 @@
               <span class="state-label">
                 {% if active_game.status == "finished" %}{% trans "Finished game" %}{% else %}{% trans "Result" %}{% endif %}
               </span>
-              <h1 id="result-heading">{{ last_guess.turn.target.name }}</h1>
+              <h1 id="result-heading">{{ last_guess_target.name }}</h1>
               <dl class="result-list">
                 <div class="result-list-primary">
                   <dt>{% trans "Score" %}</dt>
@@ -96,12 +98,12 @@
                 </div>
                 <div>
                   <dt>{% trans "Canton" %}</dt>
-                  <dd>{{ last_guess.turn.target.canton.name }} ({{ last_guess.turn.target.canton.abbreviation }})</dd>
+                  <dd>{{ last_guess_target_canton.name }} ({{ last_guess_target_canton.abbreviation }})</dd>
                 </div>
-                {% if last_guess.turn.target.population is not None %}
+                {% if last_guess_target_population is not None %}
                   <div>
                     <dt>{% trans "Population" %}</dt>
-                    <dd>{{ last_guess.turn.target.population }}</dd>
+                    <dd>{{ last_guess_target_population }}</dd>
                   </div>
                 {% endif %}
               </dl>
@@ -160,7 +162,9 @@
               data-zoom="8"
               data-base-map-url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"
               data-canton-boundaries-url="{{ canton_boundaries_url }}"
-              data-municipality-boundaries-url="{{ municipality_boundaries_url }}"
+              data-target-boundaries-url="{{ target_boundaries_url }}"
+              data-target-boundary-layer="{{ target_boundary_layer }}"
+              data-municipality-overlay-url="{{ municipality_overlay_url }}"
             ></div>
           {% else %}
             <div class="map-placeholder"></div>
@@ -238,6 +242,38 @@
                 {% endfor %}
               </select>
             </label>
+            <div class="mode-panel-heading">
+              <span class="state-label">{% trans "Target" %}</span>
+              <strong id="target-type-heading">{% trans "What to find" %}</strong>
+            </div>
+            <div class="mode-option-list" role="radiogroup" aria-labelledby="target-type-heading">
+              <label class="mode-option">
+                <input
+                  type="radio"
+                  name="target_type"
+                  value="municipality"
+                  form="{% if request.user.is_authenticated %}game-start-form{% else %}guest-start-form{% endif %}"
+                  {% if selected_target_type == "municipality" %}checked{% endif %}
+                >
+                <span>
+                  <strong>{% trans "Municipalities" %}</strong>
+                  <small>{% trans "Default" %}</small>
+                </span>
+              </label>
+              <label class="mode-option">
+                <input
+                  type="radio"
+                  name="target_type"
+                  value="village"
+                  form="{% if request.user.is_authenticated %}game-start-form{% else %}guest-start-form{% endif %}"
+                  {% if selected_target_type == "village" %}checked{% endif %}
+                >
+                <span>
+                  <strong>{% trans "Villages" %}</strong>
+                  <small>{% trans "New" %}</small>
+                </span>
+              </label>
+            </div>
           </section>
 
           {% if request.user.is_authenticated %}
@@ -334,6 +370,6 @@
       crossorigin="anonymous"
       defer
     ></script>
-    <script src="{% static 'js/game_map.js' %}?v=keyboard-1" defer></script>
+    <script src="{% static 'js/game_map.js' %}?v=village-map-3" defer></script>
   {% endif %}
 {% endblock %}
